@@ -15,6 +15,11 @@ migrations are applied. All tables are `STRICT`.
 | `camera_status` | Current status, one row per camera | Updated on every check; cascades on camera delete |
 | `camera_status_history` | Status transitions | Written only when the state changes (SPEC §10.2) |
 | `credential_sets` | Encrypted camera credentials | Ciphertext only (ADR 0003); shared (named) or private (per camera) |
+| `groups` | Group hierarchy (ADR 0009) | Adjacency list (`parent_id`, RESTRICT); sibling names unique ignoring case |
+| `camera_groups` | Camera ↔ group (many-to-many) | Cascades with camera or group |
+| `tags` | Global tags | `name` unique, `COLLATE NOCASE` |
+| `camera_tags` | Camera ↔ tag | Cascades with camera or tag |
+| `favorites` | Per-user favorite cameras | Cascades with user or camera; never shown to other users |
 | `settings` | Runtime setting overrides | One JSON row per group (`monitoring`, `streaming`); defaults come from config (ADR 0008) |
 | `tasks` | Background tasks | Status, progress, categorized error, JSON result; interrupted tasks marked failed at startup; purged after 30 days |
 

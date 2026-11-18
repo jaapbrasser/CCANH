@@ -31,6 +31,9 @@ or `mode = "demo"` in `config.toml`. The UI shows a **DEMO MODE** banner.
   - `A Yard – Rail Spur` and `B Perimeter – Fence West` are always offline;
   - `B Loading – Dock 3` flaps online/offline every 45 s;
   - `B Storage – Aisle 4` rejects its credentials (auth failure).
+- The SPEC §9 group tree (Site A → Building 1/2 → Crane 1–4, Yard; Site B →
+  Loading Area, Storage Area, Perimeter), tags (Hook, Cabin, Gate, Outdoor,
+  Critical) and a few favorites for each demo account.
 - Cameras an admin adds in demo mode are simulated too: demo mode never opens a
   connection to a camera.
 - Live video: every online camera with an H.264 profile plays one of four
@@ -41,5 +44,5 @@ or `mode = "demo"` in `config.toml`. The UI shows a **DEMO MODE** banner.
   in three tabs and it shows one camera connection with three viewers. Offline
   cameras fail to stream; H.265-only models show why they can't play.
 
-Groups/tags/favorites (Phase 6), dashboards (Phase 7)
+Dashboards (Phase 7)
 and discovery simulation (Phase 8) are added to demo mode as those phases land.

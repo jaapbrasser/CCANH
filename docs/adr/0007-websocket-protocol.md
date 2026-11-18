@@ -49,6 +49,7 @@ Server → client:
 | `camera_changed` | `camera` (summary) | camera added/edited/identity refreshed (topic `cameras`) |
 | `camera_deleted` | `camera_id` | camera removed (topic `cameras`) |
 | `task_updated` | `task` | task created, progressed or finished (topic `tasks`; own tasks only, admins see all) |
+| `organization_changed` | `kind` (`groups` or `tags`) | a group or tag was created, renamed, moved or deleted; refetch the list (topic `cameras`; memberships arrive as `camera_changed`, ADR 0009) |
 | `streams_updated` | `streams` (list as in `GET /api/v1/streams`) | every second while any stream exists, once more after the last ends (topic `streams`, admins only) |
 | `resync` | `reason` | client fell behind the event stream; refetch over REST |
 | `error` | `code`, `message` | malformed message or unknown topic |
