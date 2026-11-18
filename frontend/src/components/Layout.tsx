@@ -38,7 +38,7 @@ export function Layout() {
   const logout = useLogout();
   const navigate = useNavigate();
   const isAdmin = me?.role === "admin";
-  useLiveUpdates(Boolean(me), me?.id);
+  useLiveUpdates(Boolean(me), me?.id, me?.role === "admin");
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
@@ -63,6 +63,9 @@ export function Layout() {
                 </NavLink>
                 <NavLink to="/users" className={linkClass}>
                   Users
+                </NavLink>
+                <NavLink to="/streams" className={linkClass}>
+                  Streams
                 </NavLink>
                 <NavLink to="/audit" className={linkClass}>
                   Audit log

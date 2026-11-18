@@ -165,6 +165,31 @@ describe("camera detail", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   });
 
+  it("shows a live view that explains when the browser can't play video", async () => {
+    signedInAs(VIEWER);
+    renderApp(`/cameras/${HOOK.id}`);
+    // jsdom has no Media Source Extensions, so no stream is opened.
+    const liveView = await screen.findByRole("region", { name: "Live view" });
+    expect(within(liveView).getByLabelText("Live video: A1 Crane 1 – Hook")).toBeInTheDocument();
+    expect(within(liveView).getByRole("status")).toHaveTextContent("Live video not supported");
+  });
+
+  it("explains when a camera has no H.264 profile", async () => {
+    signedInAs(VIEWER);
+    server.use(
+      http.get("/api/v1/cameras/:id", () =>
+        HttpResponse.json({
+          ...detail(HOOK),
+          stream_profiles: [{ id: "main", name: "Main", codec: "h265", width: 1920, height: 1080, fps: 30, bitrate_kbps: 4000 }],
+        }),
+      ),
+    );
+    renderApp(`/cameras/${HOOK.id}`);
+    const liveView = await screen.findByRole("region", { name: "Live view" });
+    expect(liveView).toHaveTextContent("only offers H265");
+    expect(within(liveView).queryByLabelText(/Live video:/)).not.toBeInTheDocument();
+  });
+
   it("warns about rejected credentials on an online camera", async () => {
     signedInAs(ADMIN);
     server.use(

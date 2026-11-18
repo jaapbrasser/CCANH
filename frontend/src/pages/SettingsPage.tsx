@@ -2,9 +2,12 @@ import { useState, type FormEvent } from "react";
 import { errorMessage } from "../api/client";
 import {
   useResetMonitoring,
+  useResetStreaming,
   useSettings,
   useUpdateMonitoring,
+  useUpdateStreaming,
   type MonitoringSettings,
+  type StreamingSettings,
 } from "../api/settings";
 import { showToast } from "../components/toasts";
 import { Alert, Button, Field, PageHeader } from "../components/ui";
@@ -60,6 +63,16 @@ export function SettingsPage() {
           defaults={settings.data.defaults.monitoring}
         />
       )}
+
+      <h2 className="mb-1 mt-10 text-lg font-semibold">Live video</h2>
+      <p className="mb-4 text-sm text-slate-400">Video is buffered in memory only; nothing is recorded.</p>
+      {settings.data && (
+        <StreamingForm
+          key={JSON.stringify(settings.data.current.streaming)}
+          current={settings.data.current.streaming}
+          defaults={settings.data.defaults.streaming}
+        />
+      )}
     </div>
   );
 }
@@ -108,6 +121,59 @@ function MonitoringForm({ current, defaults }: { current: MonitoringSettings; de
           onClick={() => reset.mutate(undefined, { onSuccess: () => showToast("success", "Settings reset to defaults.") })}
         >
           Reset to defaults
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+type SKey = keyof StreamingSettings;
+const STREAM_FIELDS: { key: SKey; label: string; hint: string }[] = [
+  { key: "grace_period_secs", label: "Grace period (seconds)", hint: "How long a camera stream stays connected after its last viewer leaves (0–300)." },
+  { key: "stream_buffer_mb", label: "Buffer per stream (MB)", hint: "Memory for the latest keyframe group, so new viewers start instantly (1–64)." },
+  { key: "global_buffer_mb", label: "Total buffer (MB)", hint: "Memory cap across all streams (16–4096)." },
+];
+
+function StreamingForm({ current, defaults }: { current: StreamingSettings; defaults: StreamingSettings }) {
+  const update = useUpdateStreaming();
+  const reset = useResetStreaming();
+  const [form, setForm] = useState(
+    () => Object.fromEntries(STREAM_FIELDS.map((f) => [f.key, String(current[f.key])])) as Record<SKey, string>,
+  );
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const patch: Partial<Record<SKey, number>> = {};
+    for (const f of STREAM_FIELDS) {
+      const v = Number(form[f.key]);
+      if (v !== current[f.key]) patch[f.key] = v;
+    }
+    update.mutate(patch, { onSuccess: () => showToast("success", "Live video settings saved.") });
+  };
+  return (
+    <form onSubmit={onSubmit} aria-label="Live video settings" className="flex flex-col gap-4">
+      {(update.isError || reset.isError) && <Alert>{errorMessage(update.error ?? reset.error)}</Alert>}
+      <div className="grid gap-4 sm:grid-cols-3">
+        {STREAM_FIELDS.map((f) => (
+          <Field
+            key={f.key}
+            label={f.label}
+            inputMode="numeric"
+            hint={`${f.hint}${defaults[f.key] !== Number(form[f.key]) ? ` Default: ${defaults[f.key]}.` : ""}`}
+            value={form[f.key]}
+            onChange={(e) => setForm({ ...form, [f.key]: e.target.value.replace(/\D/g, "") })}
+          />
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={update.isPending}>
+          Save live video settings
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={reset.isPending}
+          onClick={() => reset.mutate(undefined, { onSuccess: () => showToast("success", "Live video settings reset.") })}
+        >
+          Reset
         </Button>
       </div>
     </form>

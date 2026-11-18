@@ -10,6 +10,7 @@ import { UsersPage } from "./pages/UsersPage";
 import { CredentialSetsPage } from "./pages/CredentialSetsPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { StreamsPage } from "./pages/StreamsPage";
 import { CameraDetailPage } from "./pages/cameras/CameraDetailPage";
 import { CamerasPage } from "./pages/cameras/CamerasPage";
 
@@ -31,6 +32,14 @@ export default function App() {
         <Route path="cameras/:id" element={<CameraDetailPage />} />
         <Route path="account" element={<AccountPage />} />
         <Route path="activity" element={<ActivityPage />} />
+        <Route
+          path="streams"
+          element={
+            <RequireAdmin>
+              <StreamsPage />
+            </RequireAdmin>
+          }
+        />
         <Route
           path="settings"
           element={

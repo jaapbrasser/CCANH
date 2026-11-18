@@ -4,6 +4,8 @@ import type { components } from "./schema";
 
 export type MonitoringSettings = components["schemas"]["MonitoringSettings"];
 export type MonitoringPatch = components["schemas"]["MonitoringPatch"];
+export type StreamingSettings = components["schemas"]["StreamingSettings"];
+export type StreamingPatch = components["schemas"]["StreamingPatch"];
 
 const key = ["settings"] as const;
 
@@ -28,6 +30,22 @@ export function useResetMonitoring() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => unwrap(api.DELETE("/api/v1/settings/monitoring")),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
+}
+
+export function useUpdateStreaming() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: StreamingPatch) => unwrap(api.PATCH("/api/v1/settings/streaming", { body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
+}
+
+export function useResetStreaming() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE("/api/v1/settings/streaming")),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
 }
