@@ -15,3 +15,4 @@ real AXIS camera when one is available and update `docs/vapix.md`.
 | `streamprofile_list.json` | Stream profiles, `list`: documented structure; profile names from the docs, parameters illustrative |
 | `network_getnetworkinfo.json` | Network settings API, `getNetworkInfo`: documented example, trimmed to the fields we read |
 | `error_unsupported_method.json` | Documented JSON error envelope, code 2005 (Unsupported Method) |
+| `rtsp_describe_h264.sdp` | SDP for `DESCRIBE /axis-media/media.amp` (RFC 4566 / RFC 6184 H.264), in the GStreamer-based shape AXIS OS serves, with `trackID` controls. Not captured from a device; `{host}`, `{base}`, `{plid}` and `{sprop}` are filled in by the fake RTSP server in `backend/src/providers/axis/rtsp_tests.rs` |

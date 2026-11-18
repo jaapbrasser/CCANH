@@ -22,22 +22,63 @@ use super::{
     ErrorCategory, MediaSource, NetworkInfo, ProbeResult, ProviderError, ProviderTarget,
     StreamProfile, StreamProfileId, VideoCodec,
 };
+use crate::credentials::Credentials;
 
 pub const BASIC_DEVICE_INFO: &str = "/axis-cgi/basicdeviceinfo.cgi";
 pub const API_DISCOVERY: &str = "/axis-cgi/apidiscovery.cgi";
 pub const SYSTEM_READY: &str = "/axis-cgi/systemready.cgi";
 pub const STREAM_PROFILES: &str = "/axis-cgi/streamprofile.cgi";
 pub const NETWORK_SETTINGS: &str = "/axis-cgi/network_settings.cgi";
+/// RTSP media path (VAPIX "Video streaming"); see `docs/vapix.md`.
+pub const RTSP_MEDIA: &str = "/axis-media/media.amp";
+/// Default RTSP server port on AXIS devices.
+pub const RTSP_PORT: u16 = 554;
 
 pub struct AxisProvider {
     client: Result<VapixClient, ProviderError>,
+    host: String,
+    rtsp_port: u16,
+    credentials: Option<Credentials>,
+    timeout: Duration,
 }
 
 impl AxisProvider {
     pub fn new(target: &ProviderTarget, timeout: Duration) -> Self {
         Self {
             client: VapixClient::new(target, timeout),
+            host: target.host.clone(),
+            rtsp_port: RTSP_PORT,
+            credentials: target.credentials.clone(),
+            timeout,
         }
+    }
+
+    /// Use a non-standard RTSP port (tests; cameras behind port forwarding).
+    #[must_use]
+    pub fn with_rtsp_port(mut self, port: u16) -> Self {
+        self.rtsp_port = port;
+        self
+    }
+
+    /// The RTSP URL for a stream profile (the empty id is the camera default).
+    /// Never contains credentials.
+    pub fn rtsp_url(&self, profile: &StreamProfileId) -> Result<url::Url, ProviderError> {
+        let host = if self.host.contains(':') && !self.host.starts_with('[') {
+            format!("[{}]", self.host) // IPv6 literal
+        } else {
+            self.host.clone()
+        };
+        let mut url = url::Url::parse(&format!("rtsp://{host}:{}{RTSP_MEDIA}", self.rtsp_port))
+            .map_err(|e| ProviderError::Internal(format!("RTSP URL: {e}")))?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("videocodec", "h264");
+            q.append_pair("audio", "0");
+            if !profile.0.is_empty() {
+                q.append_pair("streamprofile", &profile.0);
+            }
+        }
+        Ok(url)
     }
 
     fn client(&self) -> Result<&VapixClient, ProviderError> {
@@ -478,13 +519,18 @@ impl CameraProvider for AxisProvider {
 
     async fn open_stream(
         &self,
-        _profile: &StreamProfileId,
-        _cancel: CancellationToken,
+        profile: &StreamProfileId,
+        cancel: CancellationToken,
     ) -> Result<Box<dyn MediaSource>, ProviderError> {
-        // RTSP via `retina` arrives with the stream manager in Phase 5 (ADR 0002).
-        Err(ProviderError::unsupported(
-            "live video (arrives in Phase 5)",
-        ))
+        crate::streaming::rtsp::open(
+            crate::streaming::rtsp::RtspRequest {
+                url: self.rtsp_url(profile)?,
+                credentials: self.credentials.clone(),
+                timeout: self.timeout,
+            },
+            cancel,
+        )
+        .await
     }
 
     fn tls_fingerprint(&self) -> Option<String> {
@@ -495,5 +541,7 @@ impl CameraProvider for AxisProvider {
     }
 }
 
+#[cfg(test)]
+mod rtsp_tests;
 #[cfg(test)]
 mod tests;

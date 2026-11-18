@@ -29,11 +29,27 @@ real device.
 | Capabilities: list of supported APIs and versions | `POST /axis-cgi/apidiscovery.cgi` `{"apiVersion":"1.0","method":"getApiList"}` | Anonymous (AXIS OS 9.80 and 10.12 require auth; the client retries with credentials on 401) | [API Discovery service](https://developer.axis.com/vapix/network-video/api-discovery-service/) | AXIS OS 8.50+; missing → only "relied-on APIs unsupported" reported | `apidiscovery_getapilist*.json` |
 | Stream profiles; also verifies credentials | `POST /axis-cgi/streamprofile.cgi` `{"apiVersion":"1.0","method":"list","params":{"streamProfileName":[]}}` | Viewer | [Stream profiles](https://developer.axis.com/vapix/network-video/stream-profiles/) | API 1.0; `parameters` is `key=value&…` (`resolution`, `fps`, `videocodec` as used in [Video streaming](https://developer.axis.com/vapix/network-video/video-streaming/)) | `streamprofile_list.json`, `error_unsupported_method.json` |
 | Network details: hostname, MAC, IPv4, gateway, DHCP | `POST /axis-cgi/network_settings.cgi` `{"apiVersion":"1.0","method":"getNetworkInfo"}` | **Administrator**; best-effort (skipped on 401/403) | [Network settings API](https://developer.axis.com/vapix/network-video/network-settings-api/) | AXIS OS 8.50+ | `network_getnetworkinfo.json` |
+| Live video (Phase 5b) | RTSP `DESCRIBE`/`SETUP`/`PLAY` on `rtsp://<host>:554/axis-media/media.amp?videocodec=h264&audio=0[&streamprofile=<name>]`; RTP over the RTSP TCP connection (`RTP/AVP/TCP;unicast`) | Viewer (RTSP Digest, or whatever the camera challenges with) | [Video streaming](https://developer.axis.com/vapix/network-video/video-streaming/) (RTSP URL, `videocodec`, `streamprofile`, `audio`, port 554, TCP transport) | RTSP API (`Properties.API.RTSP.RTSPAuth=yes` for auth) | `rtsp_describe_h264.sdp` (fake RTSP server in `providers/axis/rtsp_tests.rs`) |
+
+Live video notes:
+
+- The empty profile id (the camera default stream) omits `streamprofile`.
+  Values are URL-encoded; profile names come from `streamprofile.cgi list`.
+- Credentials go only in RTSP `Authorization` headers (retina answers the
+  camera's challenge), never in the URL, so URLs are safe to log. RTSP is not
+  encrypted; the deployment is LAN-only (owner decision, Phase 5).
+  `allow_basic_over_http` doesn't apply: retina uses Digest when the camera
+  offers it, which AXIS does by default.
+- RTSP status mapping when opening: 401/403 → `auth_failed` (not retried);
+  400/404/406/415/451/457/461 → `unsupported` (unknown profile or parameters;
+  not retried); 453/503 → `rate_limited` (camera busy; retried); other
+  statuses → `protocol_error`; connection failures → `unreachable`. Once
+  playing, any interruption is retried with backoff.
+- The RTSP port is fixed at the documented default, 554.
 
 ## Planned (not called yet)
 
 | Purpose | Request | Docs | Phase |
 |---|---|---|---|
-| Live video (RTSP, H.264) | `rtsp://<host>/axis-media/media.amp?videocodec=h264[&streamprofile=<name>]` | [Video streaming](https://developer.axis.com/vapix/network-video/video-streaming/) | 5 |
-| MJPEG fallback | to be verified under [Media stream over HTTP](https://developer.axis.com/vapix/network-video/media-stream-over-http/) | — | 5 |
+| MJPEG fallback | to be verified under [Media stream over HTTP](https://developer.axis.com/vapix/network-video/media-stream-over-http/) | — | deferred (ADR 0002) |
 | Discovery identification | the anonymous Basic device information call above | — | 8 |

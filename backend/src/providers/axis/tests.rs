@@ -451,8 +451,20 @@ async fn axis_provider_passes_contract_suite() {
     mount_camera(&healthy, true).await;
     let auth_failure = MockServer::start().await;
     mount_camera(&auth_failure, true).await;
+    // Live video for the healthy camera: a fake RTSP server with the same
+    // account and the profiles from `streamprofile_list.json`.
+    let rtsp = super::rtsp_tests::FakeCamera::start_with(super::rtsp_tests::FakeConfig {
+        user: USER,
+        password: PASS,
+        profiles: vec![
+            "My full HD profile",
+            "My inverted image profile",
+            "My high compression profile",
+        ],
+    })
+    .await;
     contract::run(contract::Subjects {
-        healthy: Arc::new(provider_for(&healthy, creds(PASS))),
+        healthy: Arc::new(provider_for(&healthy, creds(PASS)).with_rtsp_port(rtsp.port)),
         unreachable: Arc::new(AxisProvider::new(
             &ProviderTarget::simple("127.0.0.1", 1, false),
             Duration::from_secs(2),
