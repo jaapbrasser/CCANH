@@ -1,30 +1,55 @@
-import { HealthBadge } from "./components/HealthBadge";
+import { Route, Routes } from "react-router";
+import { RequireAdmin, RequireAuth } from "./auth/guards";
+import { useUnauthorizedListener } from "./auth/session";
+import { Layout } from "./components/Layout";
+import { AccountPage } from "./pages/AccountPage";
+import { AuditPage } from "./pages/AuditPage";
+import { HomePage } from "./pages/HomePage";
+import { LoginPage } from "./pages/LoginPage";
+import { SetupPage } from "./pages/SetupPage";
+import { UsersPage } from "./pages/UsersPage";
 
 export default function App() {
+  useUnauthorizedListener();
   return (
-    <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
-      <header className="flex items-center justify-between border-b border-slate-800 px-6 py-3">
-        <div className="flex items-center gap-3">
-          <img src="/favicon.svg" alt="" className="h-7 w-7" />
-          <h1 className="text-lg font-semibold tracking-tight">Crane Camera Hub</h1>
-        </div>
-        <HealthBadge />
-      </header>
-      <main className="flex flex-1 items-center justify-center p-6">
-        <div className="max-w-md text-center">
-          <h2 className="text-2xl font-semibold">Welcome</h2>
-          <p className="mt-2 text-slate-400">
-            The platform foundation is running. Cameras, live view and dashboards arrive in
-            later phases.
-          </p>
-          <a
-            href="/api/docs/"
-            className="mt-6 inline-block rounded bg-amber-500 px-4 py-2 font-medium text-slate-950 hover:bg-amber-400"
-          >
-            Open API docs
-          </a>
-        </div>
-      </main>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/setup" element={<SetupPage />} />
+      <Route
+        element={
+          <RequireAuth>
+            <Layout />
+          </RequireAuth>
+        }
+      >
+        <Route index element={<HomePage />} />
+        <Route path="account" element={<AccountPage />} />
+        <Route
+          path="users"
+          element={
+            <RequireAdmin>
+              <UsersPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="audit"
+          element={
+            <RequireAdmin>
+              <AuditPage />
+            </RequireAdmin>
+          }
+        />
+        <Route path="*" element={<NotFound />} />
+      </Route>
+    </Routes>
+  );
+}
+
+function NotFound() {
+  return (
+    <div>
+      <h1 className="text-xl font-semibold">Page not found</h1>
     </div>
   );
 }

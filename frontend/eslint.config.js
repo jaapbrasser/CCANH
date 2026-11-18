@@ -16,4 +16,9 @@ export default tseslint.config(
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
     },
   },
+  {
+    // Test helpers mix components and functions; fast refresh doesn't apply.
+    files: ["src/test/**", "**/*.test.{ts,tsx}"],
+    rules: { "react-refresh/only-export-components": "off" },
+  },
 );

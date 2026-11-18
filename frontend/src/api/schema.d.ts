@@ -4,6 +4,109 @@
  */
 
 export interface paths {
+    "/api/v1/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List audit log entries, newest first.
+         * @description Required role: admin.
+         */
+        get: operations["list_audit_entries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in.
+         * @description Required role: none (public). On success sets the `crane_session` cookie
+         *     (`HttpOnly`, `SameSite=Strict`, `Secure` under TLS). Failed attempts are rate
+         *     limited per username and per IP with exponential delay and are audited.
+         */
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out.
+         * @description Required role: viewer. Ends the current session and clears the cookie.
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current user.
+         * @description Required role: viewer.
+         */
+        get: operations["get_me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change own password.
+         * @description Required role: viewer. Requires the current password. Ends all of the user's
+         *     other sessions; the current one stays signed in.
+         */
+        post: operations["change_own_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -16,9 +119,108 @@ export interface paths {
          * @description Required role: none (public). Returns 200 when every component is healthy and
          *     503 otherwise. Background services will report here as they are added.
          */
-        get: operations["health"];
+        get: operations["get_health"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether first-run setup is needed.
+         * @description Required role: none (public).
+         */
+        get: operations["get_setup_status"];
+        put?: never;
+        /**
+         * Create the first admin.
+         * @description Required role: none (public), but needs the one-time setup token printed at
+         *     startup. Only works while no users exist. Signs the new admin in.
+         */
+        post: operations["complete_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List users.
+         * @description Required role: admin.
+         */
+        get: operations["list_users"];
+        put?: never;
+        /**
+         * Create a user.
+         * @description Required role: admin.
+         */
+        post: operations["create_user"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a user.
+         * @description Required role: admin.
+         */
+        get: operations["get_user"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a user.
+         * @description Required role: admin. The last enabled admin can't be deleted, and admins
+         *     can't delete their own account.
+         */
+        delete: operations["delete_user"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a user's role or disabled flag.
+         * @description Required role: admin. The last enabled admin can't be demoted or disabled.
+         *     Disabling a user ends all their sessions.
+         */
+        patch: operations["update_user"];
+        trace?: never;
+    };
+    "/api/v1/users/{id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset a user's password.
+         * @description Required role: admin. Ends all of that user's sessions.
+         */
+        post: operations["reset_user_password"];
         delete?: never;
         options?: never;
         head?: never;
@@ -29,10 +231,46 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AuditEntry: {
+            action: string;
+            actor_id?: string | null;
+            actor_username?: string | null;
+            /** @description Structured, non-secret context for the action. */
+            details?: Record<string, never> | null;
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            occurred_at: string;
+            outcome: components["schemas"]["Outcome"];
+            source_ip?: string | null;
+            target_id?: string | null;
+            target_type?: string | null;
+        };
+        AuditList: {
+            items: components["schemas"]["AuditEntry"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            page_size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        ChangePasswordRequest: {
+            /** Format: password */
+            current_password: string;
+            /** Format: password */
+            new_password: string;
+        };
         ComponentHealth: {
             /** @description Short, non-sensitive description when not `ok`. */
             detail?: string | null;
             status: components["schemas"]["HealthStatus"];
+        };
+        CreateUserRequest: {
+            /** Format: password */
+            password: string;
+            role: components["schemas"]["Role"];
+            username: string;
         };
         HealthChecks: {
             database: components["schemas"]["ComponentHealth"];
@@ -48,12 +286,26 @@ export interface components {
         };
         /** @enum {string} */
         HealthStatus: "ok" | "degraded";
+        LoginRequest: {
+            /** Format: password */
+            password: string;
+            username: string;
+        };
+        /** @description The signed-in user. */
+        Me: {
+            /** Format: uuid */
+            id: string;
+            role: components["schemas"]["Role"];
+            username: string;
+        };
         /**
          * @description Run mode. Demo mode arrives in Phase 2; the setting exists now so the config
          *     shape is stable.
          * @enum {string}
          */
         Mode: "production" | "demo";
+        /** @enum {string} */
+        Outcome: "success" | "failure";
         /** @description Problem details body (RFC 9457). */
         Problem: {
             /** @description Stable error code, the last segment of `type`. */
@@ -70,6 +322,57 @@ export interface components {
             /** @description URI identifying the problem type, e.g. `urn:crane:problem:not_found`. */
             type: string;
         };
+        ResetPasswordRequest: {
+            /** Format: password */
+            new_password: string;
+        };
+        /**
+         * @description User role. Authorization is written so per-group camera access can be layered
+         *     on later (SPEC §14.1, §18 Q4).
+         * @enum {string}
+         */
+        Role: "admin" | "viewer";
+        SetupRequest: {
+            /** Format: password */
+            password: string;
+            /**
+             * Format: password
+             * @description The one-time token printed to the server console and log at startup.
+             */
+            token: string;
+            username: string;
+        };
+        SetupStatus: {
+            /** @description True when no users exist and the setup page should be shown. */
+            setup_required: boolean;
+        };
+        UpdateUserRequest: {
+            disabled?: boolean | null;
+            role?: components["schemas"]["Role"] | null;
+        };
+        /** @description A user account as returned by the API. Never includes the password hash. */
+        User: {
+            /** Format: date-time */
+            created_at: string;
+            disabled: boolean;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            password_changed_at: string;
+            role: components["schemas"]["Role"];
+            /** Format: date-time */
+            updated_at: string;
+            username: string;
+        };
+        UserList: {
+            items: components["schemas"]["User"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            page_size: number;
+            /** Format: int64 */
+            total: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -79,7 +382,219 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    health: {
+    list_audit_entries: {
+        parameters: {
+            query?: {
+                /** @description 1-based page number (default 1). */
+                page?: number;
+                /** @description Items per page (default 50, max 200). */
+                page_size?: number;
+                /** @description Exact action (e.g. `auth.login`) or a prefix ending in `.` (e.g. `user.`). */
+                action?: string;
+                /** @description Actor username (case-insensitive exact match). */
+                actor?: string;
+                outcome?: "success" | "failure";
+                /** @description Only entries at or after this time (RFC 3339). */
+                since?: string;
+                /** @description Only entries before this time (RFC 3339). */
+                until?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of audit entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditList"];
+                };
+            };
+            /** @description Invalid query */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in */
+            200: {
+                headers: {
+                    /** @description Session cookie */
+                    "set-cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Wrong username or password */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many failed attempts */
+            429: {
+                headers: {
+                    /** @description Seconds to wait */
+                    "retry-after"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The signed-in user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    change_own_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Password changed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description New password violates the policy */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in, or current password wrong */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many failed attempts */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_health: {
         parameters: {
             query?: never;
             header?: never;
@@ -104,6 +619,424 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    get_setup_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Setup status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    complete_setup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupRequest"];
+            };
+        };
+        responses: {
+            /** @description Admin created and signed in */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Invalid username or password */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Wrong or expired setup token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Setup already completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_users: {
+        parameters: {
+            query?: {
+                /** @description 1-based page number (default 1). */
+                page?: number;
+                /** @description Items per page (default 50, max 200). */
+                page_size?: number;
+                /** @description Case-insensitive substring match on username. */
+                q?: string;
+                sort?: "username" | "created_at";
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of users */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserList"];
+                };
+            };
+            /** @description Invalid query */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description User created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description Invalid username or password */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Username taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Own account, or the last enabled admin */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateUserRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Would leave no enabled admin */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reset_user_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description User ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Password reset */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Password violates the policy */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
         };
