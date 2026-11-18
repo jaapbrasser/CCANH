@@ -1,0 +1,66 @@
+[
+  {
+    "pattern": "testsrc2",
+    "profile": "main",
+    "file": "testsrc2-main.h264",
+    "width": 1280,
+    "height": 720,
+    "fps": 25
+  },
+  {
+    "pattern": "testsrc2",
+    "profile": "grid",
+    "file": "testsrc2-grid.h264",
+    "width": 640,
+    "height": 360,
+    "fps": 15
+  },
+  {
+    "pattern": "mandelbrot",
+    "profile": "main",
+    "file": "mandelbrot-main.h264",
+    "width": 1280,
+    "height": 720,
+    "fps": 25
+  },
+  {
+    "pattern": "mandelbrot",
+    "profile": "grid",
+    "file": "mandelbrot-grid.h264",
+    "width": 640,
+    "height": 360,
+    "fps": 15
+  },
+  {
+    "pattern": "gradients",
+    "profile": "main",
+    "file": "gradients-main.h264",
+    "width": 1280,
+    "height": 720,
+    "fps": 25
+  },
+  {
+    "pattern": "gradients",
+    "profile": "grid",
+    "file": "gradients-grid.h264",
+    "width": 640,
+    "height": 360,
+    "fps": 15
+  },
+  {
+    "pattern": "bars",
+    "profile": "main",
+    "file": "bars-main.h264",
+    "width": 1280,
+    "height": 720,
+    "fps": 25
+  },
+  {
+    "pattern": "bars",
+    "profile": "grid",
+    "file": "bars-grid.h264",
+    "width": 640,
+    "height": 360,
+    "fps": 15
+  }
+]
