@@ -72,8 +72,8 @@ describe("login", () => {
   it("ignores off-site next parameters", async () => {
     signedInAs(VIEWER);
     renderApp("/login?next=//evil.example");
-    await screen.findByRole("heading", { name: /Welcome, viewer/ });
-    expect(screen.getByTestId("location")).toHaveTextContent(/^\/$/);
+    await screen.findByRole("heading", { name: "Cameras" });
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/cameras$/);
   });
 });
 

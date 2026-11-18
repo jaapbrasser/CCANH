@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, ws } from "msw";
 import { setupServer } from "msw/node";
 import type { components } from "../api/schema";
 
@@ -36,7 +36,26 @@ export function signedInAs(me: Me | null) {
   );
 }
 
+/** The app's live-update socket. Tests can broadcast server messages through it. */
+export const live = ws.link("ws://localhost:3000/api/v1/ws");
+
+/** Messages the live socket received from the app, as parsed JSON. */
+export const liveReceived: unknown[] = [];
+
+const liveHandler = live.addEventListener("connection", ({ client }) => {
+  client.send(JSON.stringify({ type: "hello", username: "test", role: "viewer", heartbeat_secs: 20 }));
+  client.addEventListener("message", (event) => {
+    const msg = JSON.parse(String(event.data));
+    liveReceived.push(msg);
+    if (msg.type === "subscribe") {
+      client.send(JSON.stringify({ type: "subscribed", topics: msg.topics }));
+    }
+  });
+});
+
 export const server = setupServer(
+  liveHandler,
+  http.get("/api/v1/cameras", () => HttpResponse.json({ items: [], total: 0, page: 1, page_size: 50 })),
   http.get("/api/v1/health", () =>
     HttpResponse.json({
       status: "ok",

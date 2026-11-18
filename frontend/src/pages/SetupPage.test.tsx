@@ -42,7 +42,7 @@ describe("setup", () => {
     );
     renderApp("/setup");
     await fill("  the-token  ", "long enough password");
-    await screen.findByRole("heading", { name: /Welcome, admin/ });
+    await screen.findByRole("heading", { name: "Cameras" });
     expect(body).toEqual({ token: "the-token", username: "admin", password: "long enough password" });
   });
 
