@@ -144,8 +144,10 @@ pub trait MediaSource: Send {
 
 - **Endpoint:** `GET /api/v1/streams/{camera_id}/ws?profile=<id>` or
   `?purpose=grid|detail` (viewer role, origin check). Without `profile` the
-  server picks a playable (H.264) profile: the smallest for `grid`, the
-  largest for `detail` (§7.4). Unknown camera → 404; no playable profile → 409.
+  server picks a playable (H.264) profile for the purpose: the camera's own
+  choice, else the global default name if the camera has it, else the
+  smallest for `grid` and the largest for `detail` (§7.4, Phase 5b). Unknown
+  camera → 404; no playable profile → 409.
 - **Media socket messages:**
 
   | Frame | Content |
@@ -180,6 +182,29 @@ pub trait MediaSource: Send {
   manager and egress, so subscriber counts and bandwidth are real.
 - **Deferred:** the MJPEG fallback (decision 2) is not built yet; H.265-only
   cameras show an explanation instead of a player.
+
+### As built (Phase 5b)
+
+- **AXIS source:** `streaming::rtsp` wraps a `retina` session on
+  `rtsp://host:554/axis-media/media.amp?videocodec=h264&audio=0[&streamprofile=]`
+  (docs/vapix.md): DESCRIBE/SETUP/PLAY each bounded by the camera timeout, RTP
+  over the RTSP TCP connection, length-prefixed frames
+  (`FrameFormat::MP4`) and retina's `avc1` sample entry passed straight to the
+  muxer. A frame with new SPS/PPS is preceded by a `Params` event, which
+  re-sends the init segment. No frame for 10 s counts as a dropped stream.
+- **Errors:** opening failures map to provider categories (auth → stop,
+  unknown profile → stop, busy/network → retry with backoff); any failure
+  after PLAY is retried.
+- **Tests:** an in-process fake AXIS RTSP server (Digest auth, demo clip
+  packetized as RFC 6184 single-NAL and FU-A) exercises the real retina path in
+  CI, including the provider contract suite. An ignored test runs against the
+  local MediaMTX source (`backend/tests/rtsp_source.rs`).
+- **Profile choices:** global `default_grid_profile` / `default_detail_profile`
+  names (runtime settings, `streaming`) and per-camera `grid_profile` /
+  `detail_profile` (`PUT /api/v1/cameras/{id}/stream-profiles`). Running
+  streams keep their profile; new viewers get the new choice.
+- **Not verified on a real camera** (SPEC §18 Q1): when one is available,
+  repeat the measurements above against it.
 
 ## Consequences
 

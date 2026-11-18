@@ -84,6 +84,16 @@ on Windows `winget install Gyan.FFmpeg` plus the MediaMTX release zip. The
 Phase 3 spike that used it is on branch `spike/streaming`; the findings are in
 ADR 0002.
 
+With the source running, check the production RTSP client against it:
+
+```bash
+cargo test -p crane --test rtsp_source -- --ignored
+```
+
+(`CRANE_RTSP_TEST_URL` picks another stream, for example `…/test/main`.) The
+regular test suite doesn't need it: `providers/axis/rtsp_tests.rs` runs a fake
+AXIS RTSP server in-process.
+
 ## Database queries (SQLx offline mode)
 
 Queries use `sqlx::query!` macros, checked at compile time against `.sqlx/`.

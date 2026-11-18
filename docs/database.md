@@ -11,7 +11,7 @@ migrations are applied. All tables are `STRICT`.
 | `users` | Local accounts | `username` unique `COLLATE NOCASE`; Argon2id PHC hash; `role` ∈ admin/viewer; RFC 3339 UTC timestamps; UUIDv7 IDs as text |
 | `sessions` | Server-side sessions | Primary key is SHA-256 of the cookie token; times are unix seconds; cascades on user delete |
 | `audit_log` | Security audit trail | Append-only (an `UPDATE` trigger aborts); `details` is a JSON object with no secrets |
-| `cameras` | Camera registry | Unique `(host, port)`; TLS mode + optional pinned fingerprint; identity columns and JSON `capabilities`/`stream_profiles`/`network` filled from the provider |
+| `cameras` | Camera registry | Unique `(host, port)`; TLS mode + optional pinned fingerprint; identity columns and JSON `capabilities`/`stream_profiles`/`network` filled from the provider; `grid_profile`/`detail_profile` choices (NULL = global default) |
 | `camera_status` | Current status, one row per camera | Updated on every check; cascades on camera delete |
 | `camera_status_history` | Status transitions | Written only when the state changes (SPEC §10.2) |
 | `credential_sets` | Encrypted camera credentials | Ciphertext only (ADR 0003); shared (named) or private (per camera) |
