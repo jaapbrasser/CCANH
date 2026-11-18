@@ -26,6 +26,9 @@ pub struct Problem {
     pub detail: Option<String>,
     /// Stable error code, the last segment of `type`.
     pub code: String,
+    /// For `camera_error`: the provider error category (SPEC §10.4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_category: Option<crate::providers::ErrorCategory>,
 }
 
 /// Errors returned by HTTP handlers.
@@ -51,6 +54,12 @@ pub enum ApiError {
     Conflict(String),
     #[error("too many requests")]
     TooManyRequests { retry_after_secs: u64 },
+    /// The camera failed or refused a request. `detail` must not contain secrets.
+    #[error("camera error ({category:?}): {detail}")]
+    Camera {
+        category: crate::providers::ErrorCategory,
+        detail: String,
+    },
     #[error("service unavailable: {0}")]
     Unavailable(String),
     /// Unexpected failure. The message is logged but never sent to the client.
@@ -104,6 +113,12 @@ impl ApiError {
                 "Too Many Requests",
                 Some("Too many attempts. Try again later.".into()),
             ),
+            ApiError::Camera { detail, .. } => (
+                StatusCode::BAD_GATEWAY,
+                "camera_error",
+                "Camera Error",
+                Some(detail.clone()),
+            ),
             ApiError::Unavailable(detail) => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "unavailable",
@@ -127,6 +142,10 @@ impl ApiError {
             status: status.as_u16(),
             detail,
             code: code.to_owned(),
+            error_category: match self {
+                ApiError::Camera { category, .. } => Some(*category),
+                _ => None,
+            },
         }
     }
 }

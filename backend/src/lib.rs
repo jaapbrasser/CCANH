@@ -4,9 +4,15 @@
 pub mod api;
 pub mod audit;
 pub mod auth;
+pub mod cameras;
 pub mod config;
+pub mod demo;
+pub mod events;
+pub mod monitoring;
+pub mod providers;
 pub mod secret;
 pub mod storage;
+pub mod supervisor;
 pub mod telemetry;
 pub mod tls;
 pub mod users;
@@ -23,6 +29,10 @@ use crate::auth::rate_limit::LoginLimiter;
 use crate::auth::session::{self, Timeouts};
 use crate::auth::setup::SetupState;
 use crate::config::Config;
+use crate::events::EventBus;
+use crate::monitoring::{Monitor, PollingPolicy};
+use crate::providers::ProviderFactory;
+use crate::supervisor::ServiceHealth;
 
 /// Shared application state, built once at startup and cloned into handlers.
 #[derive(Clone)]
@@ -32,11 +42,18 @@ pub struct AppState {
     pub started_at: Instant,
     pub login_limiter: Arc<LoginLimiter>,
     pub setup: Arc<SetupState>,
+    pub events: EventBus,
+    pub providers: ProviderFactory,
+    pub services: ServiceHealth,
 }
 
 impl AppState {
     pub fn new(config: Config, db: SqlitePool) -> Self {
+        let providers = ProviderFactory::new(config.mode);
         Self {
+            events: EventBus::default(),
+            providers,
+            services: ServiceHealth::default(),
             config: Arc::new(config),
             db,
             started_at: Instant::now(),
@@ -86,6 +103,16 @@ pub async fn serve(
         Timeouts::from(&state.config.auth),
         shutdown.child_token(),
     ));
+    let monitor = tokio::spawn(supervisor::supervise(
+        "status_monitor",
+        state.services.clone(),
+        shutdown.child_token(),
+        {
+            let (db, factory, bus) = (state.db.clone(), state.providers, state.events.clone());
+            let policy = PollingPolicy::from(&state.config.monitoring);
+            move |cancel| Monitor::new(db.clone(), factory, bus.clone(), policy.clone()).run(cancel)
+        },
+    ));
 
     let handle = axum_server::Handle::new();
     tokio::spawn({
@@ -117,6 +144,7 @@ pub async fn serve(
 
     shutdown.cancel();
     let _ = sweeper.await;
+    let _ = monitor.await;
     db.close().await;
     Ok(())
 }

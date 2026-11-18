@@ -16,11 +16,13 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1"
+async-trait = "0.1"
 argon2 = { version = "0.6", features = ["zeroize"] }
-axum = { version = "0.8", features = ["macros"] }
+axum = { version = "0.8", features = ["macros", "ws"] }
 axum-extra = { version = "0.12", features = ["cookie"] }
 axum-server = { version = "0.9", default-features = false, features = ["tls-rustls-ring"] }
 base64 = "0.23"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 clap = { version = "4", features = ["derive", "env"] }
 figment = { version = "0.10", features = ["toml", "env"] }
 getrandom = "0.4"
@@ -35,7 +37,7 @@ secrecy = { version = "0.10", features = ["serde"] }
 sha2 = "0.11"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "time", "uuid"] }
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "time", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 time = { version = "0.3", features = ["serde", "serde-well-known", "formatting", "parsing"] }
 tower = "0.5"
@@ -51,6 +53,9 @@ utoipa-swagger-ui = { version = "10", features = ["axum", "vendored"] }
 [dev-dependencies]
 http-body-util = "0.1"
 tempfile = "3"
+tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
+tokio-tungstenite = "0.30"
+futures-util = "0.3"
 time = "0.3"
 tokio-util = "0.7"
 uuid = { version = "1", features = ["v7"] }

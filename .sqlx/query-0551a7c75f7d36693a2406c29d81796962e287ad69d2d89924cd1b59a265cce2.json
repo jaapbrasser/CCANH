@@ -1,0 +1,230 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT c.id AS \"id: Hyphenated\", c.name, c.host, c.port, c.scheme AS \"scheme: Scheme\",\n                  c.manufacturer, c.model, c.firmware_version,\n                  c.monitoring_enabled AS \"monitoring_enabled: bool\",\n                  s.state AS \"state: CameraState\",\n                  s.last_success_at AS \"last_success_at: OffsetDateTime\",\n                  s.last_failure_at AS \"last_failure_at: OffsetDateTime\",\n                  s.last_change_at AS \"last_change_at: OffsetDateTime\",\n                  s.last_checked_at AS \"last_checked_at: OffsetDateTime\",\n                  s.response_time_ms, s.consecutive_failures,\n                  s.error_category AS \"error_category: ErrorCategory\", s.error_message\n             FROM cameras c JOIN camera_status s ON s.camera_id = c.id\n            WHERE (?1 IS NULL OR c.name LIKE ?1 ESCAPE '\\' OR c.host LIKE ?1 ESCAPE '\\'\n                   OR c.model LIKE ?1 ESCAPE '\\')\n              AND (?2 IS NULL OR s.state = ?2)\n            ORDER BY\n              CASE WHEN ?3 = 'name'  AND ?4 = 'asc'  THEN c.name  COLLATE NOCASE END ASC,\n              CASE WHEN ?3 = 'name'  AND ?4 = 'desc' THEN c.name  COLLATE NOCASE END DESC,\n              CASE WHEN ?3 = 'host'  AND ?4 = 'asc'  THEN c.host  END ASC,\n              CASE WHEN ?3 = 'host'  AND ?4 = 'desc' THEN c.host  END DESC,\n              CASE WHEN ?3 = 'model' AND ?4 = 'asc'  THEN c.model END ASC,\n              CASE WHEN ?3 = 'model' AND ?4 = 'desc' THEN c.model END DESC,\n              CASE WHEN ?3 = 'state' AND ?4 = 'asc'  THEN s.state END ASC,\n              CASE WHEN ?3 = 'state' AND ?4 = 'desc' THEN s.state END DESC,\n              CASE WHEN ?3 = 'last_success_at' AND ?4 = 'asc'  THEN s.last_success_at END ASC,\n              CASE WHEN ?3 = 'last_success_at' AND ?4 = 'desc' THEN s.last_success_at END DESC,\n              CASE WHEN ?3 = 'last_change_at'  AND ?4 = 'asc'  THEN s.last_change_at  END ASC,\n              CASE WHEN ?3 = 'last_change_at'  AND ?4 = 'desc' THEN s.last_change_at  END DESC,\n              c.name COLLATE NOCASE ASC, c.id ASC\n            LIMIT ?5 OFFSET ?6",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "host",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "host"
+          }
+        }
+      },
+      {
+        "name": "port",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "port"
+          }
+        }
+      },
+      {
+        "name": "scheme: Scheme",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "scheme"
+          }
+        }
+      },
+      {
+        "name": "manufacturer",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "manufacturer"
+          }
+        }
+      },
+      {
+        "name": "model",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "model"
+          }
+        }
+      },
+      {
+        "name": "firmware_version",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "firmware_version"
+          }
+        }
+      },
+      {
+        "name": "monitoring_enabled: bool",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "monitoring_enabled"
+          }
+        }
+      },
+      {
+        "name": "state: CameraState",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_status",
+            "name": "state"
+          }
+        }
+      },
+      {
+        "name": "last_success_at: OffsetDateTime",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_status",
+            "name": "last_success_at"
+          }
+        }
+      },
+      {
+        "name": "last_failure_at: OffsetDateTime",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_status",
+            "name": "last_failure_at"
+          }
+        }
+      },
+      {
+        "name": "last_change_at: OffsetDateTime",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_status",
+            "name": "last_change_at"
+          }
+        }
+      },
+      {
+        "name": "last_checked_at: OffsetDateTime",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_status",
+            "name": "last_checked_at"
+          }
+        }
+      },
+      {
+        "name": "response_time_ms",
+        "ordinal": 14,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "camera_status",
+            "name": "response_time_ms"
+          }
+        }
+      },
+      {
+        "name": "consecutive_failures",
+        "ordinal": 15,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "camera_status",
+            "name": "consecutive_failures"
+          }
+        }
+      },
+      {
+        "name": "error_category: ErrorCategory",
+        "ordinal": 16,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_status",
+            "name": "error_category"
+          }
+        }
+      },
+      {
+        "name": "error_message",
+        "ordinal": 17,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_status",
+            "name": "error_message"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "0551a7c75f7d36693a2406c29d81796962e287ad69d2d89924cd1b59a265cce2"
+}

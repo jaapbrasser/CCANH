@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: i64\", occurred_at AS \"occurred_at: OffsetDateTime\",\n                  from_state AS \"from_state: CameraState\", to_state AS \"to_state: CameraState\",\n                  error_category AS \"error_category: ErrorCategory\"\n             FROM camera_status_history WHERE camera_id = ?1\n            ORDER BY id DESC LIMIT ?2 OFFSET ?3",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "camera_status_history",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "occurred_at: OffsetDateTime",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_status_history",
+            "name": "occurred_at"
+          }
+        }
+      },
+      {
+        "name": "from_state: CameraState",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_status_history",
+            "name": "from_state"
+          }
+        }
+      },
+      {
+        "name": "to_state: CameraState",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_status_history",
+            "name": "to_state"
+          }
+        }
+      },
+      {
+        "name": "error_category: ErrorCategory",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_status_history",
+            "name": "error_category"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "ee1c5d06aa22599033328c5ce0e80ae23cd96bf5c0774c02402356db0285093d"
+}

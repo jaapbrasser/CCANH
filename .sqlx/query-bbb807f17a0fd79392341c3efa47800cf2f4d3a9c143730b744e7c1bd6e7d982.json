@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"n!: i64\"\n             FROM cameras c JOIN camera_status s ON s.camera_id = c.id\n            WHERE (?1 IS NULL OR c.name LIKE ?1 ESCAPE '\\' OR c.host LIKE ?1 ESCAPE '\\'\n                   OR c.model LIKE ?1 ESCAPE '\\')\n              AND (?2 IS NULL OR s.state = ?2)",
+  "describe": {
+    "columns": [
+      {
+        "name": "n!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bbb807f17a0fd79392341c3efa47800cf2f4d3a9c143730b744e7c1bd6e7d982"
+}
