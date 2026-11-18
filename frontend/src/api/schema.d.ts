@@ -107,6 +107,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cameras": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List cameras with their current status.
+         * @description Required role: viewer.
+         */
+        get: operations["list_cameras"];
+        put?: never;
+        /**
+         * Register a camera.
+         * @description Required role: admin. Credentials are added in Phase 4 (encrypted credential
+         *     store). `insecure_skip_verify` is logged and audited.
+         */
+        post: operations["create_camera"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cameras/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a camera's details, identity, capabilities and stream profiles.
+         * @description Required role: viewer.
+         */
+        get: operations["get_camera"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove a camera, its status and its history.
+         * @description Required role: admin.
+         */
+        delete: operations["delete_camera"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a camera's settings.
+         * @description Required role: admin. Changing host, port or scheme clears the stored identity
+         *     and resets status, since it may now be a different device.
+         */
+        patch: operations["update_camera"];
+        trace?: never;
+    };
+    "/api/v1/cameras/{id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-read identity, capabilities and stream profiles from the camera now.
+         * @description Required role: admin. Returns 502 with the error category if the camera
+         *     can't be reached or rejects the request.
+         */
+        post: operations["refresh_camera"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cameras/{id}/status-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A camera's status transitions, newest first.
+         * @description Required role: viewer.
+         */
+        get: operations["get_camera_status_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -117,7 +212,7 @@ export interface paths {
         /**
          * Service health.
          * @description Required role: none (public). Returns 200 when every component is healthy and
-         *     503 otherwise. Background services will report here as they are added.
+         *     503 otherwise (including when a supervised background service is not running).
          */
         get: operations["get_health"];
         put?: never;
@@ -227,6 +322,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Open the real-time WebSocket.
+         * @description Required role: viewer. Upgrade with the session cookie and a same-origin
+         *     `Origin` header. Messages are JSON objects with a `type` field; see the
+         *     `WsClientMessage` and `WsServerMessage` schemas.
+         */
+        get: operations["open_websocket"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -255,6 +372,102 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        /** @description Everything known about a camera (SPEC §6.3). */
+        CameraDetail: components["schemas"]["CameraSummary"] & {
+            /** @description Supported and unsupported capabilities. Empty until the first successful probe. */
+            capabilities: components["schemas"]["Capability"][];
+            /** Format: date-time */
+            created_at: string;
+            device_hostname?: string | null;
+            device_name?: string | null;
+            /** Format: date-time */
+            identity_updated_at?: string | null;
+            mac_address?: string | null;
+            network?: components["schemas"]["NetworkInfo"] | null;
+            serial_number?: string | null;
+            stream_profiles: components["schemas"]["StreamProfile"][];
+            tls_mode: components["schemas"]["TlsMode"];
+            tls_pinned_sha256?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CameraList: {
+            items: components["schemas"]["CameraSummary"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            page_size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        /**
+         * @description Partial update. Omitted fields are unchanged. Send `tls_pinned_sha256: null`
+         *     together with a non-pinned `tls_mode` to clear a pin.
+         */
+        CameraPatch: {
+            host?: string | null;
+            monitoring_enabled?: boolean | null;
+            name?: string | null;
+            /** Format: int32 */
+            port?: number | null;
+            scheme?: components["schemas"]["Scheme"] | null;
+            tls_mode?: components["schemas"]["TlsMode"] | null;
+            tls_pinned_sha256?: string | null;
+        };
+        /** @enum {string} */
+        CameraState: "unknown" | "online" | "offline";
+        /** @description Current monitoring status of a camera. */
+        CameraStatusView: {
+            /** Format: int32 */
+            consecutive_failures: number;
+            error_category?: components["schemas"]["ErrorCategory"] | null;
+            /** @description Short, non-sensitive description of the last error. */
+            error_message?: string | null;
+            /** Format: date-time */
+            last_change_at?: string | null;
+            /** Format: date-time */
+            last_checked_at?: string | null;
+            /** Format: date-time */
+            last_failure_at?: string | null;
+            /** Format: date-time */
+            last_success_at?: string | null;
+            /** Format: int32 */
+            response_time_ms?: number | null;
+            state: components["schemas"]["CameraState"];
+        };
+        /** @description A camera as shown in lists. */
+        CameraSummary: {
+            firmware_version?: string | null;
+            host: string;
+            /** Format: uuid */
+            id: string;
+            manufacturer?: string | null;
+            model?: string | null;
+            monitoring_enabled: boolean;
+            name: string;
+            /** Format: int32 */
+            port: number;
+            scheme: components["schemas"]["Scheme"];
+            status: components["schemas"]["CameraStatusView"];
+        };
+        /** @description One capability (an API or feature) and whether this camera supports it. */
+        Capability: {
+            /** @description Short extra information, e.g. why it's unsupported. */
+            detail?: string | null;
+            group: components["schemas"]["CapabilityGroup"];
+            /** @description Stable key, e.g. `video.h264` or `api.basic-device-info`. */
+            key: string;
+            label: string;
+            supported: boolean;
+            /** @description API version, where applicable. */
+            version?: string | null;
+        };
+        /**
+         * @description Capability groups drive the sections of the camera detail page (SPEC §6.3):
+         *     a new group becomes a new section without a redesign.
+         * @enum {string}
+         */
+        CapabilityGroup: "device" | "network" | "video" | "audio" | "ptz" | "io" | "events" | "storage" | "analytics";
         ChangePasswordRequest: {
             /** Format: password */
             current_password: string;
@@ -272,12 +485,29 @@ export interface components {
             role: components["schemas"]["Role"];
             username: string;
         };
+        /** @description A documented demo account. These exist only in `demo.db`. */
+        DemoAccount: {
+            password: string;
+            role: components["schemas"]["Role"];
+            username: string;
+        };
+        /**
+         * @description Error categories shared by the API, UI and retry policy (SPEC §10.4).
+         * @enum {string}
+         */
+        ErrorCategory: "unreachable" | "timeout" | "auth_failed" | "tls_error" | "unsupported" | "protocol_error" | "rate_limited" | "internal";
         HealthChecks: {
             database: components["schemas"]["ComponentHealth"];
         };
         HealthResponse: {
             checks: components["schemas"]["HealthChecks"];
+            /** @description Demo mode only: the documented demo accounts, shown on the login page. */
+            demo_accounts?: components["schemas"]["DemoAccount"][] | null;
             mode: components["schemas"]["Mode"];
+            /** @description Supervised background services and how often each has been restarted. */
+            services: {
+                [key: string]: components["schemas"]["ServiceState"];
+            };
             status: components["schemas"]["HealthStatus"];
             /** Format: int64 */
             uptime_seconds: number;
@@ -304,6 +534,28 @@ export interface components {
          * @enum {string}
          */
         Mode: "production" | "demo";
+        /** @description Basic network information, where the camera reports it. */
+        NetworkInfo: {
+            dhcp?: boolean | null;
+            gateway?: string | null;
+            ipv4_address?: string | null;
+            subnet_mask?: string | null;
+        };
+        NewCamera: {
+            /** @description IP address or hostname, without scheme, port or path. */
+            host: string;
+            monitoring_enabled?: boolean;
+            name: string;
+            /**
+             * Format: int32
+             * @description Defaults to 443 for HTTPS, 80 for HTTP.
+             */
+            port?: number | null;
+            scheme?: components["schemas"]["Scheme"];
+            tls_mode?: components["schemas"]["TlsMode"];
+            /** @description SHA-256 certificate fingerprint (hex, colons optional). Required for `pinned`. */
+            tls_pinned_sha256?: string | null;
+        };
         /** @enum {string} */
         Outcome: "success" | "failure";
         /** @description Problem details body (RFC 9457). */
@@ -312,6 +564,7 @@ export interface components {
             code: string;
             /** @description Explanation specific to this occurrence. */
             detail?: string | null;
+            error_category?: components["schemas"]["ErrorCategory"] | null;
             /**
              * Format: int32
              * @description HTTP status code.
@@ -332,6 +585,13 @@ export interface components {
          * @enum {string}
          */
         Role: "admin" | "viewer";
+        /** @enum {string} */
+        Scheme: "http" | "https";
+        ServiceState: {
+            /** Format: int32 */
+            restarts: number;
+            running: boolean;
+        };
         SetupRequest: {
             /** Format: password */
             password: string;
@@ -346,6 +606,48 @@ export interface components {
             /** @description True when no users exist and the setup page should be shown. */
             setup_required: boolean;
         };
+        StatusHistory: {
+            items: components["schemas"]["StatusTransition"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            page_size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        /** @description A recorded status transition. */
+        StatusTransition: {
+            error_category?: components["schemas"]["ErrorCategory"] | null;
+            from_state: components["schemas"]["CameraState"];
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            occurred_at: string;
+            to_state: components["schemas"]["CameraState"];
+        };
+        StreamProfile: {
+            /** Format: int32 */
+            bitrate_kbps?: number | null;
+            codec: components["schemas"]["VideoCodec"];
+            /** Format: int32 */
+            fps?: number | null;
+            /** Format: int32 */
+            height: number;
+            id: string;
+            name: string;
+            /** Format: int32 */
+            width: number;
+        };
+        /**
+         * @description Per-camera certificate validation (SPEC §4.5).
+         * @enum {string}
+         */
+        TlsMode: "strict" | "pinned" | "insecure_skip_verify";
+        /**
+         * @description Subscription topics a WebSocket client can ask for.
+         * @enum {string}
+         */
+        Topic: "camera_status" | "cameras";
         UpdateUserRequest: {
             disabled?: boolean | null;
             role?: components["schemas"]["Role"] | null;
@@ -372,6 +674,55 @@ export interface components {
             page_size: number;
             /** Format: int64 */
             total: number;
+        };
+        /** @enum {string} */
+        VideoCodec: "h264" | "h265" | "mjpeg";
+        /** @description Messages a client may send. */
+        WsClientMessage: {
+            topics: components["schemas"]["Topic"][];
+            /** @enum {string} */
+            type: "subscribe";
+        } | {
+            topics: components["schemas"]["Topic"][];
+            /** @enum {string} */
+            type: "unsubscribe";
+        };
+        /** @description Messages the server sends. */
+        WsServerMessage: {
+            /** Format: int64 */
+            heartbeat_secs: number;
+            role: components["schemas"]["Role"];
+            /** @enum {string} */
+            type: "hello";
+            username: string;
+        } | {
+            topics: components["schemas"]["Topic"][];
+            /** @enum {string} */
+            type: "subscribed";
+        } | {
+            reason: string;
+            /** @enum {string} */
+            type: "resync";
+        } | {
+            code: string;
+            message: string;
+            /** @enum {string} */
+            type: "error";
+        } | {
+            /** Format: uuid */
+            camera_id: string;
+            status: components["schemas"]["CameraStatusView"];
+            /** @enum {string} */
+            type: "camera_status";
+        } | {
+            camera: components["schemas"]["CameraSummary"];
+            /** @enum {string} */
+            type: "camera_changed";
+        } | {
+            /** Format: uuid */
+            camera_id: string;
+            /** @enum {string} */
+            type: "camera_deleted";
         };
     };
     responses: never;
@@ -585,6 +936,378 @@ export interface operations {
             };
             /** @description Too many failed attempts */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_cameras: {
+        parameters: {
+            query?: {
+                /** @description 1-based page number (default 1). */
+                page?: number;
+                /** @description Items per page (default 50, max 200). */
+                page_size?: number;
+                /** @description Case-insensitive substring match on name, host or model. */
+                q?: string;
+                status?: "unknown" | "online" | "offline";
+                sort?: "name" | "host" | "model" | "state" | "last_success_at" | "last_change_at";
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of cameras */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraList"];
+                };
+            };
+            /** @description Invalid query */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_camera: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewCamera"];
+            };
+        };
+        responses: {
+            /** @description Camera registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraDetail"];
+                };
+            };
+            /** @description Invalid settings */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Host and port already registered */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_camera: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The camera */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraDetail"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such camera */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_camera: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such camera */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_camera: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraPatch"];
+            };
+        };
+        responses: {
+            /** @description Updated camera */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraDetail"];
+                };
+            };
+            /** @description Invalid settings */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such camera */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Host and port already registered */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    refresh_camera: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Refreshed camera */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraDetail"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such camera */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Camera error (see detail) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_camera_status_history: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status transitions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusHistory"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such camera */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1032,6 +1755,42 @@ export interface operations {
             };
             /** @description No such user */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    open_websocket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching protocols */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin not allowed */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

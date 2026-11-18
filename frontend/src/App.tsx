@@ -1,13 +1,14 @@
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import { RequireAdmin, RequireAuth } from "./auth/guards";
 import { useUnauthorizedListener } from "./auth/session";
 import { Layout } from "./components/Layout";
 import { AccountPage } from "./pages/AccountPage";
 import { AuditPage } from "./pages/AuditPage";
-import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { SetupPage } from "./pages/SetupPage";
 import { UsersPage } from "./pages/UsersPage";
+import { CameraDetailPage } from "./pages/cameras/CameraDetailPage";
+import { CamerasPage } from "./pages/cameras/CamerasPage";
 
 export default function App() {
   useUnauthorizedListener();
@@ -22,7 +23,9 @@ export default function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<HomePage />} />
+        <Route index element={<Navigate to="/cameras" replace />} />
+        <Route path="cameras" element={<CamerasPage />} />
+        <Route path="cameras/:id" element={<CameraDetailPage />} />
         <Route path="account" element={<AccountPage />} />
         <Route
           path="users"
