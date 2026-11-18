@@ -2,6 +2,7 @@
 
 mod audit;
 mod auth;
+mod cameras;
 pub mod error;
 mod extract;
 pub mod health;
@@ -9,6 +10,7 @@ mod pagination;
 mod setup;
 mod static_files;
 mod users;
+pub mod ws;
 
 use axum::extract::{Request, State};
 use axum::http::{header, HeaderName, HeaderValue};
@@ -38,7 +40,7 @@ pub const DOCS_PATH: &str = "/api/docs";
         title = "CCANH API",
         description = "Crane Camera Automated Navigation Hub. Each operation states its required role.",
     ),
-    components(schemas(error::Problem)),
+    components(schemas(error::Problem, ws::WsClientMessage, ws::WsServerMessage)),
     modifiers(&SessionCookie),
     security(("session_cookie" = [])),
     tags(
@@ -47,6 +49,8 @@ pub const DOCS_PATH: &str = "/api/docs";
         (name = "auth", description = "Sign in, sign out, own account"),
         (name = "users", description = "User administration"),
         (name = "audit", description = "Security audit log"),
+        (name = "cameras", description = "Camera registry, status and capabilities"),
+        (name = "realtime", description = "WebSocket for live updates"),
     ),
 )]
 struct ApiDoc;
@@ -81,6 +85,11 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(users::get, users::update, users::delete))
         .routes(routes!(users::reset_password))
         .routes(routes!(audit::list))
+        .routes(routes!(cameras::list, cameras::create))
+        .routes(routes!(cameras::get, cameras::update, cameras::delete))
+        .routes(routes!(cameras::status_history))
+        .routes(routes!(cameras::refresh))
+        .routes(routes!(ws::ws))
 }
 
 /// Unless `server.public_api_docs` is set, the OpenAPI document and Swagger UI

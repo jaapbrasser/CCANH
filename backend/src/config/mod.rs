@@ -110,6 +110,8 @@ pub struct AuthConfig {
     pub idle_timeout_minutes: u64,
     /// A session expires this many hours after login regardless of activity.
     pub absolute_timeout_hours: u64,
+    /// How often an open WebSocket re-validates its session, in seconds.
+    pub websocket_recheck_secs: u64,
 }
 
 impl Default for AuthConfig {
@@ -117,6 +119,7 @@ impl Default for AuthConfig {
         Self {
             idle_timeout_minutes: 8 * 60,
             absolute_timeout_hours: 7 * 24,
+            websocket_recheck_secs: 60,
         }
     }
 }
@@ -144,6 +147,34 @@ impl Default for LoggingConfig {
     }
 }
 
+/// Camera status monitoring (SPEC §10.2). Becomes admin-editable in Phase 4.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct MonitoringConfig {
+    /// Seconds between checks of each monitored camera.
+    pub interval_secs: u64,
+    /// Randomize each interval by ± this percentage.
+    pub jitter_percent: u8,
+    /// Consecutive failed checks before a camera is marked offline.
+    pub failure_threshold: u32,
+    /// Timeout for a single check, in seconds.
+    pub timeout_secs: u64,
+    /// Maximum checks in flight across all cameras.
+    pub max_concurrent: usize,
+}
+
+impl Default for MonitoringConfig {
+    fn default() -> Self {
+        Self {
+            interval_secs: 10,
+            jitter_percent: 20,
+            failure_threshold: 3,
+            timeout_secs: 5,
+            max_concurrent: 32,
+        }
+    }
+}
+
 /// Fully merged configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -153,7 +184,10 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub server: ServerConfig,
     pub auth: AuthConfig,
+    pub monitoring: MonitoringConfig,
     pub logging: LoggingConfig,
+    /// Demo mode only: keep `demo.db` between runs instead of reseeding.
+    pub demo_keep_state: bool,
 }
 
 impl Default for Config {
@@ -163,7 +197,9 @@ impl Default for Config {
             data_dir: default_data_dir(),
             server: ServerConfig::default(),
             auth: AuthConfig::default(),
+            monitoring: MonitoringConfig::default(),
             logging: LoggingConfig::default(),
+            demo_keep_state: false,
         }
     }
 }
@@ -179,6 +215,10 @@ pub struct Overrides {
     pub port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log_level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<Mode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub demo_keep_state: Option<bool>,
 }
 
 impl Config {
@@ -227,6 +267,12 @@ impl Config {
         if let Some(level) = &overrides.log_level {
             figment = figment.merge(Serialized::default("logging.level", level));
         }
+        if let Some(mode) = overrides.mode {
+            figment = figment.merge(Serialized::default("mode", mode));
+        }
+        if let Some(keep) = overrides.demo_keep_state {
+            figment = figment.merge(Serialized::default("demo_keep_state", keep));
+        }
 
         let config: Config = figment.extract().map_err(Box::new)?;
         config.validate()?;
@@ -248,9 +294,27 @@ impl Config {
                 "server.shutdown_timeout_secs must be at least 1".into(),
             ));
         }
-        if self.auth.idle_timeout_minutes == 0 || self.auth.absolute_timeout_hours == 0 {
+        if self.auth.idle_timeout_minutes == 0
+            || self.auth.absolute_timeout_hours == 0
+            || self.auth.websocket_recheck_secs == 0
+        {
             return Err(ConfigError::Invalid(
                 "auth timeouts must be at least 1".into(),
+            ));
+        }
+        let m = &self.monitoring;
+        if m.interval_secs == 0
+            || m.timeout_secs == 0
+            || m.failure_threshold == 0
+            || m.max_concurrent == 0
+        {
+            return Err(ConfigError::Invalid(
+                "monitoring interval, timeout, failure_threshold and max_concurrent must be at least 1".into(),
+            ));
+        }
+        if m.jitter_percent > 50 {
+            return Err(ConfigError::Invalid(
+                "monitoring.jitter_percent must be at most 50".into(),
             ));
         }
         if self.server.tls.mode == TlsMode::Files

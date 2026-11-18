@@ -21,6 +21,9 @@ pub mod action {
     pub const USER_UPDATE: &str = "user.update";
     pub const USER_DELETE: &str = "user.delete";
     pub const USER_PASSWORD_RESET: &str = "user.password_reset";
+    pub const CAMERA_CREATE: &str = "camera.create";
+    pub const CAMERA_UPDATE: &str = "camera.update";
+    pub const CAMERA_DELETE: &str = "camera.delete";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, ToSchema)]

@@ -8,7 +8,7 @@ use anyhow::Context;
 use clap::Parser;
 use tokio_util::sync::CancellationToken;
 
-use crane::config::{Config, Overrides};
+use crane::config::{Config, Mode, Overrides};
 use crane::secret::{ExposeSecret, SecretString};
 use crane::{storage, telemetry, tls, AppState};
 
@@ -43,6 +43,15 @@ struct Cli {
     /// database or network.
     #[arg(long)]
     print_openapi: bool,
+
+    /// Run in demo mode: simulated cameras, a separate demo.db, no network access
+    /// to cameras. Equivalent to `mode = "demo"` in the config file.
+    #[arg(long)]
+    demo: bool,
+
+    /// Demo mode only: keep demo.db between runs instead of reseeding it.
+    #[arg(long, requires = "demo")]
+    demo_keep_state: bool,
 
     /// Create an admin account with this username, prompting for the password,
     /// then exit. Also the recovery path if every admin password is lost.
@@ -94,6 +103,8 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         bind: cli.bind,
         port: cli.port,
         log_level: cli.log_level,
+        mode: cli.demo.then_some(Mode::Demo),
+        demo_keep_state: cli.demo_keep_state.then_some(true),
     };
     let config = Config::load(cli.config.as_deref(), &overrides)?;
 
@@ -127,9 +138,23 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     }
 
     let db_path = config.database_path();
+    let demo = config.mode == Mode::Demo;
+    if demo && !config.demo_keep_state {
+        crane::demo::reset_database_file(&db_path)?;
+    }
     let db = storage::connect(&db_path)
         .await
         .with_context(|| format!("opening database {}", db_path.display()))?;
+    if demo {
+        let seeded = crane::demo::seed(&db).await?;
+        tracing::warn!(
+            database = %db_path.display(),
+            seeded_users = seeded.users,
+            seeded_cameras = seeded.cameras,
+            "DEMO MODE: simulated cameras only; demo accounts are admin/crane-demo-admin \
+             and viewer/crane-demo-viewer"
+        );
+    }
 
     let addr = config.socket_addr();
     let listener = tokio::net::TcpListener::bind(addr)

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO camera_status (camera_id) VALUES (?1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "5cf657d97bf453efacedc50ae5ccc50456ef0e4b9fcdff594eba0833cc625029"
+}

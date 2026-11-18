@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO camera_status_history (camera_id, occurred_at, from_state, to_state, error_category)\n             VALUES (?1, ?2, ?3, ?4, ?5)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "a95c908507c03bc16eb894e8f79e53525e320a594a6f0e020be9bb23c1c99824"
+}

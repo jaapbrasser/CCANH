@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE cameras\n            SET manufacturer = ?2, model = ?3, firmware_version = ?4, serial_number = ?5,\n                mac_address = ?6, device_name = ?7, device_hostname = ?8, network = ?9,\n                capabilities = COALESCE(?10, capabilities),\n                stream_profiles = COALESCE(?11, stream_profiles),\n                identity_updated_at = ?12\n          WHERE id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 12
+    },
+    "nullable": []
+  },
+  "hash": "a61e4621765f68fdd004d2710f8a4400707fddf6a43f49b464a5e7cdc22fc471"
+}
