@@ -153,6 +153,12 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
         )}
       </div>
       {refresh.isError && <Alert>{errorMessage(refresh.error)}</Alert>}
+      {s.identity_error_category && (
+        <Alert>
+          {errorCategoryLabel(s.identity_error_category)}: {s.identity_error_message ?? "the last device check failed."}
+          {s.identity_error_category === "auth_failed" && isAdmin && " Check the camera's credentials under Edit."}
+        </Alert>
+      )}
       {!camera.identity_updated_at && (
         <p className="text-sm text-slate-400">
           Device details appear after the first successful contact with the camera.
@@ -202,6 +208,17 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
                   "Strict"
                 ),
               ],
+              [
+                "Credentials",
+                camera.credential_set
+                  ? `Shared set: ${camera.credential_set.name}`
+                  : camera.has_credentials
+                    ? "Camera-specific"
+                    : "None",
+              ],
+              ...(camera.scheme === "http"
+                ? ([["Basic over HTTP", camera.allow_basic_over_http ? "Allowed" : "Not allowed"]] as [string, string][])
+                : []),
               ["IPv4", net?.ipv4_address],
               ["Subnet mask", net?.subnet_mask],
               ["Gateway", net?.gateway],
@@ -222,10 +239,10 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
               </thead>
               <tbody>
                 {camera.stream_profiles.map((p) => (
-                  <tr key={p.id}>
+                  <tr key={p.id || "default"}>
                     <td className="py-0.5">{p.name}</td>
-                    <td className="py-0.5 uppercase">{p.codec}</td>
-                    <td className="py-0.5">{`${p.width}×${p.height}`}</td>
+                    <td className="py-0.5 uppercase">{p.codec ?? "default"}</td>
+                    <td className="py-0.5">{p.width && p.height ? `${p.width}×${p.height}` : "default"}</td>
                     <td className="py-0.5">{p.fps ?? "—"}</td>
                   </tr>
                 ))}
