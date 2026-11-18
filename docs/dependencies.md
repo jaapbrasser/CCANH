@@ -31,8 +31,13 @@ One line per non-trivial dependency and why it's here. See ADR 0001 for the base
 | rcgen (`ring`) | Self-signed certificate generation on first run |
 | rpassword | Hidden password prompt for `--create-admin` |
 | async-trait | `dyn CameraProvider` with async methods (SPEC §4.3) |
+| reqwest (`rustls-no-provider`, `json`) | VAPIX HTTP client; TLS via our rustls config (ring), no aws-lc |
+| rustls-platform-verifier | "Strict" camera TLS mode uses the operating-system trust store (incl. enterprise CAs on Windows) |
+| md-5 | HTTP Digest MD5 (RFC 7616 / 2617); SHA-256 Digest uses `sha2` |
+| aes-gcm | Development credential store (non-Windows) (ADR 0003) |
+| windows-sys (Windows only) | DPAPI `CryptProtectData` for the credential store (ADR 0003) |
 | futures-util | Splitting the WebSocket into sink and stream |
-| *dev:* tempfile, http-body-util, figment (`test`), tokio-rustls, tokio-tungstenite, tokio (`test-util`) | Test helpers; TLS and WebSocket clients; paused-time tests |
+| *dev:* tempfile, http-body-util, figment (`test`), tokio-rustls, tokio-tungstenite, tokio (`test-util`), wiremock | Test helpers; TLS and WebSocket clients; paused-time tests; mock VAPIX server |
 
 ## Frontend (npm)
 

@@ -7,9 +7,10 @@ Read §0–3 before coding, then the section for the current phase (§17).
 ## Current phase
 
 Phases 0–3 are complete (Foundation, Auth & users, Camera core + demo, streaming
-spike → ADR 0002: fMP4 over WebSocket to MSE). Next: Phase 4 (AXIS provider +
-monitoring). Don't build ahead of the current phase, and post a plan before
-starting one.
+spike → ADR 0002: fMP4 over WebSocket to MSE). Phase 4 is split: 4a (AXIS
+provider, credentials, test connection) is done; next is 4b (polling service
+upgrades, task manager, runtime settings). Don't build ahead of the current
+phase, and post a plan before starting one.
 
 ## Commands
 
@@ -64,7 +65,10 @@ backend/
   src/audit/           append-only audit log
   src/cameras/         camera registry: models, validation, repository, status
   src/providers/       CameraProvider trait, factory, demo/ (simulated fleet),
-                       contract.rs (provider contract test suite)
+                       axis/ (VAPIX client, Digest auth, per-camera TLS, tests
+                       with wiremock), contract.rs (provider contract suite)
+  src/credentials/     CredentialStore (DPAPI on Windows, AES-GCM dev store),
+                       credential sets (shared + private)
   src/monitoring/      status monitor (PollingPolicy, transitions, identity refresh)
   src/events/          typed broadcast event bus
   src/demo/            demo seeding and demo.db reset
@@ -107,7 +111,10 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
   change, and the contract suite (`providers/contract.rs`) covers it.
 - New WebSocket message types or topics: update `api::ws` and ADR 0007.
 - Every AXIS endpoint must be verified against official VAPIX docs and logged in
-  `docs/vapix.md` (from Phase 4).
+  `docs/vapix.md`, with a fixture in `backend/tests/fixtures/vapix/`.
+- Camera credentials: only ever ciphertext in SQLite and responses expose
+  `has_credentials` / set name only. Decrypt at the point of use
+  (`MonitorTarget::provider_target`).
 - Frontend API calls go through `src/api/client.ts` (typed `openapi-fetch`).
 
 ## Gotchas
@@ -120,8 +127,10 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
   `SQLX_OFFLINE=true`.
 - MSW 3 uses `onUnhandledFrame`, not `onUnhandledRequest`. The live socket is
   mocked in `src/test/server.ts` (`live.broadcast(...)` to push messages).
-- Production mode has no camera provider until Phase 4: checks report
-  `unsupported` and status stays `unknown`.
+- AppState::new takes the `CredentialStore`; tests use
+  `AesGcmStore::ephemeral()` so no key files are written.
+- Status checks use anonymous VAPIX calls, so wrong credentials don't make a
+  camera "offline": they show as `identity_error_category = auth_failed`.
 - Tokio paused-time tests need `#[tokio::test(start_paused = true)]` (dev
   feature `test-util` is enabled).
 - Without rustup (e.g. Homebrew Rust), `rust-toolchain.toml` is ignored locally.
