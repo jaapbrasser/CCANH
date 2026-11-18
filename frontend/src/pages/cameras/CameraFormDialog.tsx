@@ -13,6 +13,7 @@ import {
   type TestConnectionResult,
 } from "../../api/credentials";
 import type { components } from "../../api/schema";
+import { isTerminal, useCancelTask, useTask } from "../../api/tasks";
 import { Alert, Button, Dialog, Field } from "../../components/ui";
 import { errorCategoryLabel } from "../../utils/format";
 
@@ -162,6 +163,13 @@ export function CameraFormDialog({
   const mutation = camera ? update : create;
   const sets = useCredentialSets();
   const test = useTestConnection();
+  const [testId, setTestId] = useState<string | null>(null);
+  const testTask = useTask(testId);
+  const cancelTest = useCancelTask();
+  const task = testTask.data;
+  const testRunning = Boolean(testId) && !isTerminal(task?.status);
+  const testResult =
+    task?.status === "succeeded" ? (task.result as unknown as TestConnectionResult | null) : null;
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
@@ -178,11 +186,14 @@ export function CameraFormDialog({
 
   const runTest = () => {
     const credentials = credentialInput(form);
-    test.mutate({
-      ...connectionFields(form),
-      credentials: credentials ?? null,
-      camera_id: form.credMode === "keep" ? camera?.id : null,
-    });
+    test.mutate(
+      {
+        ...connectionFields(form),
+        credentials: credentials ?? null,
+        camera_id: form.credMode === "keep" ? camera?.id : null,
+      },
+      { onSuccess: (t) => setTestId(t.id) },
+    );
   };
 
   const select = "rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100";
@@ -335,17 +346,38 @@ export function CameraFormDialog({
         </label>
 
         {test.isError && <Alert>{errorMessage(test.error)}</Alert>}
-        {test.data && (
+        {testRunning && (
+          <div role="status" aria-label="Connection test progress" className="flex items-center justify-between gap-3 rounded border border-slate-700 p-3 text-sm">
+            <span>
+              {task?.message ?? "Starting test…"}
+              {task?.progress_total ? (
+                <span className="text-slate-500">
+                  {" "}
+                  ({task.progress_current}/{task.progress_total})
+                </span>
+              ) : null}
+            </span>
+            <Button variant="secondary" disabled={cancelTest.isPending} onClick={() => testId && cancelTest.mutate(testId)}>
+              Cancel test
+            </Button>
+          </div>
+        )}
+        {task && task.status !== "succeeded" && isTerminal(task.status) && (
+          <Alert>
+            {task.status === "cancelled" ? "The connection test was cancelled." : (task.error_message ?? "The connection test failed.")}
+          </Alert>
+        )}
+        {testResult && (
           <TestResult
-            result={test.data}
-            pinned={form.tls_mode === "pinned" && form.tls_pinned_sha256 === test.data.tls_fingerprint_sha256}
+            result={testResult}
+            pinned={form.tls_mode === "pinned" && form.tls_pinned_sha256 === testResult.tls_fingerprint_sha256}
             onPin={(fp) => setForm((f) => ({ ...f, tls_mode: "pinned", tls_pinned_sha256: fp }))}
           />
         )}
 
         <div className="flex justify-between gap-2">
-          <Button variant="secondary" disabled={!form.host.trim() || test.isPending} onClick={runTest}>
-            {test.isPending ? "Testing…" : "Test connection"}
+          <Button variant="secondary" disabled={!form.host.trim() || test.isPending || testRunning} onClick={runTest}>
+            {test.isPending || testRunning ? "Testing…" : "Test connection"}
           </Button>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose}>

@@ -2,6 +2,8 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { meKey } from "./auth";
 import { cameraKeys, type CameraDetail, type CameraList } from "./cameras";
+import { isTerminal, taskKeys, type Task } from "./tasks";
+import { showToast } from "../components/toasts";
 import type { components } from "./schema";
 
 export type ServerMessage = components["schemas"]["WsServerMessage"];
@@ -10,8 +12,25 @@ type ClientMessage = components["schemas"]["WsClientMessage"];
 /** Close codes from the server (ADR 0007). */
 export const CLOSE_SESSION_ENDED = 4401;
 
+const TASK_LABELS: Record<string, string> = { test_connection: "Connection test" };
+
+/** Notify the user when one of their tasks finishes. */
+function notifyTaskFinished(task: Task, myId: string | undefined) {
+  if (!isTerminal(task.status) || task.created_by !== myId) return;
+  const label = TASK_LABELS[task.kind] ?? "Task";
+  if (task.status === "succeeded") {
+    const ok = (task.result as { ok?: boolean } | null)?.ok;
+    if (ok === false) showToast("error", `${label} finished with problems.`);
+    else showToast("success", `${label} finished.`);
+  } else if (task.status === "failed") {
+    showToast("error", `${label} failed: ${task.error_message ?? "unknown error"}`);
+  } else {
+    showToast("info", `${label} was cancelled.`);
+  }
+}
+
 /** Apply one server message to the query cache. Exported for tests. */
-export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
+export function applyLiveMessage(qc: QueryClient, msg: ServerMessage, myId?: string): void {
   switch (msg.type) {
     case "camera_status": {
       qc.setQueriesData<CameraList>({ queryKey: cameraKeys.lists() }, (list) =>
@@ -37,8 +56,16 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage): void {
       qc.invalidateQueries({ queryKey: cameraKeys.lists() });
       qc.removeQueries({ queryKey: cameraKeys.detail(msg.camera_id) });
       break;
+    case "task_updated": {
+      const prev = qc.getQueryData<Task>(taskKeys.detail(msg.task.id));
+      qc.setQueryData(taskKeys.detail(msg.task.id), msg.task);
+      if (prev?.status !== msg.task.status) qc.invalidateQueries({ queryKey: taskKeys.lists() });
+      if (!isTerminal(prev?.status)) notifyTaskFinished(msg.task, myId);
+      break;
+    }
     case "resync":
       qc.invalidateQueries({ queryKey: cameraKeys.all });
+      qc.invalidateQueries({ queryKey: taskKeys.all });
       break;
     case "hello":
     case "subscribed":
@@ -75,7 +102,7 @@ const MAX_BACKOFF_MS = 30_000;
  * query cache from events, and reconnect with exponential backoff. After a
  * reconnect the camera queries are refetched, since events may have been missed.
  */
-export function useLiveUpdates(enabled: boolean) {
+export function useLiveUpdates(enabled: boolean, myId?: string) {
   const qc = useQueryClient();
   useEffect(() => {
     if (!enabled || typeof WebSocket === "undefined") return;
@@ -89,15 +116,18 @@ export function useLiveUpdates(enabled: boolean) {
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       socket = new WebSocket(url);
       socket.onopen = () => {
-        const subscribe: ClientMessage = { type: "subscribe", topics: ["camera_status", "cameras"] };
+        const subscribe: ClientMessage = { type: "subscribe", topics: ["camera_status", "cameras", "tasks"] };
         socket?.send(JSON.stringify(subscribe));
-        if (attempt > 0) qc.invalidateQueries({ queryKey: cameraKeys.all });
+        if (attempt > 0) {
+          qc.invalidateQueries({ queryKey: cameraKeys.all });
+          qc.invalidateQueries({ queryKey: taskKeys.all });
+        }
         attempt = 0;
         setState("live");
       };
       socket.onmessage = (event) => {
         try {
-          applyLiveMessage(qc, JSON.parse(String(event.data)) as ServerMessage);
+          applyLiveMessage(qc, JSON.parse(String(event.data)) as ServerMessage, myId);
         } catch {
           // Ignore malformed frames; the next resync or reconnect repairs state.
         }
@@ -122,5 +152,5 @@ export function useLiveUpdates(enabled: boolean) {
       socket?.close();
       setState("connecting");
     };
-  }, [enabled, qc]);
+  }, [enabled, qc, myId]);
 }

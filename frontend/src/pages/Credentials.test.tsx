@@ -65,6 +65,22 @@ describe("credential sets page", () => {
   });
 });
 
+const TASK_ID = "00000000-0000-7000-8000-0000000000f1";
+function task(status: string, result: unknown) {
+  return {
+    id: TASK_ID,
+    kind: "test_connection",
+    created_by: ADMIN.id,
+    created_by_username: "admin",
+    status,
+    progress_current: status === "succeeded" ? 4 : 0,
+    progress_total: 4,
+    message: status === "succeeded" ? "Done" : null,
+    result,
+    created_at: NOW,
+  };
+}
+
 describe("camera form credentials and test connection", () => {
   beforeEach(() => {
     signedInAs(ADMIN);
@@ -78,19 +94,24 @@ describe("camera form credentials and test connection", () => {
     server.use(
       http.post("/api/v1/cameras/test-connection", async ({ request }) => {
         tested = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({
-          ok: false,
-          response_time_ms: 21,
-          device: { manufacturer: "AXIS", model: "AXIS M3086-V", firmware_version: "11.11.73" },
-          capabilities: [],
-          stream_profiles: [],
-          tls_fingerprint_sha256: fp,
-          steps: [
-            { name: "reachability", ok: true, skipped: false, error_category: null, message: null },
-            { name: "credentials", ok: false, skipped: false, error_category: "auth_failed", message: "the camera rejected the configured credentials" },
-          ],
-        });
+        return HttpResponse.json(task("queued", null), { status: 202 });
       }),
+      http.get("/api/v1/tasks/:id", () =>
+        HttpResponse.json(
+          task("succeeded", {
+            ok: false,
+            response_time_ms: 21,
+            device: { manufacturer: "AXIS", model: "AXIS M3086-V", firmware_version: "11.11.73" },
+            capabilities: [],
+            stream_profiles: [],
+            tls_fingerprint_sha256: fp,
+            steps: [
+              { name: "reachability", ok: true, skipped: false, error_category: null, message: null },
+              { name: "credentials", ok: false, skipped: false, error_category: "auth_failed", message: "the camera rejected the configured credentials" },
+            ],
+          }),
+        ),
+      ),
       http.post("/api/v1/cameras", async ({ request }) => {
         created = (await request.json()) as Record<string, unknown>;
         return problem(400, "bad_request", "stop here");

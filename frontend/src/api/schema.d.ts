@@ -142,11 +142,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Test connecting to a camera without saving anything.
-         * @description Required role: admin. Probes reachability and identity, verifies the
-         *     credentials, and reads capabilities and stream profiles. Each step reports
-         *     its own error category. The camera's certificate fingerprint is returned so
-         *     it can be pinned.
+         * Start a connection test for camera settings, without saving anything.
+         * @description Required role: admin. Runs as a background task (kind `test_connection`):
+         *     returns 202 with the task; follow it via `GET /api/v1/tasks/{id}` or the
+         *     `tasks` WebSocket topic. When it finishes, `result` is a
+         *     `TestConnectionResult`: per-step outcomes (reachability, credentials,
+         *     capabilities, device info) with error categories, and the certificate
+         *     fingerprint for pinning.
          */
         post: operations["test_camera_connection"];
         delete?: never;
@@ -295,6 +297,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current runtime settings, defaults and monitor counters.
+         * @description Required role: admin.
+         */
+        get: operations["get_settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/monitoring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Reset camera monitoring settings to the startup defaults.
+         * @description Required role: admin.
+         */
+        delete: operations["reset_monitoring_settings"];
+        options?: never;
+        head?: never;
+        /**
+         * Change camera monitoring settings.
+         * @description Required role: admin. Takes effect within a second, without a restart.
+         *     Audited with the old and new values.
+         */
+        patch: operations["update_monitoring_settings"];
+        trace?: never;
+    };
     "/api/v1/setup": {
         parameters: {
             query?: never;
@@ -314,6 +361,67 @@ export interface paths {
          *     startup. Only works while no users exist. Signs the new admin in.
          */
         post: operations["complete_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List background tasks, newest first.
+         * @description Required role: viewer. Viewers see their own tasks; admins see all.
+         */
+        get: operations["list_tasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one task, including its result once finished.
+         * @description Required role: viewer. Only the task's creator or an admin can see it.
+         */
+        get: operations["get_task"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tasks/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a queued or running task.
+         * @description Required role: viewer. Only the task's creator or an admin can cancel it.
+         *     Returns 202: the task reports `cancelled` once it has stopped.
+         */
+        post: operations["cancel_task"];
         delete?: never;
         options?: never;
         head?: never;
@@ -669,6 +777,96 @@ export interface components {
          * @enum {string}
          */
         Mode: "production" | "demo";
+        MonitorStatsSnapshot: {
+            cameras_monitored: number;
+            checks_in_flight: number;
+            /**
+             * Format: int64
+             * @description Status checks completed since the server started.
+             */
+            checks_total: number;
+            /**
+             * Format: int64
+             * @description Checks that ended in a failure (after retries).
+             */
+            failures_total: number;
+            /** Format: int64 */
+            identity_checks_total: number;
+            /**
+             * Format: int64
+             * @description Unix time of the monitor's last scheduling tick (0 = never).
+             */
+            last_tick_unix: number;
+            /**
+             * Format: int64
+             * @description Extra attempts made for transient errors.
+             */
+            retries_total: number;
+        };
+        /** @description Partial update; omitted fields keep their current value. */
+        MonitoringPatch: {
+            /** Format: int32 */
+            failure_threshold?: number | null;
+            /** Format: int64 */
+            identity_refresh_minutes?: number | null;
+            /** Format: int64 */
+            interval_secs?: number | null;
+            /** Format: int32 */
+            jitter_percent?: number | null;
+            /** Format: int32 */
+            max_concurrent?: number | null;
+            /** Format: int64 */
+            offline_max_interval_secs?: number | null;
+            /** Format: int32 */
+            retries?: number | null;
+            /** Format: int64 */
+            timeout_secs?: number | null;
+        };
+        /** @description Camera status monitoring (SPEC §10.2). */
+        MonitoringSettings: {
+            /**
+             * Format: int32
+             * @description Consecutive failed checks before a camera is marked offline (1–20).
+             */
+            failure_threshold: number;
+            /**
+             * Format: int64
+             * @description Minutes between identity/credential re-checks of an online camera (1–1440).
+             */
+            identity_refresh_minutes: number;
+            /**
+             * Format: int64
+             * @description Seconds between checks of each monitored camera (2–3600).
+             */
+            interval_secs: number;
+            /**
+             * Format: int32
+             * @description Randomize each interval by ± this percentage (0–50).
+             */
+            jitter_percent: number;
+            /**
+             * Format: int32
+             * @description Maximum checks in flight across all cameras (1–256).
+             */
+            max_concurrent: number;
+            /**
+             * Format: int64
+             * @description Upper bound for the backed-off interval of offline cameras, in seconds
+             *     (at least `interval_secs`, at most 3600).
+             */
+            offline_max_interval_secs: number;
+            /**
+             * Format: int32
+             * @description Extra attempts within one check for transient errors (0–5). Never used
+             *     for authentication failures.
+             */
+            retries: number;
+            /**
+             * Format: int64
+             * @description Timeout for one camera request, in seconds (1–60).
+             */
+            timeout_secs: number;
+        };
         /** @description Basic network information, where the camera reports it. */
         NetworkInfo: {
             dhcp?: boolean | null;
@@ -732,12 +930,23 @@ export interface components {
          * @enum {string}
          */
         Role: "admin" | "viewer";
+        RuntimeSettings: {
+            monitoring: components["schemas"]["MonitoringSettings"];
+        };
         /** @enum {string} */
         Scheme: "http" | "https";
         ServiceState: {
             /** Format: int32 */
             restarts: number;
             running: boolean;
+        };
+        SettingsView: {
+            /** @description Values in effect now. */
+            current: components["schemas"]["RuntimeSettings"];
+            /** @description Startup defaults (from the config file / environment). */
+            defaults: components["schemas"]["RuntimeSettings"];
+            /** @description Live counters of the status monitor. */
+            monitor: components["schemas"]["MonitorStatsSnapshot"];
         };
         SetupRequest: {
             /** Format: password */
@@ -790,6 +999,51 @@ export interface components {
             /** Format: int32 */
             width?: number | null;
         };
+        Task: {
+            /** Format: uuid */
+            camera_id?: string | null;
+            /** Format: date-time */
+            completed_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            created_by?: string | null;
+            created_by_username?: string | null;
+            error_category?: components["schemas"]["ErrorCategory"] | null;
+            error_message?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description What the task does, e.g. `test_connection`. */
+            kind: string;
+            /** @description Current step, human readable. */
+            message?: string | null;
+            /** Format: int32 */
+            progress_current: number;
+            /**
+             * Format: int32
+             * @description `null` when progress is indeterminate.
+             */
+            progress_total?: number | null;
+            /**
+             * @description Kind-specific result, present once the task succeeded (or failed with
+             *     partial results).
+             */
+            result?: Record<string, never> | null;
+            /** Format: date-time */
+            started_at?: string | null;
+            status: components["schemas"]["TaskStatus"];
+        };
+        TaskList: {
+            items: components["schemas"]["Task"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            page_size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        /** @enum {string} */
+        TaskStatus: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         TestConnectionRequest: {
             allow_basic_over_http?: boolean;
             /**
@@ -839,7 +1093,7 @@ export interface components {
          * @description Subscription topics a WebSocket client can ask for.
          * @enum {string}
          */
-        Topic: "camera_status" | "cameras";
+        Topic: "camera_status" | "cameras" | "tasks";
         UpdateUserRequest: {
             disabled?: boolean | null;
             role?: components["schemas"]["Role"] | null;
@@ -915,6 +1169,10 @@ export interface components {
             camera_id: string;
             /** @enum {string} */
             type: "camera_deleted";
+        } | {
+            task: components["schemas"]["Task"];
+            /** @enum {string} */
+            type: "task_updated";
         };
     };
     responses: never;
@@ -1258,13 +1516,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Test result (see `ok` and `steps`) */
-            200: {
+            /** @description Test started */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TestConnectionResult"];
+                    "application/json": components["schemas"]["Task"];
                 };
             };
             /** @description Invalid settings */
@@ -1825,6 +2083,133 @@ export interface operations {
             };
         };
     };
+    get_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsView"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reset_monitoring_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default monitoring settings, now in effect */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonitoringSettings"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_monitoring_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MonitoringPatch"];
+            };
+        };
+        responses: {
+            /** @description New monitoring settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonitoringSettings"];
+                };
+            };
+            /** @description A value is out of range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_setup_status: {
         parameters: {
             query?: never;
@@ -1886,6 +2271,137 @@ export interface operations {
                 };
             };
             /** @description Setup already completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_tasks: {
+        parameters: {
+            query?: {
+                page?: number;
+                page_size?: number;
+                status?: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of tasks */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskList"];
+                };
+            };
+            /** @description Invalid query */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Task ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such task (or not yours) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    cancel_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Task ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancellation requested */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such task (or not yours) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Task already finished */
             409: {
                 headers: {
                     [name: string]: unknown;
