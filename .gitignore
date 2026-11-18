@@ -1,0 +1,11 @@
+/target/
+/data/
+node_modules/
+/frontend/dist/
+/frontend/coverage/
+.DS_Store
+*.db
+*.db-shm
+*.db-wal
+config.toml
+!docs/**/config.toml
