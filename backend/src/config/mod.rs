@@ -184,6 +184,28 @@ impl Default for MonitoringConfig {
     }
 }
 
+/// Live video (SPEC §7). Becomes admin-editable at runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct StreamingConfig {
+    /// Seconds an unwatched stream stays connected before closing.
+    pub grace_period_secs: u64,
+    /// GOP cache cap per stream, in MiB.
+    pub stream_buffer_mb: u32,
+    /// GOP cache cap across all streams, in MiB.
+    pub global_buffer_mb: u32,
+}
+
+impl Default for StreamingConfig {
+    fn default() -> Self {
+        Self {
+            grace_period_secs: 15,
+            stream_buffer_mb: 4,
+            global_buffer_mb: 256,
+        }
+    }
+}
+
 /// Fully merged configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -194,6 +216,7 @@ pub struct Config {
     pub server: ServerConfig,
     pub auth: AuthConfig,
     pub monitoring: MonitoringConfig,
+    pub streaming: StreamingConfig,
     pub logging: LoggingConfig,
     /// Demo mode only: keep `demo.db` between runs instead of reseeding.
     pub demo_keep_state: bool,
@@ -207,6 +230,7 @@ impl Default for Config {
             server: ServerConfig::default(),
             auth: AuthConfig::default(),
             monitoring: MonitoringConfig::default(),
+            streaming: StreamingConfig::default(),
             logging: LoggingConfig::default(),
             demo_keep_state: false,
         }

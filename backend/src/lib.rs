@@ -14,6 +14,7 @@ pub mod providers;
 pub mod secret;
 pub mod settings;
 pub mod storage;
+pub mod streaming;
 pub mod supervisor;
 pub mod tasks;
 pub mod telemetry;
@@ -36,7 +37,9 @@ use crate::credentials::CredentialStore;
 use crate::events::EventBus;
 use crate::monitoring::{Monitor, MonitorStats};
 use crate::providers::ProviderFactory;
-use crate::settings::{MonitoringSettings, RuntimeSettings, SettingsHandle};
+use crate::settings::{RuntimeSettings, SettingsHandle};
+use crate::streaming::opener::ProviderOpener;
+use crate::streaming::StreamManager;
 use crate::supervisor::ServiceHealth;
 use crate::tasks::TaskManager;
 
@@ -54,17 +57,28 @@ pub struct AppState {
     pub settings: SettingsHandle,
     pub monitor_stats: Arc<MonitorStats>,
     pub tasks: TaskManager,
+    /// Shared upstream video streams (SPEC §7).
+    pub streams: StreamManager,
     /// Encrypts camera credentials at rest (ADR 0003).
     pub credentials: Arc<dyn CredentialStore>,
 }
 
 impl AppState {
     pub fn new(config: Config, db: SqlitePool, credentials: Arc<dyn CredentialStore>) -> Self {
-        let settings = SettingsHandle::new(RuntimeSettings {
-            monitoring: MonitoringSettings::from(&config.monitoring),
-        });
+        let settings = SettingsHandle::new(RuntimeSettings::from_config(&config));
         let events = EventBus::default();
+        let streams = StreamManager::new(
+            Arc::new(ProviderOpener {
+                db: db.clone(),
+                store: Arc::clone(&credentials),
+                settings: settings.clone(),
+                mode: config.mode,
+            }),
+            settings.clone(),
+            events.clone(),
+        );
         Self {
+            streams,
             tasks: TaskManager::new(db.clone(), events.clone()),
             events,
             services: ServiceHealth::default(),
@@ -158,13 +172,18 @@ pub async fn serve(
         }
     });
 
-    // Cancel running tasks as soon as shutdown starts.
+    // Stream metrics once a second while streams exist.
+    tokio::spawn(state.streams.clone().run_sampler(shutdown.child_token()));
+    // Cancel running tasks and close streams as soon as shutdown starts, so
+    // open media sockets don't hold up graceful shutdown.
     {
         let tasks = state.tasks.clone();
+        let streams = state.streams.clone();
         let shutdown = shutdown.clone();
         tokio::spawn(async move {
             shutdown.cancelled().await;
             tasks.shutdown();
+            streams.shutdown();
         });
     }
     let make_service = app(state).into_make_service_with_connect_info::<SocketAddr>();

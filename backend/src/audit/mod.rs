@@ -28,6 +28,7 @@ pub mod action {
     pub const CREDENTIAL_SET_UPDATE: &str = "credential_set.update";
     pub const CREDENTIAL_SET_DELETE: &str = "credential_set.delete";
     pub const SETTINGS_UPDATE: &str = "settings.update";
+    pub const STREAM_FORCE_STOP: &str = "stream.force_stop";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, ToSchema)]

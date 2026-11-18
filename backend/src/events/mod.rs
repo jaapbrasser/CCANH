@@ -7,6 +7,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::cameras::{CameraStatusView, CameraSummary};
+use crate::streaming::StreamInfo;
 use crate::tasks::Task;
 
 /// Subscription topics a WebSocket client can ask for.
@@ -21,6 +22,8 @@ pub enum Topic {
     Cameras,
     /// Background task progress and completion (own tasks; admins see all).
     Tasks,
+    /// Active stream metrics, about once a second (admins only).
+    Streams,
 }
 
 /// A domain event. Serialized as-is into WebSocket server messages.
@@ -40,6 +43,9 @@ pub enum Event {
     TaskUpdated {
         task: Task,
     },
+    StreamsUpdated {
+        streams: Vec<StreamInfo>,
+    },
 }
 
 impl Event {
@@ -48,6 +54,7 @@ impl Event {
             Event::CameraStatus { .. } => Topic::CameraStatus,
             Event::CameraChanged { .. } | Event::CameraDeleted { .. } => Topic::Cameras,
             Event::TaskUpdated { .. } => Topic::Tasks,
+            Event::StreamsUpdated { .. } => Topic::Streams,
         }
     }
 }

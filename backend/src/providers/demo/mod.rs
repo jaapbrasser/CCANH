@@ -19,7 +19,7 @@ use self::catalog::Scenario;
 use self::models::{ModelKey, ALL_MODELS};
 use super::{
     CameraCapabilities, CameraProvider, CameraStatus, DeviceInfo, MediaSource, NetworkInfo,
-    ProbeResult, ProviderError, ProviderTarget, StreamProfile, StreamProfileId,
+    ProbeResult, ProviderError, ProviderTarget, StreamProfile, StreamProfileId, VideoCodec,
 };
 
 /// How long a simulated unreachable camera takes to fail (like a connect timeout).
@@ -231,13 +231,34 @@ impl CameraProvider for DemoProvider {
 
     async fn open_stream(
         &self,
-        _profile: &StreamProfileId,
-        _cancel: CancellationToken,
+        profile: &StreamProfileId,
+        cancel: CancellationToken,
     ) -> Result<Box<dyn MediaSource>, ProviderError> {
-        // Demo video arrives with the stream manager in Phase 5 (SPEC §12.3).
-        Err(ProviderError::unsupported(
-            "live video (arrives in Phase 5)",
-        ))
+        // Same scenario rules as other calls: offline cameras can't stream and
+        // wrong credentials are rejected (RTSP needs authentication).
+        self.request_as(true).await?;
+        let model = self.model.profile();
+        let Some(sp) = model
+            .stream_profiles()
+            .into_iter()
+            .find(|p| p.id == *profile)
+        else {
+            // Asking for a profile that doesn't exist is permanent, not transient.
+            return Err(ProviderError::unsupported(format!(
+                "stream profile \"{profile}\" (not configured on this camera)"
+            )));
+        };
+        if sp.codec != Some(VideoCodec::H264) {
+            return Err(ProviderError::unsupported(
+                "live view of H.265/MJPEG profiles (only H.264 is supported)",
+            ));
+        }
+        let pattern = usize::try_from(self.seed % 4).unwrap_or(0);
+        let clip = crate::streaming::demo::clip(pattern, &sp.id.0)
+            .ok_or_else(|| ProviderError::Internal("demo clip missing".into()))?;
+        Ok(Box::new(crate::streaming::demo::DemoMediaSource::new(
+            clip, cancel,
+        )))
     }
 }
 
@@ -306,12 +327,41 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn video_is_unsupported_until_phase_5() {
-        let err = provider("192.0.2.11")
+    async fn streams_h264_profiles_and_rejects_others() {
+        use crate::streaming::media::MediaEvent;
+        let p = provider("192.0.2.21"); // AXIS Q1656: main, main-h265, grid
+        let mut src = p
+            .open_stream(&StreamProfileId("grid".into()), CancellationToken::new())
+            .await
+            .unwrap();
+        let Some(MediaEvent::Params(params)) = src.next().await.unwrap() else {
+            panic!()
+        };
+        assert_eq!(params.width, 640);
+        let Some(MediaEvent::Frame(f)) = src.next().await.unwrap() else {
+            panic!()
+        };
+        assert!(f.keyframe);
+
+        let h265 = p
+            .open_stream(
+                &StreamProfileId("main-h265".into()),
+                CancellationToken::new(),
+            )
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(h265.category(), ErrorCategory::Unsupported);
+        assert!(p
+            .open_stream(&StreamProfileId("nope".into()), CancellationToken::new())
+            .await
+            .is_err());
+        // Offline cameras can't stream.
+        let offline = provider("192.0.2.34")
             .open_stream(&StreamProfileId("main".into()), CancellationToken::new())
             .await
             .err()
             .unwrap();
-        assert_eq!(err.category(), ErrorCategory::Unsupported);
+        assert_eq!(offline.category(), ErrorCategory::Unreachable);
     }
 }

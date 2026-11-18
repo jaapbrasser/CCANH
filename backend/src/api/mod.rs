@@ -11,6 +11,7 @@ mod pagination;
 mod settings;
 mod setup;
 mod static_files;
+mod streams;
 mod tasks;
 mod users;
 pub mod ws;
@@ -61,6 +62,7 @@ pub const DOCS_PATH: &str = "/api/docs";
         (name = "credentials", description = "Shared camera credential sets (write-only secrets)"),
         (name = "settings", description = "Admin-editable runtime settings"),
         (name = "tasks", description = "Background task status and cancellation"),
+        (name = "streams", description = "Live video and the active streams overview"),
         (name = "realtime", description = "WebSocket for live updates"),
     ),
 )]
@@ -111,6 +113,13 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(tasks::list))
         .routes(routes!(tasks::get))
         .routes(routes!(tasks::cancel))
+        .routes(routes!(streams::watch))
+        .routes(routes!(streams::list))
+        .routes(routes!(streams::stop))
+        .routes(routes!(
+            settings::update_streaming,
+            settings::reset_streaming
+        ))
         .routes(routes!(ws::ws))
 }
 

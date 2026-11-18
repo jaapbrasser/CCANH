@@ -57,6 +57,13 @@ offline_max_interval_secs = 60
 # All [monitoring] values are defaults: admins can override them at runtime
 # under Settings (stored in the database).
 
+[streaming]
+# Seconds an unwatched stream stays connected before the upstream is closed.
+grace_period_secs = 15
+# In-memory GOP cache caps (never written to disk), per stream and in total.
+stream_buffer_mb = 4
+global_buffer_mb = 256
+
 [logging]
 # tracing filter directive; RUST_LOG overrides it.
 level = "info"
