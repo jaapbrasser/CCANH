@@ -61,7 +61,9 @@ impl VapixClient {
         let http = reqwest::Client::builder()
             .use_preconfigured_tls(tls)
             .timeout(timeout)
-            .connect_timeout(timeout.min(Duration::from_secs(5)))
+            // Strictly shorter than the overall timeout, so a stalled connection
+            // fails as a connect error (unreachable), not a request timeout.
+            .connect_timeout(timeout.mul_f64(0.75).min(Duration::from_secs(5)))
             .redirect(reqwest::redirect::Policy::none())
             .user_agent(concat!("CCANH/", env!("CARGO_PKG_VERSION")))
             .build()
