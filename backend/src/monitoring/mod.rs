@@ -1,28 +1,37 @@
-//! Camera status monitoring.
+//! Camera status monitoring: the polling service (SPEC §10.2).
 //!
-//! Phase 2 version of the polling service (SPEC §10.2): a fixed interval with
-//! jitter, at most one check in flight per camera, a global concurrency cap, a
-//! per-check timeout, and a failure threshold before a camera is marked offline.
-//! Phase 4 extends this behind the same [`PollingPolicy`] (offline backoff,
-//! retries, admin-editable settings).
+//! - Each monitored camera is checked every `interval` ± jitter, with at most
+//!   one check in flight per camera and a global concurrency cap.
+//! - Transient failures (unreachable, timeout) are retried within a check a
+//!   bounded number of times with exponential backoff and jitter. Auth failures
+//!   are never retried in a tight loop (camera lockout, SPEC §10.4).
+//! - After `failure_threshold` consecutive failures a camera is offline and is
+//!   then checked less often: the interval doubles per further failure up to
+//!   `offline_max_interval`.
+//! - Settings are admin-editable at runtime ([`crate::settings`]) and applied on
+//!   the next tick without a restart.
+//! - State transitions (not every poll) are persisted and published.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use serde::Serialize;
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
-use tokio::sync::Semaphore;
+use tokio::sync::{watch, Semaphore};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::cameras::{self, CameraState, CameraStatusView, MonitorTarget};
-use crate::config::MonitoringConfig;
+use crate::config::Mode;
 use crate::credentials::CredentialStore;
 use crate::events::{Event, EventBus};
 use crate::providers::{CameraProvider, ErrorCategory, ProviderError, ProviderFactory};
+use crate::settings::{MonitoringSettings, RuntimeSettings};
 
 /// Decides how often each camera is checked. In the MVP active and idle cameras
 /// share one policy; streamed cameras can get their own interval later.
@@ -34,28 +43,107 @@ pub struct PollingPolicy {
     pub failure_threshold: u32,
     pub timeout: Duration,
     pub max_in_flight: usize,
+    /// Extra attempts within one check for transient errors.
+    pub retries: u32,
+    /// Upper bound for an offline camera's backed-off interval.
+    pub offline_max_interval: Duration,
     /// How often an online camera's identity and credentials are re-checked.
     pub identity_refresh: Duration,
 }
 
-impl From<&MonitoringConfig> for PollingPolicy {
-    fn from(c: &MonitoringConfig) -> Self {
+impl From<&MonitoringSettings> for PollingPolicy {
+    fn from(c: &MonitoringSettings) -> Self {
         Self {
             interval: Duration::from_secs(c.interval_secs),
             jitter: f64::from(c.jitter_percent) / 100.0,
             failure_threshold: c.failure_threshold,
             timeout: Duration::from_secs(c.timeout_secs),
-            max_in_flight: c.max_concurrent,
+            max_in_flight: usize::try_from(c.max_concurrent).unwrap_or(1).max(1),
+            retries: c.retries,
+            offline_max_interval: Duration::from_secs(c.offline_max_interval_secs),
             identity_refresh: Duration::from_secs(c.identity_refresh_minutes * 60),
         }
     }
 }
 
+/// Delay before retry `attempt` (0-based) within one check: 250 ms doubling,
+/// ±jitter, capped at 2 s.
+const RETRY_BASE: Duration = Duration::from_millis(250);
+
 impl PollingPolicy {
+    fn jittered(&self, base: Duration, unit: f64) -> Duration {
+        let spread = (unit.clamp(0.0, 1.0) * 2.0 - 1.0) * self.jitter;
+        base.mul_f64((1.0 + spread).max(0.0))
+    }
+
     /// `interval` randomized by ±`jitter`, using `unit` in [0, 1).
     pub fn next_delay(&self, unit: f64) -> Duration {
-        let spread = (unit.clamp(0.0, 1.0) * 2.0 - 1.0) * self.jitter;
-        self.interval.mul_f64((1.0 + spread).max(0.0))
+        self.jittered(self.interval, unit)
+    }
+
+    /// When to check again after a check that produced `status`.
+    pub fn delay_after(&self, status: &CameraStatusView, unit: f64) -> Duration {
+        // The status call itself was rejected: back off fully so a wrong
+        // password can't lock out the camera account.
+        if status.error_category == Some(ErrorCategory::AuthFailed) {
+            return self.jittered(self.offline_max_interval, unit);
+        }
+        let threshold = self.failure_threshold.max(1);
+        if status.consecutive_failures >= threshold {
+            let extra = (status.consecutive_failures - threshold + 1).min(16);
+            let backed = self.interval.saturating_mul(1 << extra);
+            return self.jittered(backed.min(self.offline_max_interval), unit);
+        }
+        self.next_delay(unit)
+    }
+
+    pub fn retry_delay(&self, attempt: u32, unit: f64) -> Duration {
+        let base = RETRY_BASE
+            .saturating_mul(1 << attempt.min(3))
+            .min(Duration::from_secs(2));
+        self.jittered(base, unit)
+    }
+}
+
+/// Counters for the polling service (SPEC §10.3: a supervised service with its
+/// own metrics). Shared across restarts of the monitor.
+#[derive(Debug, Default)]
+pub struct MonitorStats {
+    checks: AtomicU64,
+    failures: AtomicU64,
+    retries: AtomicU64,
+    identity_checks: AtomicU64,
+    in_flight: AtomicUsize,
+    cameras: AtomicUsize,
+    last_tick_unix: AtomicU64,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema, PartialEq, Eq)]
+pub struct MonitorStatsSnapshot {
+    /// Status checks completed since the server started.
+    pub checks_total: u64,
+    /// Checks that ended in a failure (after retries).
+    pub failures_total: u64,
+    /// Extra attempts made for transient errors.
+    pub retries_total: u64,
+    pub identity_checks_total: u64,
+    pub checks_in_flight: usize,
+    pub cameras_monitored: usize,
+    /// Unix time of the monitor's last scheduling tick (0 = never).
+    pub last_tick_unix: u64,
+}
+
+impl MonitorStats {
+    pub fn snapshot(&self) -> MonitorStatsSnapshot {
+        MonitorStatsSnapshot {
+            checks_total: self.checks.load(Ordering::Relaxed),
+            failures_total: self.failures.load(Ordering::Relaxed),
+            retries_total: self.retries.load(Ordering::Relaxed),
+            identity_checks_total: self.identity_checks.load(Ordering::Relaxed),
+            checks_in_flight: self.in_flight.load(Ordering::Relaxed),
+            cameras_monitored: self.cameras.load(Ordering::Relaxed),
+            last_tick_unix: self.last_tick_unix.load(Ordering::Relaxed),
+        }
     }
 }
 
@@ -176,8 +264,10 @@ async fn fetch_identity(
 
 struct Track {
     provider: Arc<dyn CameraProvider>,
-    version: (OffsetDateTime, Option<OffsetDateTime>),
-    next_due: Instant,
+    /// Camera config, shared credentials and settings generation; a change
+    /// rebuilds the provider.
+    version: (OffsetDateTime, Option<OffsetDateTime>, u64),
+    next_due: Arc<Mutex<Instant>>,
     in_flight: Arc<AtomicBool>,
     /// When identity/credentials were last checked by this monitor.
     last_identity: Arc<Mutex<Option<Instant>>>,
@@ -203,15 +293,23 @@ impl Jitter {
     }
 }
 
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 pub struct Monitor {
     db: SqlitePool,
+    mode: Mode,
     factory: ProviderFactory,
     bus: EventBus,
+    settings: watch::Receiver<RuntimeSettings>,
     policy: PollingPolicy,
+    generation: u64,
     tracks: HashMap<Uuid, Track>,
     permits: Arc<Semaphore>,
     jitter: Arc<Jitter>,
     store: Arc<dyn CredentialStore>,
+    stats: Arc<MonitorStats>,
     /// How often the registry is re-read to pick up added/removed cameras.
     tick: Duration,
 }
@@ -219,21 +317,26 @@ pub struct Monitor {
 impl Monitor {
     pub fn new(
         db: SqlitePool,
-        factory: ProviderFactory,
+        mode: Mode,
         bus: EventBus,
-        policy: PollingPolicy,
+        mut settings: watch::Receiver<RuntimeSettings>,
         store: Arc<dyn CredentialStore>,
+        stats: Arc<MonitorStats>,
     ) -> Self {
-        let permits = Arc::new(Semaphore::new(policy.max_in_flight.max(1)));
+        let policy = PollingPolicy::from(&settings.borrow_and_update().monitoring);
         Self {
             db,
-            factory,
+            mode,
+            factory: ProviderFactory::new(mode, policy.timeout),
             bus,
+            settings,
+            permits: Arc::new(Semaphore::new(policy.max_in_flight)),
             policy,
+            generation: 0,
             tracks: HashMap::new(),
-            permits,
             jitter: Arc::new(Jitter::new()),
             store,
+            stats,
             tick: Duration::from_millis(500),
         }
     }
@@ -252,6 +355,7 @@ impl Monitor {
                 () = cancel.cancelled() => break,
                 _ = ticker.tick() => {}
             }
+            self.apply_settings_changes();
             if let Err(err) = self.tick_once(&cancel).await {
                 tracing::warn!(error = %err, "status monitor could not read cameras");
             }
@@ -259,16 +363,56 @@ impl Monitor {
         tracing::info!("camera status monitor stopped");
     }
 
+    /// Pick up admin changes to the monitoring settings.
+    fn apply_settings_changes(&mut self) {
+        if !self.settings.has_changed().unwrap_or(false) {
+            return;
+        }
+        let policy = PollingPolicy::from(&self.settings.borrow_and_update().monitoring);
+        if policy.max_in_flight != self.policy.max_in_flight {
+            // In-flight checks keep their permits from the old semaphore.
+            self.permits = Arc::new(Semaphore::new(policy.max_in_flight));
+        }
+        if policy.timeout != self.policy.timeout {
+            self.factory = ProviderFactory::new(self.mode, policy.timeout);
+            self.generation += 1; // rebuild providers with the new timeout
+        }
+        if policy.interval < self.policy.interval {
+            // Pull already-scheduled checks forward so a shorter interval takes
+            // effect now, not after the old (longer) interval runs out.
+            let latest = Instant::now() + policy.interval;
+            for track in self.tracks.values() {
+                let mut due = lock(&track.next_due);
+                if *due > latest {
+                    *due = Instant::now() + policy.next_delay(self.jitter.unit());
+                }
+            }
+        }
+        tracing::info!(
+            interval_secs = policy.interval.as_secs(),
+            max_in_flight = policy.max_in_flight,
+            "monitoring settings changed"
+        );
+        self.policy = policy;
+    }
+
     async fn tick_once(&mut self, cancel: &CancellationToken) -> Result<(), sqlx::Error> {
         let targets = cameras::monitor_targets(&self.db).await?;
         let now = Instant::now();
+        self.stats.cameras.store(targets.len(), Ordering::Relaxed);
+        self.stats.last_tick_unix.store(
+            u64::try_from(OffsetDateTime::now_utc().unix_timestamp()).unwrap_or(0),
+            Ordering::Relaxed,
+        );
         self.tracks
             .retain(|id, _| targets.iter().any(|t| t.id == *id));
 
         for target in targets {
+            let (updated, creds) = target.config_version();
+            let version = (updated, creds, self.generation);
             let track = match self.tracks.get_mut(&target.id) {
-                Some(track) if track.version == target.config_version() => track,
-                _ => {
+                Some(track) if track.version == version => track,
+                existing => {
                     let provider_target = match target.provider_target(&*self.store) {
                         Ok(t) => t,
                         Err(err) => {
@@ -280,16 +424,21 @@ impl Monitor {
                             continue;
                         }
                     };
-                    // New or reconfigured camera: (re)build its provider and spread
-                    // first checks over one interval so a big fleet doesn't start
-                    // in lockstep.
-                    let first = self.policy.interval.mul_f64(self.jitter.unit());
+                    // New camera: spread first checks so a big fleet doesn't start
+                    // in lockstep. Reconfigured camera: keep its schedule.
+                    let next_due = match existing {
+                        Some(t) => Arc::clone(&t.next_due),
+                        None => {
+                            let first = self.policy.interval.mul_f64(self.jitter.unit());
+                            Arc::new(Mutex::new(now + first.min(Duration::from_secs(2))))
+                        }
+                    };
                     self.tracks.insert(
                         target.id,
                         Track {
                             provider: self.factory.create(&provider_target),
-                            version: target.config_version(),
-                            next_due: now + first.min(Duration::from_secs(2)),
+                            version,
+                            next_due,
                             in_flight: Arc::new(AtomicBool::new(false)),
                             last_identity: Arc::default(),
                         },
@@ -300,14 +449,15 @@ impl Monitor {
                 }
             };
 
-            if track.next_due > now || track.in_flight.load(Ordering::Acquire) {
+            if *lock(&track.next_due) > now || track.in_flight.load(Ordering::Acquire) {
                 continue;
             }
             let Ok(permit) = Arc::clone(&self.permits).try_acquire_owned() else {
                 break; // at capacity; remaining cameras wait for the next tick
             };
             track.in_flight.store(true, Ordering::Release);
-            track.next_due = now + self.policy.next_delay(self.jitter.unit());
+            // Provisional; the check sets the real next time from its outcome.
+            *lock(&track.next_due) = now + self.policy.interval;
 
             let ctx = CheckContext {
                 db: self.db.clone(),
@@ -315,7 +465,10 @@ impl Monitor {
                 policy: self.policy.clone(),
                 provider: Arc::clone(&track.provider),
                 in_flight: Arc::clone(&track.in_flight),
+                next_due: Arc::clone(&track.next_due),
                 last_identity: Arc::clone(&track.last_identity),
+                jitter: Arc::clone(&self.jitter),
+                stats: Arc::clone(&self.stats),
             };
             let cancel = cancel.child_token();
             tokio::spawn(async move {
@@ -336,7 +489,10 @@ struct CheckContext {
     policy: PollingPolicy,
     provider: Arc<dyn CameraProvider>,
     in_flight: Arc<AtomicBool>,
+    next_due: Arc<Mutex<Instant>>,
     last_identity: Arc<Mutex<Option<Instant>>>,
+    jitter: Arc<Jitter>,
+    stats: Arc<MonitorStats>,
 }
 
 impl CheckContext {
@@ -344,30 +500,56 @@ impl CheckContext {
     /// contact, when the camera comes back online (firmware may have changed),
     /// and periodically so changed or revoked credentials are noticed.
     fn identity_due(&self, target: &MonitorTarget, became_online: bool) -> bool {
-        let last = *self.last_identity.lock().unwrap_or_else(|e| e.into_inner());
+        let last = *lock(&self.last_identity);
         became_online
             || target.identity_updated_at.is_none()
             || last.is_none_or(|t| t.elapsed() >= self.policy.identity_refresh)
     }
 
+    /// One status request, with bounded retries for transient errors only.
+    async fn status_with_retries(&self) -> CheckOutcome {
+        let mut attempt = 0;
+        loop {
+            let outcome =
+                match tokio::time::timeout(self.policy.timeout, self.provider.get_status()).await {
+                    Ok(Ok(s)) => CheckOutcome::Success {
+                        response_time_ms: s.response_time_ms.max(1),
+                    },
+                    Ok(Err(e)) => CheckOutcome::Failure(e),
+                    Err(_) => CheckOutcome::Failure(ProviderError::Timeout(format!(
+                        "no answer within {}s",
+                        self.policy.timeout.as_secs()
+                    ))),
+                };
+            match &outcome {
+                CheckOutcome::Failure(e)
+                    if e.category().is_retryable() && attempt < self.policy.retries =>
+                {
+                    self.stats.retries.fetch_add(1, Ordering::Relaxed);
+                    tokio::time::sleep(self.policy.retry_delay(attempt, self.jitter.unit())).await;
+                    attempt += 1;
+                }
+                _ => return outcome,
+            }
+        }
+    }
+
     async fn check(self, target: MonitorTarget) {
-        let outcome =
-            match tokio::time::timeout(self.policy.timeout, self.provider.get_status()).await {
-                Ok(Ok(s)) => CheckOutcome::Success {
-                    response_time_ms: s.response_time_ms.max(1),
-                },
-                Ok(Err(e)) => CheckOutcome::Failure(e),
-                Err(_) => CheckOutcome::Failure(ProviderError::Timeout(format!(
-                    "no answer within {}s",
-                    self.policy.timeout.as_secs()
-                ))),
-            };
+        self.stats.in_flight.fetch_add(1, Ordering::Relaxed);
+        let outcome = self.status_with_retries().await;
+        self.stats.checks.fetch_add(1, Ordering::Relaxed);
+        if matches!(&outcome, CheckOutcome::Failure(e) if e.category() != ErrorCategory::Unsupported)
+        {
+            self.stats.failures.fetch_add(1, Ordering::Relaxed);
+        }
         let (status, transition) = apply(
             &target.status,
             &outcome,
             OffsetDateTime::now_utc(),
             self.policy.failure_threshold,
         );
+        *lock(&self.next_due) =
+            Instant::now() + self.policy.delay_after(&status, self.jitter.unit());
 
         if let Some((from, to)) = transition {
             tracing::info!(
@@ -385,7 +567,8 @@ impl CheckContext {
         let became_online = transition.is_some_and(|(_, to)| to == CameraState::Online);
         let mut published = status;
         if published.state == CameraState::Online && self.identity_due(&target, became_online) {
-            *self.last_identity.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+            *lock(&self.last_identity) = Some(Instant::now());
+            self.stats.identity_checks.fetch_add(1, Ordering::Relaxed);
             let result =
                 refresh_identity(&self.db, &*self.provider, target.id, self.policy.timeout).await;
             if let Err(err) = &result {
@@ -405,6 +588,7 @@ impl CheckContext {
             camera_id: target.id,
             status: published,
         });
+        self.stats.in_flight.fetch_sub(1, Ordering::Relaxed);
         self.in_flight.store(false, Ordering::Release);
     }
 }
@@ -425,6 +609,8 @@ mod tests {
             failure_threshold: 3,
             timeout: Duration::from_secs(5),
             max_in_flight: 4,
+            retries: 1,
+            offline_max_interval: Duration::from_secs(60),
             identity_refresh: Duration::from_secs(900),
         };
         assert_eq!(policy.next_delay(0.0), Duration::from_secs(8));
@@ -437,6 +623,47 @@ mod tests {
                 "{d:?}"
             );
         }
+    }
+
+    fn policy() -> PollingPolicy {
+        PollingPolicy::from(&MonitoringSettings::from(
+            &crate::config::MonitoringConfig::default(),
+        ))
+    }
+
+    #[test]
+    fn offline_cameras_back_off_up_to_the_cap() {
+        let p = policy(); // 10 s, threshold 3, cap 60 s
+        let mid = 0.5; // no jitter
+        let with = |failures| CameraStatusView {
+            consecutive_failures: failures,
+            ..Default::default()
+        };
+        assert_eq!(p.delay_after(&with(0), mid), Duration::from_secs(10));
+        assert_eq!(p.delay_after(&with(2), mid), Duration::from_secs(10));
+        assert_eq!(p.delay_after(&with(3), mid), Duration::from_secs(20));
+        assert_eq!(p.delay_after(&with(4), mid), Duration::from_secs(40));
+        assert_eq!(p.delay_after(&with(5), mid), Duration::from_secs(60));
+        assert_eq!(p.delay_after(&with(500), mid), Duration::from_secs(60));
+    }
+
+    #[test]
+    fn auth_failures_back_off_fully_at_once() {
+        let p = policy();
+        let status = CameraStatusView {
+            consecutive_failures: 1,
+            error_category: Some(ErrorCategory::AuthFailed),
+            ..Default::default()
+        };
+        assert_eq!(p.delay_after(&status, 0.5), Duration::from_secs(60));
+    }
+
+    #[test]
+    fn retry_delays_grow_and_are_bounded() {
+        let p = policy();
+        assert_eq!(p.retry_delay(0, 0.5), Duration::from_millis(250));
+        assert_eq!(p.retry_delay(1, 0.5), Duration::from_millis(500));
+        assert_eq!(p.retry_delay(10, 0.5), Duration::from_secs(2));
     }
 
     #[test]

@@ -163,6 +163,10 @@ pub struct MonitoringConfig {
     pub max_concurrent: usize,
     /// Minutes between identity/credential re-checks of an online camera.
     pub identity_refresh_minutes: u64,
+    /// Extra attempts within one check for transient errors (unreachable, timeout).
+    pub retries: u32,
+    /// Upper bound for the backed-off interval of offline cameras, in seconds.
+    pub offline_max_interval_secs: u64,
 }
 
 impl Default for MonitoringConfig {
@@ -174,6 +178,8 @@ impl Default for MonitoringConfig {
             timeout_secs: 5,
             max_concurrent: 32,
             identity_refresh_minutes: 15,
+            retries: 1,
+            offline_max_interval_secs: 60,
         }
     }
 }

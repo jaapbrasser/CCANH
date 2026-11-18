@@ -117,13 +117,13 @@ async fn passwords_never_appear_in_logs() {
     )
     .await;
     let addr = camera.address();
-    app.send(
-        req(Method::POST, "/api/v1/cameras/test-connection")
-            .cookie(&admin)
-            .json(json!({
-                "host": addr.ip().to_string(), "port": addr.port(), "scheme": "http",
-                "credentials": { "type": "inline", "username": "root", "password": secrets[5] }
-            })),
+    // Runs as a background task; wait for it so its logs are captured.
+    app.test_connection(
+        &admin,
+        json!({
+            "host": addr.ip().to_string(), "port": addr.port(), "scheme": "http",
+            "credentials": { "type": "inline", "username": "root", "password": secrets[5] }
+        }),
     )
     .await;
     app.send(

@@ -100,6 +100,7 @@ impl TestApp {
         let db = storage::connect_in_memory().await.unwrap();
         let store = std::sync::Arc::new(crane::credentials::AesGcmStore::ephemeral());
         let state = AppState::new(config, db, store);
+        state.settings.load(&state.db).await.unwrap();
         let router = crane::app(state.clone());
         Self { state, router }
     }
@@ -171,5 +172,42 @@ impl TestApp {
         let user = self.user(username, role).await;
         let cookie = self.login(username).await;
         (user, cookie)
+    }
+}
+
+impl TestApp {
+    /// Poll a task until it finishes and return its final JSON.
+    pub async fn wait_task(&self, cookie: &str, id: &str) -> Value {
+        for _ in 0..300 {
+            let res = self
+                .send(req(Method::GET, &format!("/api/v1/tasks/{id}")).cookie(cookie))
+                .await;
+            assert_eq!(res.status, StatusCode::OK, "{}", res.text());
+            let task = res.json();
+            if matches!(
+                task["status"].as_str(),
+                Some("succeeded" | "failed" | "cancelled")
+            ) {
+                return task;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        panic!("task {id} did not finish");
+    }
+
+    /// Start a connection test and return its `TestConnectionResult`.
+    pub async fn test_connection(&self, cookie: &str, body: Value) -> Value {
+        let res = self
+            .send(
+                req(Method::POST, "/api/v1/cameras/test-connection")
+                    .cookie(cookie)
+                    .json(body),
+            )
+            .await;
+        assert_eq!(res.status, StatusCode::ACCEPTED, "{}", res.text());
+        let id = res.json()["id"].as_str().unwrap().to_owned();
+        let task = self.wait_task(cookie, &id).await;
+        assert_eq!(task["status"], "succeeded", "{task}");
+        task["result"].clone()
     }
 }
