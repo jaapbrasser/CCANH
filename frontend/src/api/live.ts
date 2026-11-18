@@ -3,6 +3,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { meKey } from "./auth";
 import { cameraKeys, type CameraDetail, type CameraList } from "./cameras";
 import { isTerminal, taskKeys, type Task } from "./tasks";
+import { orgKeys } from "./organization";
 import { streamsKey } from "./streams";
 import { showToast } from "../components/toasts";
 import type { components } from "./schema";
@@ -64,6 +65,9 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage, myId?: str
       if (!isTerminal(prev?.status)) notifyTaskFinished(msg.task, myId);
       break;
     }
+    case "organization_changed":
+      qc.invalidateQueries({ queryKey: msg.kind === "groups" ? orgKeys.groups : orgKeys.tags });
+      break;
     case "streams_updated":
       qc.setQueryData(streamsKey, msg.streams);
       break;

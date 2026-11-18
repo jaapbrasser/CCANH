@@ -53,6 +53,9 @@ export function Layout() {
             <NavLink to="/cameras" className={linkClass}>
               Cameras
             </NavLink>
+            <NavLink to="/favorites" className={linkClass}>
+              Favorites
+            </NavLink>
             <NavLink to="/activity" className={linkClass}>
               Activity
             </NavLink>
@@ -63,6 +66,9 @@ export function Layout() {
                 </NavLink>
                 <NavLink to="/users" className={linkClass}>
                   Users
+                </NavLink>
+                <NavLink to="/organization" className={linkClass}>
+                  Groups &amp; tags
                 </NavLink>
                 <NavLink to="/streams" className={linkClass}>
                   Streams

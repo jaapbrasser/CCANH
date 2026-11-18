@@ -31,6 +31,8 @@ function summary(id: string, name: string, extra: Partial<CameraSummary> = {}): 
       identity_error_category: null,
       identity_error_message: null,
     },
+    groups: [],
+    tags: [],
     ...extra,
   };
 }
