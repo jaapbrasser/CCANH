@@ -6,9 +6,10 @@ Read §0–3 before coding, then the section for the current phase (§17).
 
 ## Current phase
 
-Phases 0–2 (Foundation, Auth & users, Camera core + demo) are complete. Next:
-Phase 3 (streaming spike, throwaway branch + ADR 0002). Don't build ahead of the
-current phase, and post a plan before starting one.
+Phases 0–3 are complete (Foundation, Auth & users, Camera core + demo, streaming
+spike → ADR 0002: fMP4 over WebSocket to MSE). Next: Phase 4 (AXIS provider +
+monitoring). Don't build ahead of the current phase, and post a plan before
+starting one.
 
 ## Commands
 
@@ -45,6 +46,7 @@ pwsh scripts/gen-api-types.ps1 -Check     # CI drift check
 pwsh scripts/sqlx-prepare.ps1             # regenerate .sqlx/ after query/migration changes
 pwsh scripts/build.ps1                    # release binary with embedded UI
 pwsh scripts/smoke-test.ps1 -Exe target/release/crane
+pwsh scripts/rtsp-test-source.ps1         # local RTSP H.264 source (needs ffmpeg + mediamtx)
 ```
 
 ## Layout (as it exists)
