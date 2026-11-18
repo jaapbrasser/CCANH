@@ -267,6 +267,7 @@ async fn monitor_tracks_demo_fleet_end_to_end() {
             descending: false,
             limit: 100,
             offset: 0,
+            ..Default::default()
         },
     )
     .await

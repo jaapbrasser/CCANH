@@ -93,6 +93,8 @@ impl From<SummaryRow> for CameraSummary {
                 identity_error_category: r.identity_error_category,
                 identity_error_message: r.identity_error_message,
             },
+            groups: Vec::new(),
+            tags: Vec::new(),
         }
     }
 }
@@ -122,6 +124,7 @@ impl CameraSort {
     }
 }
 
+#[derive(Debug, Default)]
 pub struct ListParams<'a> {
     pub search: Option<&'a str>,
     pub state: Option<CameraState>,
@@ -129,6 +132,27 @@ pub struct ListParams<'a> {
     pub descending: bool,
     pub limit: i64,
     pub offset: i64,
+    /// Cameras in this group or any of its subgroups.
+    pub group: Option<Uuid>,
+    pub tag: Option<Uuid>,
+    /// Only this user's favorites.
+    pub favorites_of: Option<Uuid>,
+}
+
+/// Fill in each summary's groups and tags.
+pub async fn attach_memberships(
+    db: &SqlitePool,
+    items: &mut [CameraSummary],
+) -> Result<(), sqlx::Error> {
+    let ids: Vec<Uuid> = items.iter().map(|c| c.id).collect();
+    let mut m = crate::organization::memberships(db, &ids).await?;
+    for c in items {
+        if let Some((groups, tags)) = m.remove(&c.id) {
+            c.groups = groups;
+            c.tags = tags;
+        }
+    }
+    Ok(())
 }
 
 fn like_pattern(s: &str) -> String {
@@ -145,6 +169,9 @@ pub async fn list(
 ) -> Result<(Vec<CameraSummary>, i64), sqlx::Error> {
     let pattern = p.search.map(like_pattern);
     let state = p.state;
+    let group = p.group.map(Uuid::hyphenated);
+    let tag = p.tag.map(Uuid::hyphenated);
+    let favorites_of = p.favorites_of.map(Uuid::hyphenated);
     let sort = p.sort.as_str();
     let order = if p.descending { "desc" } else { "asc" };
 
@@ -153,9 +180,20 @@ pub async fn list(
              FROM cameras c JOIN camera_status s ON s.camera_id = c.id
             WHERE (?1 IS NULL OR c.name LIKE ?1 ESCAPE '\' OR c.host LIKE ?1 ESCAPE '\'
                    OR c.model LIKE ?1 ESCAPE '\')
-              AND (?2 IS NULL OR s.state = ?2)"#,
+              AND (?2 IS NULL OR s.state = ?2)
+              AND (?3 IS NULL OR c.id IN (
+                    SELECT cg.camera_id FROM camera_groups cg
+                     WHERE cg.group_id IN (
+                       WITH RECURSIVE sub(id) AS (
+                         SELECT ?3 UNION SELECT g.id FROM groups g JOIN sub ON g.parent_id = sub.id
+                       ) SELECT id FROM sub)))
+              AND (?4 IS NULL OR c.id IN (SELECT ct.camera_id FROM camera_tags ct WHERE ct.tag_id = ?4))
+              AND (?5 IS NULL OR c.id IN (SELECT f.camera_id FROM favorites f WHERE f.user_id = ?5))"#,
         pattern,
-        state
+        state,
+        group,
+        tag,
+        favorites_of
     )
     .fetch_one(db)
     .await?;
@@ -179,6 +217,14 @@ pub async fn list(
             WHERE (?1 IS NULL OR c.name LIKE ?1 ESCAPE '\' OR c.host LIKE ?1 ESCAPE '\'
                    OR c.model LIKE ?1 ESCAPE '\')
               AND (?2 IS NULL OR s.state = ?2)
+              AND (?7 IS NULL OR c.id IN (
+                    SELECT cg.camera_id FROM camera_groups cg
+                     WHERE cg.group_id IN (
+                       WITH RECURSIVE sub(id) AS (
+                         SELECT ?7 UNION SELECT g.id FROM groups g JOIN sub ON g.parent_id = sub.id
+                       ) SELECT id FROM sub)))
+              AND (?8 IS NULL OR c.id IN (SELECT ct.camera_id FROM camera_tags ct WHERE ct.tag_id = ?8))
+              AND (?9 IS NULL OR c.id IN (SELECT f.camera_id FROM favorites f WHERE f.user_id = ?9))
             ORDER BY
               CASE WHEN ?3 = 'name'  AND ?4 = 'asc'  THEN c.name  COLLATE NOCASE END ASC,
               CASE WHEN ?3 = 'name'  AND ?4 = 'desc' THEN c.name  COLLATE NOCASE END DESC,
@@ -199,12 +245,17 @@ pub async fn list(
         sort,
         order,
         p.limit,
-        p.offset
+        p.offset,
+        group,
+        tag,
+        favorites_of
     )
     .fetch_all(db)
     .await?;
 
-    Ok((rows.into_iter().map(CameraSummary::from).collect(), total))
+    let mut items: Vec<CameraSummary> = rows.into_iter().map(CameraSummary::from).collect();
+    attach_memberships(db, &mut items).await?;
+    Ok((items, total))
 }
 
 pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx::Error> {
@@ -239,7 +290,7 @@ pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx
     .fetch_optional(db)
     .await?;
 
-    Ok(row.map(|r| CameraDetail {
+    let Some(mut detail) = row.map(|r| CameraDetail {
         summary: CameraSummary::from(SummaryRow {
             id: r.id,
             name: r.name,
@@ -291,7 +342,11 @@ pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx
         identity_updated_at: r.identity_updated_at,
         created_at: r.created_at,
         updated_at: r.updated_at,
-    }))
+    }) else {
+        return Ok(None);
+    };
+    attach_memberships(db, std::slice::from_mut(&mut detail.summary)).await?;
+    Ok(Some(detail))
 }
 
 /// Set a camera's stream profile overrides. Returns `false` if the camera
@@ -887,6 +942,8 @@ mod tests {
             monitoring_enabled: true,
             credentials: None,
             allow_basic_over_http: false,
+            group_ids: vec![],
+            tag_ids: vec![],
         })
         .unwrap()
         .0
@@ -928,6 +985,8 @@ mod tests {
             monitoring_enabled: true,
             credentials: None,
             allow_basic_over_http: false,
+            group_ids: vec![],
+            tag_ids: vec![],
         };
         assert_eq!(
             CameraSettings::from_new(base(None)).err(),
@@ -1036,6 +1095,7 @@ mod tests {
             descending,
             limit: 50,
             offset: 0,
+            ..Default::default()
         };
         let (cams, total) = list(&db, params(None, None, CameraSort::Name, false))
             .await

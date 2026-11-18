@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM camera_tags\n          WHERE camera_id IN (SELECT value FROM json_each(?1))\n            AND tag_id IN (SELECT value FROM json_each(?2))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "8cf098879d8f1a697bdc234b95c3fdee874b0d994e1f29eb270cace4acc538a6"
+}

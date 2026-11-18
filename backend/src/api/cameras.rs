@@ -20,6 +20,7 @@ use crate::cameras::{
 };
 use crate::events::Event;
 use crate::monitoring;
+use crate::organization::{groups, tags};
 use crate::users::SortOrder;
 use crate::AppState;
 
@@ -58,6 +59,12 @@ pub struct CameraListQuery {
     pub sort: Option<CameraSort>,
     #[param(inline)]
     pub order: Option<SortOrder>,
+    /// Only cameras in this group or any of its subgroups.
+    pub group_id: Option<Uuid>,
+    /// Only cameras with this tag.
+    pub tag_id: Option<Uuid>,
+    /// `true`: only the signed-in user's favorites.
+    pub favorites: Option<bool>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -101,7 +108,7 @@ pub struct StatusHistory {
     )
 )]
 pub async fn list(
-    _user: AuthUser,
+    user: AuthUser,
     State(state): State<AppState>,
     QueryParams(query): QueryParams<CameraListQuery>,
 ) -> Result<Json<CameraList>, ApiError> {
@@ -119,6 +126,9 @@ pub async fn list(
             descending: query.order == Some(SortOrder::Desc),
             limit: page.limit(),
             offset: page.offset(),
+            group: query.group_id,
+            tag: query.tag_id,
+            favorites_of: (query.favorites == Some(true)).then_some(user.id),
         },
     )
     .await?;
@@ -215,6 +225,8 @@ fn settings_json(c: &CameraDetail) -> serde_json::Value {
         "has_credentials": c.has_credentials,
         "credential_set": c.credential_set.as_ref().map(|s| &s.name),
         "allow_basic_over_http": c.allow_basic_over_http,
+        "groups": c.summary.groups.iter().map(|g| &g.name).collect::<Vec<_>>(),
+        "tags": c.summary.tags.iter().map(|t| &t.name).collect::<Vec<_>>(),
     })
 }
 
@@ -240,13 +252,35 @@ pub async fn create(
     admin: AdminUser,
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
-    JsonBody(body): JsonBody<NewCamera>,
+    JsonBody(mut body): JsonBody<NewCamera>,
 ) -> Result<(StatusCode, Json<CameraDetail>), ApiError> {
+    let group_ids = std::mem::take(&mut body.group_ids);
+    let tag_ids = std::mem::take(&mut body.tag_ids);
     let (settings, credentials) =
         CameraSettings::from_new(body).map_err(|e| camera_error(e.into()))?;
-    let camera = cameras::create(&state.db, &*state.credentials, &settings, credentials)
+    groups::ensure_exist(&state.db, &group_ids)
+        .await
+        .map_err(super::organization::org_error)?;
+    tags::ensure_exist(&state.db, &tag_ids)
+        .await
+        .map_err(super::organization::org_error)?;
+    let created = cameras::create(&state.db, &*state.credentials, &settings, credentials)
         .await
         .map_err(camera_error)?;
+    let id = created.summary.id;
+    if !group_ids.is_empty() {
+        groups::set_for_camera(&state.db, id, &group_ids)
+            .await
+            .map_err(super::organization::org_error)?;
+    }
+    if !tag_ids.is_empty() {
+        tags::set_for_camera(&state.db, id, &tag_ids)
+            .await
+            .map_err(super::organization::org_error)?;
+    }
+    let camera = cameras::get(&state.db, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     warn_if_insecure(&camera, &admin);
     audit::record(
         &state.db,
@@ -288,11 +322,36 @@ pub async fn update(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
     PathParam(id): PathParam<Uuid>,
-    JsonBody(body): JsonBody<CameraPatch>,
+    JsonBody(mut body): JsonBody<CameraPatch>,
 ) -> Result<Json<CameraDetail>, ApiError> {
-    let (before, after) = cameras::update(&state.db, &*state.credentials, id, body)
+    let group_ids = body.group_ids.take();
+    let tag_ids = body.tag_ids.take();
+    if let Some(g) = &group_ids {
+        groups::ensure_exist(&state.db, g)
+            .await
+            .map_err(super::organization::org_error)?;
+    }
+    if let Some(t) = &tag_ids {
+        tags::ensure_exist(&state.db, t)
+            .await
+            .map_err(super::organization::org_error)?;
+    }
+    let (before, _) = cameras::update(&state.db, &*state.credentials, id, body)
         .await
         .map_err(camera_error)?;
+    if let Some(g) = &group_ids {
+        groups::set_for_camera(&state.db, id, g)
+            .await
+            .map_err(super::organization::org_error)?;
+    }
+    if let Some(t) = &tag_ids {
+        tags::set_for_camera(&state.db, id, t)
+            .await
+            .map_err(super::organization::org_error)?;
+    }
+    let after = cameras::get(&state.db, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     warn_if_insecure(&after, &admin);
     audit::record(
         &state.db,
@@ -406,10 +465,23 @@ pub async fn delete(
     ClientIp(ip): ClientIp,
     PathParam(id): PathParam<Uuid>,
 ) -> Result<StatusCode, ApiError> {
+    remove_camera(&state, &admin, ip, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Delete a camera, stop its live streams, audit and announce it. Shared by
+/// single and bulk delete.
+pub(super) async fn remove_camera(
+    state: &AppState,
+    admin: &AdminUser,
+    ip: Option<std::net::IpAddr>,
+    id: Uuid,
+) -> Result<(), ApiError> {
     let camera = cameras::get(&state.db, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     cameras::delete(&state.db, id).await.map_err(camera_error)?;
+    state.streams.stop_camera(id, "the camera was removed");
     audit::record(
         &state.db,
         AuditEvent::new(action::CAMERA_DELETE, Outcome::Success)
@@ -420,7 +492,7 @@ pub async fn delete(
     )
     .await?;
     state.events.publish(Event::CameraDeleted { camera_id: id });
-    Ok(StatusCode::NO_CONTENT)
+    Ok(())
 }
 
 /// Re-read identity, capabilities and stream profiles from the camera now.
@@ -469,4 +541,191 @@ pub async fn refresh(
         camera: camera.summary.clone(),
     });
     Ok(Json(camera))
+}
+
+/// Most cameras one bulk request may touch.
+pub const MAX_BULK: usize = 500;
+
+/// What to do to every selected camera.
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum BulkAction {
+    AddTags {
+        tag_ids: Vec<Uuid>,
+    },
+    RemoveTags {
+        tag_ids: Vec<Uuid>,
+    },
+    AddGroups {
+        group_ids: Vec<Uuid>,
+    },
+    RemoveGroups {
+        group_ids: Vec<Uuid>,
+    },
+    SetMonitoring {
+        enabled: bool,
+    },
+    /// Remove the cameras (stops their streams and polling).
+    Delete,
+}
+
+impl BulkAction {
+    fn name(&self) -> &'static str {
+        match self {
+            BulkAction::AddTags { .. } => "add_tags",
+            BulkAction::RemoveTags { .. } => "remove_tags",
+            BulkAction::AddGroups { .. } => "add_groups",
+            BulkAction::RemoveGroups { .. } => "remove_groups",
+            BulkAction::SetMonitoring { .. } => "set_monitoring",
+            BulkAction::Delete => "delete",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct BulkRequest {
+    /// 1–500 camera ids.
+    pub camera_ids: Vec<Uuid>,
+    pub action: BulkAction,
+}
+
+/// Apply one action to many cameras (tag, group, monitoring, delete).
+///
+/// Required role: admin. Validated up front (400 for unknown cameras, tags
+/// or groups), then runs as a background task (`bulk_cameras`) whose result
+/// is `{"action", "processed"}`. Follow it via the `tasks` topic. Cancelling
+/// stops between cameras; work already done stays done.
+#[utoipa::path(
+    post,
+    path = "/cameras/bulk",
+    operation_id = "bulk_update_cameras",
+    tag = "cameras",
+    request_body = BulkRequest,
+    responses(
+        (status = 202, description = "Task started", body = crate::tasks::Task),
+        (status = 400, description = "Invalid selection or action", body = Problem),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 403, description = "Not an admin", body = Problem),
+    )
+)]
+pub async fn bulk(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    JsonBody(body): JsonBody<BulkRequest>,
+) -> Result<(StatusCode, Json<crate::tasks::Task>), ApiError> {
+    use crate::organization::{ensure_cameras_exist, unique};
+    let ids = unique(&body.camera_ids);
+    if ids.is_empty() || ids.len() > MAX_BULK {
+        return Err(ApiError::BadRequest(format!(
+            "select between 1 and {MAX_BULK} cameras"
+        )));
+    }
+    let org = super::organization::org_error;
+    ensure_cameras_exist(&state.db, &ids).await.map_err(org)?;
+    match &body.action {
+        BulkAction::AddTags { tag_ids } | BulkAction::RemoveTags { tag_ids } => {
+            if tag_ids.is_empty() {
+                return Err(ApiError::BadRequest("choose at least one tag".into()));
+            }
+            tags::ensure_exist(&state.db, tag_ids).await.map_err(org)?;
+        }
+        BulkAction::AddGroups { group_ids } | BulkAction::RemoveGroups { group_ids } => {
+            if group_ids.is_empty() {
+                return Err(ApiError::BadRequest("choose at least one group".into()));
+            }
+            groups::ensure_exist(&state.db, group_ids)
+                .await
+                .map_err(org)?;
+        }
+        BulkAction::SetMonitoring { .. } | BulkAction::Delete => {}
+    }
+
+    let creator = crate::tasks::Creator {
+        id: admin.id,
+        username: admin.username.clone(),
+    };
+    let action = body.action.clone();
+    let task_state = state.clone();
+    let task = state
+        .tasks
+        .spawn("bulk_cameras", None, Some(creator), move |ctx| async move {
+            let state = task_state;
+            let total = u32::try_from(ids.len()).unwrap_or(u32::MAX);
+            let fail = |e: ApiError| crate::tasks::TaskFailure::internal(e.to_string());
+            let mut processed: u32 = 0;
+            match &action {
+                BulkAction::AddTags { tag_ids } => {
+                    tags::add_cameras(&state.db, &ids, tag_ids)
+                        .await
+                        .map_err(|e| fail(e.into()))?;
+                }
+                BulkAction::RemoveTags { tag_ids } => {
+                    tags::remove_cameras(&state.db, &ids, tag_ids)
+                        .await
+                        .map_err(|e| fail(e.into()))?;
+                }
+                BulkAction::AddGroups { group_ids } => {
+                    groups::add_cameras(&state.db, &ids, group_ids)
+                        .await
+                        .map_err(|e| fail(e.into()))?;
+                }
+                BulkAction::RemoveGroups { group_ids } => {
+                    groups::remove_cameras(&state.db, &ids, group_ids)
+                        .await
+                        .map_err(|e| fail(e.into()))?;
+                }
+                BulkAction::SetMonitoring { .. } | BulkAction::Delete => {}
+            }
+            for id in &ids {
+                if ctx.cancel.is_cancelled() {
+                    break;
+                }
+                match &action {
+                    BulkAction::Delete => match remove_camera(&state, &admin, ip, *id).await {
+                        // Someone else removed it meanwhile: nothing left to do.
+                        Ok(()) | Err(ApiError::NotFound) => {}
+                        Err(e) => return Err(fail(e)),
+                    },
+                    BulkAction::SetMonitoring { enabled } => {
+                        let patch = CameraPatch {
+                            monitoring_enabled: Some(*enabled),
+                            ..Default::default()
+                        };
+                        match cameras::update(&state.db, &*state.credentials, *id, patch).await {
+                            Ok(_) | Err(CameraError::NotFound) => {}
+                            Err(e) => return Err(fail(camera_error(e))),
+                        }
+                        super::organization::announce_cameras(&state, &[*id])
+                            .await
+                            .map_err(fail)?;
+                    }
+                    _ => super::organization::announce_cameras(&state, &[*id])
+                        .await
+                        .map_err(fail)?,
+                }
+                processed += 1;
+                if processed.is_multiple_of(10) || processed == total {
+                    ctx.progress(processed, Some(total), "Updating cameras")
+                        .await;
+                }
+            }
+            if !matches!(action, BulkAction::Delete) {
+                let details = serde_json::json!({
+                    "action": action, "cameras": ids, "processed": processed,
+                });
+                audit::record(
+                    &state.db,
+                    AuditEvent::new(action::CAMERA_BULK_UPDATE, Outcome::Success)
+                        .actor(Some(admin.id), &admin.username)
+                        .ip(ip)
+                        .details(details),
+                )
+                .await
+                .map_err(|e| crate::tasks::TaskFailure::internal(e.to_string()))?;
+            }
+            Ok(serde_json::json!({ "action": action.name(), "processed": processed }))
+        })
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
 }

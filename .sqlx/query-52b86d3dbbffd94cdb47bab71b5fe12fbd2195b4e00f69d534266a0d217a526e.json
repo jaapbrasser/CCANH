@@ -1,0 +1,81 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT g.id AS \"id: Hyphenated\", g.name, g.parent_id AS \"parent_id: Hyphenated\",\n                  (SELECT COUNT(*) FROM camera_groups cg WHERE cg.group_id = g.id) AS \"camera_count!: i64\",\n                  g.created_at AS \"created_at: OffsetDateTime\",\n                  g.updated_at AS \"updated_at: OffsetDateTime\"\n             FROM groups g\n            ORDER BY g.name COLLATE NOCASE, g.id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "groups",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "groups",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "parent_id: Hyphenated",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "groups",
+            "name": "parent_id"
+          }
+        }
+      },
+      {
+        "name": "camera_count!: i64",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "created_at: OffsetDateTime",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "groups",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "name": "updated_at: OffsetDateTime",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "groups",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "52b86d3dbbffd94cdb47bab71b5fe12fbd2195b4e00f69d534266a0d217a526e"
+}

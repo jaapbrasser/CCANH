@@ -1,0 +1,69 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT t.id AS \"id: Hyphenated\", t.name,\n                  (SELECT COUNT(*) FROM camera_tags ct WHERE ct.tag_id = t.id) AS \"camera_count!: i64\",\n                  t.created_at AS \"created_at: OffsetDateTime\",\n                  t.updated_at AS \"updated_at: OffsetDateTime\"\n             FROM tags t\n            ORDER BY t.name COLLATE NOCASE",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tags",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tags",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "camera_count!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "created_at: OffsetDateTime",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tags",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "name": "updated_at: OffsetDateTime",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tags",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6d0690fa6b27f4661e29d11a549c800a45fbdd94a806b397f20c78a4a994e9c6"
+}

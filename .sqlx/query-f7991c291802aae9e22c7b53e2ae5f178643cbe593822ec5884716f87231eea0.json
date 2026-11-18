@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO camera_groups (camera_id, group_id)\n         SELECT c.value, g.value FROM json_each(?1) c, json_each(?2) g",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f7991c291802aae9e22c7b53e2ae5f178643cbe593822ec5884716f87231eea0"
+}

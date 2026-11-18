@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM camera_tags WHERE camera_id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "1772b8f01bbf8a8fd0122a748b8419771cc27697a6ac5f25218e32e8eb02aa40"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT camera_id AS \"id: Hyphenated\" FROM favorites\n            WHERE user_id = ?1 ORDER BY created_at DESC, camera_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "favorites",
+            "name": "camera_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fd90a06901bcbaf0e33c7b45c7f75b6b1cc6c1c6f0319185aa9029e3336fd45b"
+}

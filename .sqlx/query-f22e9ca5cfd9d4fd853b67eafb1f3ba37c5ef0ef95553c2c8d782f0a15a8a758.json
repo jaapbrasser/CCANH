@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM camera_groups\n          WHERE camera_id IN (SELECT value FROM json_each(?1))\n            AND group_id IN (SELECT value FROM json_each(?2))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f22e9ca5cfd9d4fd853b67eafb1f3ba37c5ef0ef95553c2c8d782f0a15a8a758"
+}

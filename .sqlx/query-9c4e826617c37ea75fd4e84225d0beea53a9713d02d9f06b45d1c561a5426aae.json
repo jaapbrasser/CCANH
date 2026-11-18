@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "WITH RECURSIVE sub(id) AS (\n               SELECT ?1\n               UNION\n               SELECT g.id FROM groups g JOIN sub ON g.parent_id = sub.id\n           )\n           SELECT id AS \"id!: Hyphenated\" FROM sub",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "groups",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "9c4e826617c37ea75fd4e84225d0beea53a9713d02d9f06b45d1c561a5426aae"
+}

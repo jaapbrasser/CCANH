@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO camera_groups (camera_id, group_id)\n             SELECT camera_id, ?1 FROM camera_groups WHERE group_id = ?2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "4ad185b607e7252954f001a4bfe260b8c9e1903dbeffb3d02f74b9448736e37a"
+}

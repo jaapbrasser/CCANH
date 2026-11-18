@@ -332,3 +332,30 @@ async fn camera_and_global_profile_choices_pick_the_stream() {
         .await;
     assert_eq!(audit.json()["total"], 2, "both changes are audited");
 }
+
+#[tokio::test]
+async fn removing_a_camera_stops_its_streams() {
+    let s = start().await;
+    let mut sock = connect(&s, &s.admin, "?profile=grid", true).await.unwrap();
+    handshake(&mut sock).await;
+    assert_eq!(s.app.state.streams.list().len(), 1);
+
+    let del = s
+        .app
+        .send(req(Method::DELETE, &format!("/api/v1/cameras/{}", s.camera)).cookie(&s.admin))
+        .await;
+    assert_eq!(del.status, StatusCode::NO_CONTENT);
+    let mut saw_stopped = false;
+    loop {
+        match tokio::time::timeout(Duration::from_secs(5), sock.next())
+            .await
+            .unwrap()
+        {
+            Some(Ok(Message::Text(t))) if t.contains("camera was removed") => saw_stopped = true,
+            Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+            Some(Ok(_)) => {}
+        }
+    }
+    assert!(saw_stopped, "viewers are told why the stream ended");
+    assert!(s.app.state.streams.list().is_empty());
+}

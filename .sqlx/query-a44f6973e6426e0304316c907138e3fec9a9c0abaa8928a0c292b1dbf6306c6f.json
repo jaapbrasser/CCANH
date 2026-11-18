@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM favorites WHERE user_id = ?1 AND camera_id = ?2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "a44f6973e6426e0304316c907138e3fec9a9c0abaa8928a0c292b1dbf6306c6f"
+}
