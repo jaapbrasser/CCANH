@@ -17,6 +17,8 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
+  # Compile sqlx::query! macros against the committed .sqlx/ cache.
+  SQLX_OFFLINE: "true"
 
 jobs:
   rust:
@@ -79,6 +81,22 @@ jobs:
       - name: Check generated types are up to date
         shell: pwsh
         run: ./scripts/gen-api-types.ps1 -Check
+
+  sqlx-cache:
+    name: SQLx offline cache
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.1"
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: sqlx-cli
+      - name: Check .sqlx is up to date
+        shell: pwsh
+        run: ./scripts/sqlx-prepare.ps1 -Check
 
   release-windows:
     name: Release build (Windows)
