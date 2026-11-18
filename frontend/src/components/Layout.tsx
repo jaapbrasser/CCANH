@@ -3,6 +3,7 @@ import { useLogout, useMe } from "../api/auth";
 import { useHealth } from "../api/health";
 import { useLiveState, useLiveUpdates } from "../api/live";
 import { HealthBadge } from "./HealthBadge";
+import { Toaster } from "./Toaster";
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `rounded px-3 py-1.5 text-sm ${isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:text-white"}`;
@@ -37,7 +38,7 @@ export function Layout() {
   const logout = useLogout();
   const navigate = useNavigate();
   const isAdmin = me?.role === "admin";
-  useLiveUpdates(Boolean(me));
+  useLiveUpdates(Boolean(me), me?.id);
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
@@ -52,6 +53,9 @@ export function Layout() {
             <NavLink to="/cameras" className={linkClass}>
               Cameras
             </NavLink>
+            <NavLink to="/activity" className={linkClass}>
+              Activity
+            </NavLink>
             {isAdmin && (
               <>
                 <NavLink to="/credentials" className={linkClass}>
@@ -62,6 +66,9 @@ export function Layout() {
                 </NavLink>
                 <NavLink to="/audit" className={linkClass}>
                   Audit log
+                </NavLink>
+                <NavLink to="/settings" className={linkClass}>
+                  Settings
                 </NavLink>
                 <a href="/api/docs/" className="rounded px-3 py-1.5 text-sm text-slate-400 hover:text-white">
                   API docs
@@ -89,6 +96,7 @@ export function Layout() {
       <main className="mx-auto w-full max-w-7xl flex-1 p-6">
         <Outlet />
       </main>
+      <Toaster />
     </div>
   );
 }

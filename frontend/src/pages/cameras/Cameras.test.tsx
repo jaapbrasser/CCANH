@@ -113,7 +113,7 @@ describe("camera list", () => {
     renderApp("/cameras");
     const link = await screen.findByRole("link", { name: "A1 Crane 1 – Hook" });
     await waitFor(() =>
-      expect(liveReceived).toContainEqual({ type: "subscribe", topics: ["camera_status", "cameras"] }),
+      expect(liveReceived).toContainEqual({ type: "subscribe", topics: ["camera_status", "cameras", "tasks"] }),
     );
     await screen.findByText("Live");
 

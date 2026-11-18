@@ -8,6 +8,8 @@ import { LoginPage } from "./pages/LoginPage";
 import { SetupPage } from "./pages/SetupPage";
 import { UsersPage } from "./pages/UsersPage";
 import { CredentialSetsPage } from "./pages/CredentialSetsPage";
+import { ActivityPage } from "./pages/ActivityPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { CameraDetailPage } from "./pages/cameras/CameraDetailPage";
 import { CamerasPage } from "./pages/cameras/CamerasPage";
 
@@ -28,6 +30,15 @@ export default function App() {
         <Route path="cameras" element={<CamerasPage />} />
         <Route path="cameras/:id" element={<CameraDetailPage />} />
         <Route path="account" element={<AccountPage />} />
+        <Route path="activity" element={<ActivityPage />} />
+        <Route
+          path="settings"
+          element={
+            <RequireAdmin>
+              <SettingsPage />
+            </RequireAdmin>
+          }
+        />
         <Route
           path="credentials"
           element={
