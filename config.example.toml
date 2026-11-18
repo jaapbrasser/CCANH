@@ -1,0 +1,26 @@
+# Example CCANH configuration. Copy to `config.toml` next to crane.exe (or pass
+# --config <file>). Every key is optional; defaults are shown.
+# Environment overrides: CRANE_<SECTION>__<KEY>, e.g. CRANE_SERVER__PORT=9000.
+# Precedence: CLI flags > environment > this file > defaults.
+
+# "production" or "demo" (demo mode arrives in Phase 2).
+mode = "production"
+
+# Database, logs and keys. Default: %ProgramData%\CraneCamera on Windows, ./data elsewhere.
+# data_dir = 'C:\ProgramData\CraneCamera'
+
+[server]
+bind = "127.0.0.1"
+port = 8080
+# Serve /api/docs and /api/openapi.json to non-admins once auth exists (Phase 1).
+public_api_docs = false
+shutdown_timeout_secs = 10
+
+[logging]
+# tracing filter directive; RUST_LOG overrides it.
+level = "info"
+# "pretty" or "json" for console output. Log files are always JSON.
+format = "pretty"
+# Rolling daily files in <data_dir>/logs.
+file = true
+retention_days = 14
