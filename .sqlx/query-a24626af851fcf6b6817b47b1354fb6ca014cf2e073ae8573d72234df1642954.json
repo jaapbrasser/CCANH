@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE cameras SET grid_profile = ?1, detail_profile = ?2, updated_at = ?3 WHERE id = ?4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "a24626af851fcf6b6817b47b1354fb6ca014cf2e073ae8573d72234df1642954"
+}

@@ -31,7 +31,7 @@ use crate::auth::{csrf, AdminUser, AuthUser, ClientIp};
 use crate::cameras;
 use crate::providers::StreamProfileId;
 use crate::streaming::manager::StreamError;
-use crate::streaming::profiles::{default_profile, ViewPurpose};
+use crate::streaming::profiles::{resolve_profile, ViewPurpose};
 use crate::streaming::{Packet, StreamInfo, StreamKey};
 use crate::AppState;
 
@@ -94,12 +94,26 @@ pub async fn watch(
         .ok_or(ApiError::NotFound)?;
     let profile = match q.profile {
         Some(p) => StreamProfileId(p),
-        None => default_profile(&camera.stream_profiles, q.purpose.unwrap_or_default()).ok_or_else(|| {
+        None => {
+            let purpose = q.purpose.unwrap_or_default();
+            let streaming = state.settings.current().streaming;
+            let (camera_choice, global_choice) = match purpose {
+                ViewPurpose::Grid => (&camera.grid_profile, &streaming.default_grid_profile),
+                ViewPurpose::Detail => (&camera.detail_profile, &streaming.default_detail_profile),
+            };
+            resolve_profile(
+                &camera.stream_profiles,
+                purpose,
+                camera_choice.as_deref(),
+                global_choice.as_deref(),
+            )
+            .ok_or_else(|| {
             ApiError::Conflict(
                 "This camera has no playable (H.264) stream profile yet. Try again after its details load."
                     .into(),
             )
-        })?,
+            })?
+        }
     };
     let sub = state
         .streams

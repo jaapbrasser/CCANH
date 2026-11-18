@@ -218,6 +218,7 @@ pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx
                   c.allow_basic_over_http AS "allow_basic_over_http: bool",
                   c.serial_number, c.mac_address, c.device_name, c.device_hostname,
                   c.capabilities, c.stream_profiles, c.network,
+                  c.grid_profile, c.detail_profile,
                   c.identity_updated_at AS "identity_updated_at: OffsetDateTime",
                   c.created_at AS "created_at: OffsetDateTime",
                   c.updated_at AS "updated_at: OffsetDateTime",
@@ -285,10 +286,33 @@ pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx
             .stream_profiles
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default(),
+        grid_profile: r.grid_profile,
+        detail_profile: r.detail_profile,
         identity_updated_at: r.identity_updated_at,
         created_at: r.created_at,
         updated_at: r.updated_at,
     }))
+}
+
+/// Set a camera's stream profile overrides. Returns `false` if the camera
+/// doesn't exist.
+pub async fn set_stream_overrides(
+    db: &SqlitePool,
+    id: Uuid,
+    o: &StreamProfileOverrides,
+) -> Result<bool, sqlx::Error> {
+    let hid = id.hyphenated();
+    let now = OffsetDateTime::now_utc();
+    let done = sqlx::query!(
+        "UPDATE cameras SET grid_profile = ?1, detail_profile = ?2, updated_at = ?3 WHERE id = ?4",
+        o.grid_profile,
+        o.detail_profile,
+        now,
+        hid
+    )
+    .execute(db)
+    .await?;
+    Ok(done.rows_affected() == 1)
 }
 
 /// Validated, complete settings for inserting or updating a camera.

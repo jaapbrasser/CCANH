@@ -63,6 +63,11 @@ grace_period_secs = 15
 # In-memory GOP cache caps (never written to disk), per stream and in total.
 stream_buffer_mb = 4
 global_buffer_mb = 256
+# Stream profile names to prefer fleet-wide (per camera overrides win). When
+# unset or missing on a camera: smallest H.264 profile for grid tiles, largest
+# for the detail view.
+# default_grid_profile = "grid"
+# default_detail_profile = "main"
 
 [logging]
 # tracing filter directive; RUST_LOG overrides it.

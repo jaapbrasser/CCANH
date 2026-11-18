@@ -194,6 +194,12 @@ pub struct StreamingConfig {
     pub stream_buffer_mb: u32,
     /// GOP cache cap across all streams, in MiB.
     pub global_buffer_mb: u32,
+    /// Stream profile name for grid tiles, used on cameras that have it.
+    /// Unset: the smallest H.264 profile.
+    pub default_grid_profile: Option<String>,
+    /// Stream profile name for the detail view, used on cameras that have it.
+    /// Unset: the largest H.264 profile.
+    pub default_detail_profile: Option<String>,
 }
 
 impl Default for StreamingConfig {
@@ -202,6 +208,8 @@ impl Default for StreamingConfig {
             grace_period_secs: 15,
             stream_buffer_mb: 4,
             global_buffer_mb: 256,
+            default_grid_profile: None,
+            default_detail_profile: None,
         }
     }
 }

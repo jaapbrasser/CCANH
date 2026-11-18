@@ -134,6 +134,10 @@ pub struct CameraDetail {
     /// Supported and unsupported capabilities. Empty until the first successful probe.
     pub capabilities: Vec<Capability>,
     pub stream_profiles: Vec<StreamProfile>,
+    /// Profile id for grid tiles on this camera; `null` uses the global default.
+    pub grid_profile: Option<String>,
+    /// Profile id for the detail view on this camera; `null` uses the global default.
+    pub detail_profile: Option<String>,
     #[serde(with = "time::serde::rfc3339::option")]
     #[schema(value_type = Option<String>, format = DateTime)]
     pub identity_updated_at: Option<OffsetDateTime>,
@@ -143,6 +147,15 @@ pub struct CameraDetail {
     #[serde(with = "time::serde::rfc3339")]
     #[schema(value_type = String, format = DateTime)]
     pub updated_at: OffsetDateTime,
+}
+
+/// Per-camera stream profile choices (SPEC §7.4). Each is a profile id from
+/// the camera's `stream_profiles` (`""` is the camera's default stream), or
+/// `null` for the global default.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct StreamProfileOverrides {
+    pub grid_profile: Option<String>,
+    pub detail_profile: Option<String>,
 }
 
 /// A recorded status transition.
