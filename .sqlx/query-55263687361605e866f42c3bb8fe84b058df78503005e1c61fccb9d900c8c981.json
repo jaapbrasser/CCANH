@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id: Hyphenated\", username, role AS \"role: Role\",\n                  disabled AS \"disabled: bool\", created_at AS \"created_at: OffsetDateTime\",\n                  updated_at AS \"updated_at: OffsetDateTime\",\n                  password_changed_at AS \"password_changed_at: OffsetDateTime\"\n             FROM users\n            WHERE ?1 IS NULL OR username LIKE ?1 ESCAPE '\\'\n            ORDER BY\n                 CASE WHEN ?2 = 'username'   AND ?3 = 'asc'  THEN username   END ASC,\n                 CASE WHEN ?2 = 'username'   AND ?3 = 'desc' THEN username   END DESC,\n                 CASE WHEN ?2 = 'created_at' AND ?3 = 'asc'  THEN created_at END ASC,\n                 CASE WHEN ?2 = 'created_at' AND ?3 = 'desc' THEN created_at END DESC,\n                 id ASC\n            LIMIT ?4 OFFSET ?5",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "username",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "username"
+          }
+        }
+      },
+      {
+        "name": "role: Role",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "role"
+          }
+        }
+      },
+      {
+        "name": "disabled: bool",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "disabled"
+          }
+        }
+      },
+      {
+        "name": "created_at: OffsetDateTime",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "name": "updated_at: OffsetDateTime",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "name": "password_changed_at: OffsetDateTime",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "password_changed_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "55263687361605e866f42c3bb8fe84b058df78503005e1c61fccb9d900c8c981"
+}

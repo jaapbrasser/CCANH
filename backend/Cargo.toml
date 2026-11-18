@@ -16,28 +16,46 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1"
-axum = "0.8"
+argon2 = { version = "0.6", features = ["zeroize"] }
+axum = { version = "0.8", features = ["macros"] }
+axum-extra = { version = "0.12", features = ["cookie"] }
+axum-server = { version = "0.9", default-features = false, features = ["tls-rustls-ring"] }
+base64 = "0.23"
 clap = { version = "4", features = ["derive", "env"] }
 figment = { version = "0.10", features = ["toml", "env"] }
+getrandom = "0.4"
 mime_guess = "2"
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring"] }
+rpassword = "7"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
 rust-embed = { version = "8", features = ["mime-guess"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+secrecy = { version = "0.10", features = ["serde"] }
+sha2 = "0.11"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "time", "uuid"] }
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+time = { version = "0.3", features = ["serde", "serde-well-known", "formatting", "parsing"] }
 tower = "0.5"
 tower-http = { version = "0.7", features = ["trace", "set-header"] }
 tracing = "0.1"
 tracing-appender = "0.2"
+uuid = { version = "1", features = ["v7", "serde"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
-utoipa = { version = "6", features = ["axum_extras"] }
+utoipa = { version = "6", features = ["axum_extras", "time", "uuid"] }
 utoipa-axum = "0.3"
 utoipa-swagger-ui = { version = "10", features = ["axum", "vendored"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
 tempfile = "3"
+time = "0.3"
 tokio-util = "0.7"
+uuid = { version = "1", features = ["v7"] }
+sqlx = { version = "0.9", default-features = false, features = ["sqlite", "runtime-tokio"] }
+tracing-subscriber = "0.3"
+tracing = "0.1"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 figment = { version = "0.10", features = ["toml", "env", "test"] }

@@ -14,6 +14,7 @@ ignore = []
 [licenses]
 version = 2
 # The project licence is undecided (SPEC §18 Q7). Allow permissive licences only.
+# ISC: ring, rustls-webpki, untrusted (rustls stack).
 allow = [
     "MIT",
     "MIT-0",
@@ -22,6 +23,7 @@ allow = [
     "BSD-3-Clause",
     "BSL-1.0",
     "CC0-1.0",
+    "ISC",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",

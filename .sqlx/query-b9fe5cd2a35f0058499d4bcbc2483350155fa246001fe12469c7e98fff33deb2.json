@@ -1,0 +1,134 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id!: i64\", occurred_at AS \"occurred_at: OffsetDateTime\", actor_id,\n                  actor_username, action, outcome, target_type, target_id, source_ip, details\n             FROM audit_log\n            WHERE (?1 IS NULL OR action = ?1)\n              AND (?2 IS NULL OR action LIKE ?2)\n              AND (?3 IS NULL OR actor_username = ?3 COLLATE NOCASE)\n              AND (?4 IS NULL OR outcome = ?4)\n              AND (?5 IS NULL OR occurred_at >= ?5)\n              AND (?6 IS NULL OR occurred_at < ?6)\n            ORDER BY id DESC\n            LIMIT ?7 OFFSET ?8",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "occurred_at: OffsetDateTime",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "occurred_at"
+          }
+        }
+      },
+      {
+        "name": "actor_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "actor_id"
+          }
+        }
+      },
+      {
+        "name": "actor_username",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "actor_username"
+          }
+        }
+      },
+      {
+        "name": "action",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "action"
+          }
+        }
+      },
+      {
+        "name": "outcome",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "outcome"
+          }
+        }
+      },
+      {
+        "name": "target_type",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "target_type"
+          }
+        }
+      },
+      {
+        "name": "target_id",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "target_id"
+          }
+        }
+      },
+      {
+        "name": "source_ip",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "source_ip"
+          }
+        }
+      },
+      {
+        "name": "details",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "details"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "b9fe5cd2a35f0058499d4bcbc2483350155fa246001fe12469c7e98fff33deb2"
+}

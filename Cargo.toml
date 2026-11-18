@@ -12,3 +12,12 @@ publish = false
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+# Argon2 is deliberately expensive; unoptimized it makes every test login take
+# seconds. Optimize the hashing crates even in dev/test builds.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3

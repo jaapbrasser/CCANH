@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"n!: i64\" FROM users\n           WHERE ?1 IS NULL OR username LIKE ?1 ESCAPE '\\'",
+  "describe": {
+    "columns": [
+      {
+        "name": "n!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "44a40dea7a29b5f1926d89c6c3f7dc00e18a4deab1d7004b5e20d23abf28bf41"
+}

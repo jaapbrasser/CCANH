@@ -48,16 +48,46 @@ pub enum LogFormat {
     Json,
 }
 
+/// How the server terminates TLS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TlsMode {
+    /// Plain HTTP. A warning is logged when bound to a non-loopback address.
+    #[default]
+    Off,
+    /// Use the PEM certificate chain and private key at `cert_path` / `key_path`.
+    Files,
+    /// Generate a self-signed certificate in `<data_dir>/tls/` on first run and
+    /// reuse it afterwards. Its SHA-256 fingerprint is logged at startup.
+    SelfSigned,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct TlsConfig {
+    pub mode: TlsMode,
+    pub cert_path: Option<PathBuf>,
+    pub key_path: Option<PathBuf>,
+    /// Extra DNS names / IPs for the self-signed certificate (localhost and the
+    /// machine hostname are always included).
+    pub self_signed_names: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ServerConfig {
     pub bind: IpAddr,
     pub port: u16,
     /// Serve `/api/openapi.json` and `/api/docs` without authentication.
-    /// Auth arrives in Phase 1; until then the docs are always reachable.
+    /// Otherwise they are admin-only (SPEC §13.1).
     pub public_api_docs: bool,
     /// Graceful-shutdown timeout in seconds.
     pub shutdown_timeout_secs: u64,
+    /// Extra origins (e.g. `https://crane.example.local:8443`) accepted by the
+    /// CSRF check on state-changing requests. The server's own origin, derived
+    /// from the `Host` header, is always accepted.
+    pub allowed_origins: Vec<String>,
+    pub tls: TlsConfig,
 }
 
 impl Default for ServerConfig {
@@ -67,6 +97,26 @@ impl Default for ServerConfig {
             port: 8080,
             public_api_docs: false,
             shutdown_timeout_secs: 10,
+            allowed_origins: Vec::new(),
+            tls: TlsConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AuthConfig {
+    /// A session expires after this many minutes without a request.
+    pub idle_timeout_minutes: u64,
+    /// A session expires this many hours after login regardless of activity.
+    pub absolute_timeout_hours: u64,
+}
+
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            idle_timeout_minutes: 8 * 60,
+            absolute_timeout_hours: 7 * 24,
         }
     }
 }
@@ -102,6 +152,7 @@ pub struct Config {
     /// Directory for the SQLite database, logs and keys.
     pub data_dir: PathBuf,
     pub server: ServerConfig,
+    pub auth: AuthConfig,
     pub logging: LoggingConfig,
 }
 
@@ -111,6 +162,7 @@ impl Default for Config {
             mode: Mode::default(),
             data_dir: default_data_dir(),
             server: ServerConfig::default(),
+            auth: AuthConfig::default(),
             logging: LoggingConfig::default(),
         }
     }
@@ -196,6 +248,28 @@ impl Config {
                 "server.shutdown_timeout_secs must be at least 1".into(),
             ));
         }
+        if self.auth.idle_timeout_minutes == 0 || self.auth.absolute_timeout_hours == 0 {
+            return Err(ConfigError::Invalid(
+                "auth timeouts must be at least 1".into(),
+            ));
+        }
+        if self.server.tls.mode == TlsMode::Files
+            && (self.server.tls.cert_path.is_none() || self.server.tls.key_path.is_none())
+        {
+            return Err(ConfigError::Invalid(
+                "server.tls.mode = \"files\" requires server.tls.cert_path and server.tls.key_path"
+                    .into(),
+            ));
+        }
+        for origin in &self.server.allowed_origins {
+            if !(origin.starts_with("http://") || origin.starts_with("https://"))
+                || origin.trim_end_matches('/').matches('/').count() != 2
+            {
+                return Err(ConfigError::Invalid(format!(
+                    "server.allowed_origins entry '{origin}' must look like https://host[:port]"
+                )));
+            }
+        }
         if tracing_subscriber::EnvFilter::try_new(&self.logging.level).is_err() {
             return Err(ConfigError::Invalid(format!(
                 "logging.level '{}' is not a valid tracing filter",
@@ -219,6 +293,10 @@ impl Config {
 
     pub fn log_dir(&self) -> PathBuf {
         self.data_dir.join("logs")
+    }
+
+    pub fn tls_enabled(&self) -> bool {
+        self.server.tls.mode != TlsMode::Off
     }
 }
 
@@ -313,6 +391,27 @@ mod tests {
 
         let mut config = Config::default();
         config.logging.level = "not a [valid filter".into();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn tls_files_mode_requires_paths() {
+        let mut config = Config::default();
+        config.server.tls.mode = TlsMode::Files;
+        assert!(config.validate().is_err());
+        config.server.tls.cert_path = Some("c.pem".into());
+        config.server.tls.key_path = Some("k.pem".into());
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn allowed_origins_are_validated() {
+        let mut config = Config::default();
+        config.server.allowed_origins = vec!["https://crane.local:8443".into()];
+        config.validate().unwrap();
+        config.server.allowed_origins = vec!["crane.local".into()];
+        assert!(config.validate().is_err());
+        config.server.allowed_origins = vec!["https://crane.local/path".into()];
         assert!(config.validate().is_err());
     }
 

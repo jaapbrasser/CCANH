@@ -1,19 +1,32 @@
 //! HTTP layer: routes, OpenAPI document, security headers and static files.
 
+mod audit;
+mod auth;
 pub mod error;
+mod extract;
 pub mod health;
+mod pagination;
+mod setup;
 mod static_files;
+mod users;
 
+use axum::extract::{Request, State};
 use axum::http::{header, HeaderName, HeaderValue};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::Router;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
-use utoipa::OpenApi;
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, SecurityScheme};
+use utoipa::{Modify, OpenApi};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 use utoipa_swagger_ui::SwaggerUi;
 
+use crate::auth::session::COOKIE_NAME;
+use crate::auth::AdminUser;
 use crate::AppState;
+use error::ApiError;
 
 pub const API_V1: &str = "/api/v1";
 pub const OPENAPI_PATH: &str = "/api/openapi.json";
@@ -26,13 +39,69 @@ pub const DOCS_PATH: &str = "/api/docs";
         description = "Crane Camera Automated Navigation Hub. Each operation states its required role.",
     ),
     components(schemas(error::Problem)),
-    tags((name = "system", description = "Health and server information")),
+    modifiers(&SessionCookie),
+    security(("session_cookie" = [])),
+    tags(
+        (name = "system", description = "Health and server information"),
+        (name = "setup", description = "First-run creation of the initial admin"),
+        (name = "auth", description = "Sign in, sign out, own account"),
+        (name = "users", description = "User administration"),
+        (name = "audit", description = "Security audit log"),
+    ),
 )]
 struct ApiDoc;
 
+/// Documents the session cookie. State-changing requests additionally need an
+/// `Origin` header matching the server (CSRF protection, ADR 0004).
+struct SessionCookie;
+
+impl Modify for SessionCookie {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi.components.get_or_insert_with(Default::default);
+        components.add_security_scheme(
+            "session_cookie",
+            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::with_description(
+                COOKIE_NAME,
+                "Session cookie set by POST /api/v1/auth/login",
+            ))),
+        );
+    }
+}
+
 /// Versioned API routes with their OpenAPI annotations.
 fn v1_routes() -> OpenApiRouter<AppState> {
-    OpenApiRouter::new().routes(routes!(health::health))
+    OpenApiRouter::new()
+        .routes(routes!(health::health))
+        .routes(routes!(setup::status, setup::complete))
+        .routes(routes!(auth::login))
+        .routes(routes!(auth::logout))
+        .routes(routes!(auth::me))
+        .routes(routes!(auth::change_password))
+        .routes(routes!(users::list, users::create))
+        .routes(routes!(users::get, users::update, users::delete))
+        .routes(routes!(users::reset_password))
+        .routes(routes!(audit::list))
+}
+
+/// Unless `server.public_api_docs` is set, the OpenAPI document and Swagger UI
+/// are admin-only (SPEC §13.1). Browsers asking for the docs page while signed
+/// out are sent to the login page.
+async fn docs_guard(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    if state.config.server.public_api_docs {
+        return next.run(request).await;
+    }
+    let (mut parts, body) = request.into_parts();
+    match <AdminUser as axum::extract::FromRequestParts<AppState>>::from_request_parts(
+        &mut parts, &state,
+    )
+    .await
+    {
+        Ok(AdminUser(_)) => next.run(Request::from_parts(parts, body)).await,
+        Err(ApiError::Unauthorized) if parts.uri.path().starts_with(DOCS_PATH) => {
+            Redirect::to("/login?next=/api/docs/").into_response()
+        }
+        Err(err) => err.into_response(),
+    }
 }
 
 fn split() -> (Router<AppState>, utoipa::openapi::OpenApi) {
@@ -65,19 +134,21 @@ pub fn router(state: AppState) -> Router {
     let (api, mut doc) = split();
     doc.info.version = env!("CARGO_PKG_VERSION").to_owned();
 
-    // Auth arrives in Phase 1. Until then the docs are always served; afterwards
-    // they will be admin-only unless `server.public_api_docs` is set (§13.1).
-    let docs = Router::<AppState>::from(SwaggerUi::new(DOCS_PATH).url(OPENAPI_PATH, doc)).layer(
-        SetResponseHeaderLayer::overriding(
+    let docs = Router::<AppState>::from(SwaggerUi::new(DOCS_PATH).url(OPENAPI_PATH, doc))
+        .layer(SetResponseHeaderLayer::overriding(
             header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(DOCS_CSP),
-        ),
-    );
+        ))
+        .layer(middleware::from_fn_with_state(state.clone(), docs_guard));
 
     Router::new()
         .merge(api)
         .merge(docs)
         .fallback(static_files::serve)
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::csrf::guard,
+        ))
         .with_state(state)
         // `if_not_present` so the docs router's own CSP wins.
         .layer(SetResponseHeaderLayer::if_not_present(

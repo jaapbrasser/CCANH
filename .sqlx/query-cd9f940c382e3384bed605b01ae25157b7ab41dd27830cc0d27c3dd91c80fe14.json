@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM users\n          WHERE id = ?1\n            AND (\n              NOT (role = 'admin' AND disabled = 0)\n              OR EXISTS (SELECT 1 FROM users o\n                          WHERE o.id != ?1 AND o.role = 'admin' AND o.disabled = 0)\n            )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "cd9f940c382e3384bed605b01ae25157b7ab41dd27830cc0d27c3dd91c80fe14"
+}
