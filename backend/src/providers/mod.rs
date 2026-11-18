@@ -7,6 +7,7 @@
 //!
 //! `Unsupported` is a normal result, not a failure: callers record it and carry on.
 
+pub mod axis;
 #[cfg(test)]
 pub(crate) mod contract;
 pub mod demo;
@@ -179,14 +180,17 @@ impl fmt::Display for StreamProfileId {
     }
 }
 
+/// A stream profile. AXIS profiles only carry the parameters an admin saved in
+/// them, so codec and resolution may be unknown (the camera default applies).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct StreamProfile {
+    /// Profile name used in stream requests. Empty for the camera's default stream.
     #[schema(value_type = String)]
     pub id: StreamProfileId,
     pub name: String,
-    pub codec: VideoCodec,
-    pub width: u32,
-    pub height: u32,
+    pub codec: Option<VideoCodec>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
     pub fps: Option<u32>,
     pub bitrate_kbps: Option<u32>,
 }
@@ -215,6 +219,13 @@ pub trait CameraProvider: Send + Sync {
         profile: &StreamProfileId,
         cancel: CancellationToken,
     ) -> Result<Box<dyn MediaSource>, ProviderError>;
+
+    /// SHA-256 fingerprint of the certificate the camera presented on the last
+    /// HTTPS connection, for "test connection" and pinning. `None` when not
+    /// applicable (plain HTTP, simulated cameras).
+    fn tls_fingerprint(&self) -> Option<String> {
+        None
+    }
 }
 
 #[cfg(test)]

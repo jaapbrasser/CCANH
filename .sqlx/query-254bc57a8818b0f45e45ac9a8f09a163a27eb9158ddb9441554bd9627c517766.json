@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO cameras (id, name, host, port, scheme, tls_mode, tls_pinned_sha256,\n                              monitoring_enabled, credential_set_id, allow_basic_over_http,\n                              created_at, updated_at)\n         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": []
+  },
+  "hash": "254bc57a8818b0f45e45ac9a8f09a163a27eb9158ddb9441554bd9627c517766"
+}

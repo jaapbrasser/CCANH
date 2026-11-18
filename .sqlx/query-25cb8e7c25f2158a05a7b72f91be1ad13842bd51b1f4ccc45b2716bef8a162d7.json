@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM credential_sets WHERE id = ?1 AND shared = 1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "25cb8e7c25f2158a05a7b72f91be1ad13842bd51b1f4ccc45b2716bef8a162d7"
+}

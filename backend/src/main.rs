@@ -145,8 +145,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     let db = storage::connect(&db_path)
         .await
         .with_context(|| format!("opening database {}", db_path.display()))?;
+    let credentials = crane::credentials::platform_store(&config.data_dir)
+        .context("setting up the camera credential store")?;
+    tracing::info!(store = credentials.name(), "camera credential store ready");
     if demo {
-        let seeded = crane::demo::seed(&db).await?;
+        let seeded = crane::demo::seed(&db, &*credentials).await?;
         tracing::warn!(
             database = %db_path.display(),
             seeded_users = seeded.users,
@@ -164,7 +167,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     let scheme = if tls.is_some() { "https" } else { "http" };
     tracing::info!(address = %local, "listening on {scheme}://{local}");
 
-    let state = AppState::new(config, db);
+    let state = AppState::new(config, db, credentials);
     if let Some(token) = state.issue_setup_token_if_needed().await? {
         // SPEC §14.2: the one-time token goes to the console and the log.
         tracing::warn!(

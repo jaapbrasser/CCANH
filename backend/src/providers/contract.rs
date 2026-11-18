@@ -56,7 +56,11 @@ async fn identity(p: &dyn CameraProvider) {
     let info = bounded("get_device_info", p.get_device_info())
         .await
         .expect("get_device_info failed");
-    assert_eq!(info, probe.device, "probe and get_device_info must agree");
+    // get_device_info may add detail (e.g. network info), but must agree on identity.
+    assert_eq!(info.manufacturer, probe.device.manufacturer);
+    assert_eq!(info.model, probe.device.model);
+    assert_eq!(info.firmware_version, probe.device.firmware_version);
+    assert_eq!(info.serial_number, probe.device.serial_number);
 }
 
 async fn status(p: &dyn CameraProvider) {
@@ -101,7 +105,10 @@ async fn streams(p: &dyn CameraProvider) {
         "stream profile ids must be unique"
     );
     for sp in &profiles {
-        assert!(sp.width > 0 && sp.height > 0, "{} has no resolution", sp.id);
+        assert!(!sp.name.is_empty(), "profile {:?} has no name", sp.id);
+        if let (Some(w), Some(h)) = (sp.width, sp.height) {
+            assert!(w > 0 && h > 0, "{} has a zero resolution", sp.id);
+        }
     }
 
     // Opening a stream either works or is cleanly unsupported; it never panics,
@@ -163,8 +170,15 @@ async fn unreachable(p: &dyn CameraProvider) {
     );
 }
 
+/// Wrong credentials: anonymous calls may still succeed, but an authenticated
+/// call must report `AuthFailed` (never a transport error or a panic).
 async fn auth_failure(p: &dyn CameraProvider) {
-    let err = bounded("probe", p.probe()).await.unwrap_err();
+    if let Err(e) = bounded("probe", p.probe()).await {
+        assert_eq!(e.category(), ErrorCategory::AuthFailed, "{e}");
+    }
+    let err = bounded("get_stream_info", p.get_stream_info())
+        .await
+        .unwrap_err();
     assert_eq!(err.category(), ErrorCategory::AuthFailed, "{err}");
     assert!(
         !err.category().is_retryable(),

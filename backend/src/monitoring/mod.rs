@@ -18,12 +18,11 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::cameras::{self, CameraState, CameraStatusView, MonitorTarget, Scheme};
+use crate::cameras::{self, CameraState, CameraStatusView, MonitorTarget};
 use crate::config::MonitoringConfig;
+use crate::credentials::CredentialStore;
 use crate::events::{Event, EventBus};
-use crate::providers::{
-    CameraProvider, ErrorCategory, ProviderError, ProviderFactory, ProviderTarget,
-};
+use crate::providers::{CameraProvider, ErrorCategory, ProviderError, ProviderFactory};
 
 /// Decides how often each camera is checked. In the MVP active and idle cameras
 /// share one policy; streamed cameras can get their own interval later.
@@ -35,6 +34,8 @@ pub struct PollingPolicy {
     pub failure_threshold: u32,
     pub timeout: Duration,
     pub max_in_flight: usize,
+    /// How often an online camera's identity and credentials are re-checked.
+    pub identity_refresh: Duration,
 }
 
 impl From<&MonitoringConfig> for PollingPolicy {
@@ -45,6 +46,7 @@ impl From<&MonitoringConfig> for PollingPolicy {
             failure_threshold: c.failure_threshold,
             timeout: Duration::from_secs(c.timeout_secs),
             max_in_flight: c.max_concurrent,
+            identity_refresh: Duration::from_secs(c.identity_refresh_minutes * 60),
         }
     }
 }
@@ -109,14 +111,6 @@ pub fn apply(
     (next, transition)
 }
 
-fn target_of(t: &MonitorTarget) -> ProviderTarget {
-    ProviderTarget {
-        host: t.host.clone(),
-        port: t.port,
-        https: t.scheme == Scheme::Https,
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum RefreshError {
     #[error(transparent)]
@@ -126,8 +120,33 @@ pub enum RefreshError {
 }
 
 /// Fetch identity, capabilities and stream profiles and store them. Unsupported
-/// capability or stream APIs keep whatever was stored before.
+/// capability or stream APIs keep whatever was stored before. The outcome is
+/// recorded as the camera's identity status, so wrong credentials show up even
+/// while the camera is reachable.
 pub async fn refresh_identity(
+    db: &SqlitePool,
+    provider: &dyn CameraProvider,
+    id: Uuid,
+    timeout: Duration,
+) -> Result<(), RefreshError> {
+    let result = fetch_identity(db, provider, id, timeout).await;
+    match &result {
+        Ok(()) => cameras::record_identity_result(db, id, None).await?,
+        // Reachability problems belong to the status check, not identity.
+        Err(RefreshError::Provider(e))
+            if !matches!(
+                e.category(),
+                ErrorCategory::Unreachable | ErrorCategory::Timeout
+            ) =>
+        {
+            cameras::record_identity_result(db, id, Some(e)).await?;
+        }
+        Err(_) => {}
+    }
+    result
+}
+
+async fn fetch_identity(
     db: &SqlitePool,
     provider: &dyn CameraProvider,
     id: Uuid,
@@ -136,9 +155,9 @@ pub async fn refresh_identity(
     let bounded = |what: &'static str| {
         ProviderError::Timeout(format!("{what} took longer than {}s", timeout.as_secs()))
     };
-    let probe = tokio::time::timeout(timeout, provider.probe())
+    let device = tokio::time::timeout(timeout, provider.get_device_info())
         .await
-        .map_err(|_| bounded("probe"))??;
+        .map_err(|_| bounded("device info"))??;
     let caps = match tokio::time::timeout(timeout, provider.get_capabilities()).await {
         Ok(Ok(c)) => Some(c),
         Ok(Err(e)) if e.category() == ErrorCategory::Unsupported => None,
@@ -151,15 +170,17 @@ pub async fn refresh_identity(
         Ok(Err(e)) => return Err(e.into()),
         Err(_) => return Err(bounded("stream info").into()),
     };
-    cameras::save_identity(db, id, &probe.device, caps.as_ref(), profiles.as_deref()).await?;
+    cameras::save_identity(db, id, &device, caps.as_ref(), profiles.as_deref()).await?;
     Ok(())
 }
 
 struct Track {
     provider: Arc<dyn CameraProvider>,
-    updated_at: OffsetDateTime,
+    version: (OffsetDateTime, Option<OffsetDateTime>),
     next_due: Instant,
     in_flight: Arc<AtomicBool>,
+    /// When identity/credentials were last checked by this monitor.
+    last_identity: Arc<Mutex<Option<Instant>>>,
 }
 
 /// Tiny PRNG for jitter (no security requirement).
@@ -190,6 +211,7 @@ pub struct Monitor {
     tracks: HashMap<Uuid, Track>,
     permits: Arc<Semaphore>,
     jitter: Arc<Jitter>,
+    store: Arc<dyn CredentialStore>,
     /// How often the registry is re-read to pick up added/removed cameras.
     tick: Duration,
 }
@@ -200,6 +222,7 @@ impl Monitor {
         factory: ProviderFactory,
         bus: EventBus,
         policy: PollingPolicy,
+        store: Arc<dyn CredentialStore>,
     ) -> Self {
         let permits = Arc::new(Semaphore::new(policy.max_in_flight.max(1)));
         Self {
@@ -210,6 +233,7 @@ impl Monitor {
             tracks: HashMap::new(),
             permits,
             jitter: Arc::new(Jitter::new()),
+            store,
             tick: Duration::from_millis(500),
         }
     }
@@ -243,8 +267,19 @@ impl Monitor {
 
         for target in targets {
             let track = match self.tracks.get_mut(&target.id) {
-                Some(track) if track.updated_at == target.updated_at => track,
+                Some(track) if track.version == target.config_version() => track,
                 _ => {
+                    let provider_target = match target.provider_target(&*self.store) {
+                        Ok(t) => t,
+                        Err(err) => {
+                            tracing::error!(
+                                camera_id = %target.id,
+                                error = %err,
+                                "cannot decrypt camera credentials; skipping camera"
+                            );
+                            continue;
+                        }
+                    };
                     // New or reconfigured camera: (re)build its provider and spread
                     // first checks over one interval so a big fleet doesn't start
                     // in lockstep.
@@ -252,10 +287,11 @@ impl Monitor {
                     self.tracks.insert(
                         target.id,
                         Track {
-                            provider: self.factory.create(&target_of(&target)),
-                            updated_at: target.updated_at,
+                            provider: self.factory.create(&provider_target),
+                            version: target.config_version(),
                             next_due: now + first.min(Duration::from_secs(2)),
                             in_flight: Arc::new(AtomicBool::new(false)),
+                            last_identity: Arc::default(),
                         },
                     );
                     self.tracks
@@ -279,6 +315,7 @@ impl Monitor {
                 policy: self.policy.clone(),
                 provider: Arc::clone(&track.provider),
                 in_flight: Arc::clone(&track.in_flight),
+                last_identity: Arc::clone(&track.last_identity),
             };
             let cancel = cancel.child_token();
             tokio::spawn(async move {
@@ -299,9 +336,20 @@ struct CheckContext {
     policy: PollingPolicy,
     provider: Arc<dyn CameraProvider>,
     in_flight: Arc<AtomicBool>,
+    last_identity: Arc<Mutex<Option<Instant>>>,
 }
 
 impl CheckContext {
+    /// Whether identity and credentials should be (re)checked now: on first
+    /// contact, when the camera comes back online (firmware may have changed),
+    /// and periodically so changed or revoked credentials are noticed.
+    fn identity_due(&self, target: &MonitorTarget, became_online: bool) -> bool {
+        let last = *self.last_identity.lock().unwrap_or_else(|e| e.into_inner());
+        became_online
+            || target.identity_updated_at.is_none()
+            || last.is_none_or(|t| t.elapsed() >= self.policy.identity_refresh)
+    }
+
     async fn check(self, target: MonitorTarget) {
         let outcome =
             match tokio::time::timeout(self.policy.timeout, self.provider.get_status()).await {
@@ -334,28 +382,28 @@ impl CheckContext {
             tracing::warn!(camera_id = %target.id, error = %err, "failed to store camera status");
         }
 
-        // Fetch identity the first time a camera is reachable, and again whenever
-        // it comes back online (firmware may have changed).
         let became_online = transition.is_some_and(|(_, to)| to == CameraState::Online);
-        if status.state == CameraState::Online && (became_online || !target.has_identity) {
-            match refresh_identity(&self.db, &*self.provider, target.id, self.policy.timeout).await
-            {
-                Ok(()) => {
-                    if let Ok(Some(cam)) = cameras::get(&self.db, target.id).await {
-                        self.bus.publish(Event::CameraChanged {
-                            camera: cam.summary,
-                        });
-                    }
-                }
-                Err(err) => {
-                    tracing::debug!(camera_id = %target.id, error = %err, "identity refresh failed")
+        let mut published = status;
+        if published.state == CameraState::Online && self.identity_due(&target, became_online) {
+            *self.last_identity.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+            let result =
+                refresh_identity(&self.db, &*self.provider, target.id, self.policy.timeout).await;
+            if let Err(err) = &result {
+                tracing::debug!(camera_id = %target.id, error = %err, "identity refresh failed");
+            }
+            if let Ok(Some(cam)) = cameras::get(&self.db, target.id).await {
+                published = cam.summary.status.clone();
+                if result.is_ok() {
+                    self.bus.publish(Event::CameraChanged {
+                        camera: cam.summary,
+                    });
                 }
             }
         }
 
         self.bus.publish(Event::CameraStatus {
             camera_id: target.id,
-            status,
+            status: published,
         });
         self.in_flight.store(false, Ordering::Release);
     }
@@ -377,6 +425,7 @@ mod tests {
             failure_threshold: 3,
             timeout: Duration::from_secs(5),
             max_in_flight: 4,
+            identity_refresh: Duration::from_secs(900),
         };
         assert_eq!(policy.next_delay(0.0), Duration::from_secs(8));
         assert_eq!(policy.next_delay(0.5), Duration::from_secs(10));

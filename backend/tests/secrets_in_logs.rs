@@ -41,6 +41,8 @@ async fn passwords_never_appear_in_logs() {
         "second distinctive secret",
         "third distinctive secret",
         "fourth distinctive secret",
+        "fifth-camera-secret",
+        "sixth-camera-secret",
     ];
 
     let app = TestApp::new().await;
@@ -87,6 +89,51 @@ async fn passwords_never_appear_in_logs() {
     app.send(req(Method::POST, "/api/v1/setup").json(json!({
         "token": "secret-setup-token-value", "username": "x", "password": secrets[0]
     })))
+    .await;
+
+    // Camera credentials: a shared set, inline credentials, and a Digest-
+    // authenticated request to a mock AXIS camera via test-connection.
+    let camera = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::path("/axis-cgi/basicdeviceinfo.cgi"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_raw(
+            r#"{"apiVersion":"1.0","data":{"propertyList":{"Brand":"AXIS","ProdNbr":"M1"}}}"#,
+            "application/json",
+        ))
+        .mount(&camera)
+        .await;
+    wiremock::Mock::given(wiremock::matchers::path("/axis-cgi/streamprofile.cgi"))
+        .respond_with(wiremock::ResponseTemplate::new(401).insert_header(
+            "WWW-Authenticate",
+            r#"Digest realm="AXIS_T", nonce="n0nce", algorithm=MD5, qop="auth""#,
+        ))
+        .mount(&camera)
+        .await;
+    app.send(
+        req(Method::POST, "/api/v1/credential-sets")
+            .cookie(&admin)
+            .json(json!({
+                "name": "Shared", "username": "svc", "password": secrets[4]
+            })),
+    )
+    .await;
+    let addr = camera.address();
+    app.send(
+        req(Method::POST, "/api/v1/cameras/test-connection")
+            .cookie(&admin)
+            .json(json!({
+                "host": addr.ip().to_string(), "port": addr.port(), "scheme": "http",
+                "credentials": { "type": "inline", "username": "root", "password": secrets[5] }
+            })),
+    )
+    .await;
+    app.send(
+        req(Method::POST, "/api/v1/cameras")
+            .cookie(&admin)
+            .json(json!({
+                "name": "Cam", "host": "192.0.2.99",
+                "credentials": { "type": "inline", "username": "root", "password": secrets[5] }
+            })),
+    )
     .await;
 
     let logs = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();

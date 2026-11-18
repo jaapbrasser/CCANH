@@ -98,7 +98,8 @@ impl TestApp {
 
     pub async fn with_config(config: Config) -> Self {
         let db = storage::connect_in_memory().await.unwrap();
-        let state = AppState::new(config, db);
+        let store = std::sync::Arc::new(crane::credentials::AesGcmStore::ephemeral());
+        let state = AppState::new(config, db, store);
         let router = crane::app(state.clone());
         Self { state, router }
     }

@@ -115,8 +115,10 @@ impl DemoProvider {
     }
 
     /// Simulate a request: wait a realistic time, then succeed or fail per the
-    /// scenario. Returns the simulated response time.
-    async fn request(&self) -> Result<u32, ProviderError> {
+    /// scenario. Returns the simulated response time. `authenticated` mirrors
+    /// VAPIX: identity and status calls are anonymous, so a camera with wrong
+    /// credentials still answers them (like the AXIS provider).
+    async fn request_as(&self, authenticated: bool) -> Result<u32, ProviderError> {
         if !self.is_online_now() {
             tokio::time::sleep(OFFLINE_DELAY).await;
             return Err(ProviderError::Unreachable(format!(
@@ -129,12 +131,16 @@ impl DemoProvider {
             _ => self.jitter(15, 90),
         };
         tokio::time::sleep(Duration::from_millis(u64::from(ms))).await;
-        if self.scenario == Scenario::AuthFailure {
+        if authenticated && self.scenario == Scenario::AuthFailure {
             return Err(ProviderError::AuthFailed(
                 "camera rejected the configured credentials".into(),
             ));
         }
         Ok(ms)
+    }
+
+    async fn request(&self) -> Result<u32, ProviderError> {
+        self.request_as(false).await
     }
 
     fn mac(&self) -> String {
@@ -219,7 +225,7 @@ impl CameraProvider for DemoProvider {
     }
 
     async fn get_stream_info(&self) -> Result<Vec<StreamProfile>, ProviderError> {
-        self.request().await?;
+        self.request_as(true).await?;
         Ok(self.model.profile().stream_profiles())
     }
 
@@ -241,11 +247,7 @@ mod tests {
     use crate::providers::ErrorCategory;
 
     fn provider(host: &str) -> DemoProvider {
-        DemoProvider::for_target(&ProviderTarget {
-            host: host.into(),
-            port: 443,
-            https: true,
-        })
+        DemoProvider::for_target(&ProviderTarget::simple(host, 443, true))
     }
 
     #[tokio::test(start_paused = true)]
@@ -267,8 +269,10 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn auth_failure_camera_reports_auth_failed() {
-        let err = provider("198.51.100.24").get_status().await.unwrap_err();
+    async fn auth_failure_camera_answers_anonymous_calls_but_rejects_credentials() {
+        let p = provider("198.51.100.24");
+        assert!(p.get_status().await.is_ok(), "status is anonymous");
+        let err = p.get_stream_info().await.unwrap_err();
         assert_eq!(err.category(), ErrorCategory::AuthFailed);
     }
 

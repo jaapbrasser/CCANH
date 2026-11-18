@@ -15,6 +15,8 @@ ignore = []
 version = 2
 # The project licence is undecided (SPEC §18 Q7). Allow permissive licences only.
 # ISC: ring, rustls-webpki, untrusted (rustls stack).
+# CDLA-Permissive-2.0: webpki-root-certs (Mozilla root CA data, via
+# rustls-platform-verifier).
 allow = [
     "MIT",
     "MIT-0",
@@ -22,6 +24,7 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "BSD-3-Clause",
     "BSL-1.0",
+    "CDLA-Permissive-2.0",
     "CC0-1.0",
     "ISC",
     "Unicode-3.0",

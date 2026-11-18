@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT shared AS \"shared: bool\" FROM credential_sets WHERE id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "shared: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "credential_sets",
+            "name": "shared"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "34f22d7fe2e684250391428c223f527199b284a3f4a320e75b0f1dfeb00d30e4"
+}

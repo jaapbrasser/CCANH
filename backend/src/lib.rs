@@ -6,6 +6,7 @@ pub mod audit;
 pub mod auth;
 pub mod cameras;
 pub mod config;
+pub mod credentials;
 pub mod demo;
 pub mod events;
 pub mod monitoring;
@@ -29,6 +30,7 @@ use crate::auth::rate_limit::LoginLimiter;
 use crate::auth::session::{self, Timeouts};
 use crate::auth::setup::SetupState;
 use crate::config::Config;
+use crate::credentials::CredentialStore;
 use crate::events::EventBus;
 use crate::monitoring::{Monitor, PollingPolicy};
 use crate::providers::ProviderFactory;
@@ -45,15 +47,21 @@ pub struct AppState {
     pub events: EventBus,
     pub providers: ProviderFactory,
     pub services: ServiceHealth,
+    /// Encrypts camera credentials at rest (ADR 0003).
+    pub credentials: Arc<dyn CredentialStore>,
 }
 
 impl AppState {
-    pub fn new(config: Config, db: SqlitePool) -> Self {
-        let providers = ProviderFactory::new(config.mode);
+    pub fn new(config: Config, db: SqlitePool, credentials: Arc<dyn CredentialStore>) -> Self {
+        let providers = ProviderFactory::new(
+            config.mode,
+            Duration::from_secs(config.monitoring.timeout_secs),
+        );
         Self {
             events: EventBus::default(),
             providers,
             services: ServiceHealth::default(),
+            credentials,
             config: Arc::new(config),
             db,
             started_at: Instant::now(),
@@ -109,8 +117,18 @@ pub async fn serve(
         shutdown.child_token(),
         {
             let (db, factory, bus) = (state.db.clone(), state.providers, state.events.clone());
+            let store = state.credentials.clone();
             let policy = PollingPolicy::from(&state.config.monitoring);
-            move |cancel| Monitor::new(db.clone(), factory, bus.clone(), policy.clone()).run(cancel)
+            move |cancel| {
+                Monitor::new(
+                    db.clone(),
+                    factory,
+                    bus.clone(),
+                    policy.clone(),
+                    store.clone(),
+                )
+                .run(cancel)
+            }
         },
     ));
 

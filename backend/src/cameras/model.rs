@@ -6,6 +6,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::providers::{Capability, ErrorCategory, NetworkInfo, StreamProfile};
+use crate::secret::SecretString;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, sqlx::Type, Default,
@@ -85,6 +86,10 @@ pub struct CameraStatusView {
     pub error_category: Option<ErrorCategory>,
     /// Short, non-sensitive description of the last error.
     pub error_message: Option<String>,
+    /// Result of the last identity/credential check, separate from
+    /// reachability: a camera can be online but reject its credentials.
+    pub identity_error_category: Option<ErrorCategory>,
+    pub identity_error_message: Option<String>,
 }
 
 /// A camera as shown in lists.
@@ -102,6 +107,13 @@ pub struct CameraSummary {
     pub status: CameraStatusView,
 }
 
+/// A reference to a shared credential set (never contains secrets).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct CredentialSetRef {
+    pub id: Uuid,
+    pub name: String,
+}
+
 /// Everything known about a camera (SPEC §6.3).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 pub struct CameraDetail {
@@ -109,6 +121,11 @@ pub struct CameraDetail {
     pub summary: CameraSummary,
     pub tls_mode: TlsMode,
     pub tls_pinned_sha256: Option<String>,
+    /// Whether credentials are configured. Credentials themselves are write-only.
+    pub has_credentials: bool,
+    /// The shared credential set in use, if any (`null` for per-camera credentials).
+    pub credential_set: Option<CredentialSetRef>,
+    pub allow_basic_over_http: bool,
     pub serial_number: Option<String>,
     pub mac_address: Option<String>,
     pub device_name: Option<String>,
@@ -140,7 +157,23 @@ pub struct StatusTransition {
     pub error_category: Option<ErrorCategory>,
 }
 
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+/// How a camera authenticates. Credentials are write-only.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum CredentialInput {
+    /// No credentials (anonymous calls only).
+    None,
+    /// Use a shared credential set.
+    Set { id: Uuid },
+    /// Credentials for this camera only.
+    Inline {
+        username: String,
+        #[schema(value_type = String, format = Password)]
+        password: SecretString,
+    },
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct NewCamera {
     pub name: String,
     /// IP address or hostname, without scheme, port or path.
@@ -155,6 +188,12 @@ pub struct NewCamera {
     pub tls_pinned_sha256: Option<String>,
     #[serde(default = "default_true")]
     pub monitoring_enabled: bool,
+    #[serde(default)]
+    pub credentials: Option<CredentialInput>,
+    /// Allow Basic authentication over plain HTTP, which sends the password
+    /// unencrypted. Off by default (SPEC §4.5).
+    #[serde(default)]
+    pub allow_basic_over_http: bool,
 }
 
 fn default_true() -> bool {
@@ -163,7 +202,7 @@ fn default_true() -> bool {
 
 /// Partial update. Omitted fields are unchanged. Send `tls_pinned_sha256: null`
 /// together with a non-pinned `tls_mode` to clear a pin.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct CameraPatch {
     pub name: Option<String>,
     pub host: Option<String>,
@@ -172,6 +211,9 @@ pub struct CameraPatch {
     pub tls_mode: Option<TlsMode>,
     pub tls_pinned_sha256: Option<String>,
     pub monitoring_enabled: Option<bool>,
+    /// Omit to keep the current credentials.
+    pub credentials: Option<CredentialInput>,
+    pub allow_basic_over_http: Option<bool>,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

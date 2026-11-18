@@ -48,6 +48,8 @@ failure_threshold = 3
 timeout_secs = 5
 # Maximum checks in flight across all cameras.
 max_concurrent = 32
+# Minutes between identity/credential re-checks of an online camera.
+identity_refresh_minutes = 15
 
 [logging]
 # tracing filter directive; RUST_LOG overrides it.

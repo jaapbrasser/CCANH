@@ -255,7 +255,9 @@ async fn monitor_tracks_demo_fleet_end_to_end() {
     config.monitoring.interval_secs = 1;
     config.monitoring.failure_threshold = 2;
     let app = TestApp::with_config(config).await;
-    crane::demo::seed(&app.state.db).await.unwrap();
+    crane::demo::seed(&app.state.db, &*app.state.credentials)
+        .await
+        .unwrap();
     let (cams, _) = cameras::list(
         &app.state.db,
         cameras::ListParams {
@@ -300,14 +302,18 @@ async fn monitor_tracks_demo_fleet_end_to_end() {
         Some(ErrorCategory::Unreachable)
     );
 
+    // Wrong credentials: the camera is reachable (anonymous status calls work),
+    // and the credential problem is reported separately.
     let cam = wait_for(&app, auth, "auth-failure camera", |c| {
-        c.summary.status.state == CameraState::Offline
+        c.summary.status.identity_error_category.is_some()
     })
     .await;
+    assert_eq!(cam.summary.status.state, CameraState::Online);
     assert_eq!(
-        cam.summary.status.error_category,
+        cam.summary.status.identity_error_category,
         Some(ErrorCategory::AuthFailed)
     );
+    assert!(cam.summary.status.error_category.is_none());
 
     // Let a few more checks run, then confirm history has one transition, not
     // one row per poll.

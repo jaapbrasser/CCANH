@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE camera_status SET state = 'unknown', last_change_at = NULL,\n                    response_time_ms = NULL, consecutive_failures = 0,\n                    error_category = NULL, error_message = NULL,\n                    identity_error_category = NULL, identity_error_message = NULL\n              WHERE camera_id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "f04c62c7be928a081e47ee4429ad2a4e724c753bd25256330b75cf5f7f4ea2d0"
+}
