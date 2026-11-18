@@ -155,28 +155,28 @@ async fn test_connection_in_demo_mode() {
     })
     .await;
     let (_, admin) = app.signed_in("admin", Role::Admin).await;
-    let test = |host: &'static str| {
-        req(Method::POST, "/api/v1/cameras/test-connection")
-            .cookie(&admin)
-            .json(json!({ "host": host }))
-    };
 
-    let ok = app.send(test("192.0.2.11")).await;
-    assert_eq!(ok.status, StatusCode::OK, "{}", ok.text());
-    assert_eq!(ok.json()["ok"], true);
-    assert_eq!(ok.json()["device"]["model"], "AXIS Q6135-LE");
-    assert!(!ok.json()["capabilities"].as_array().unwrap().is_empty());
+    let ok = app
+        .test_connection(&admin, json!({ "host": "192.0.2.11" }))
+        .await;
+    assert_eq!(ok["ok"], true);
+    assert_eq!(ok["device"]["model"], "AXIS Q6135-LE");
+    assert!(!ok["capabilities"].as_array().unwrap().is_empty());
 
-    let auth = app.send(test("198.51.100.24")).await;
-    assert_eq!(auth.json()["ok"], false);
-    let steps = auth.json()["steps"].as_array().unwrap().clone();
+    let auth = app
+        .test_connection(&admin, json!({ "host": "198.51.100.24" }))
+        .await;
+    assert_eq!(auth["ok"], false);
+    let steps = auth["steps"].as_array().unwrap().clone();
     assert_eq!(steps[0]["name"], "reachability");
     assert_eq!(steps[0]["ok"], true);
     assert_eq!(steps[1]["name"], "credentials");
     assert_eq!(steps[1]["error_category"], "auth_failed");
 
-    let offline = app.send(test("192.0.2.34")).await;
-    let steps = offline.json()["steps"].as_array().unwrap().clone();
+    let offline = app
+        .test_connection(&admin, json!({ "host": "192.0.2.34" }))
+        .await;
+    let steps = offline["steps"].as_array().unwrap().clone();
     assert_eq!(steps[0]["error_category"], "unreachable");
     assert_eq!(steps[1]["skipped"], true);
 
@@ -237,32 +237,23 @@ async fn test_connection_against_axis_device_and_reuses_stored_credentials() {
         })
     };
 
-    let res = app
-        .send(
-            req(Method::POST, "/api/v1/cameras/test-connection")
-                .cookie(&admin)
-                .json(body(
-                    json!({ "type": "inline", "username": "viewer", "password": SECRET }),
-                )),
+    let j = app
+        .test_connection(
+            &admin,
+            body(json!({ "type": "inline", "username": "viewer", "password": SECRET })),
         )
         .await;
-    assert_eq!(res.status, StatusCode::OK);
-    let j = res.json();
     assert_eq!(j["device"]["model"], "AXIS M3086-V");
     assert_eq!(j["steps"][1]["name"], "credentials");
     assert_eq!(j["steps"][1]["ok"], true, "{j}");
     assert_eq!(j["stream_profiles"][0]["width"], 1280);
-    assert_no_secret(&res.text());
+    assert_no_secret(&j.to_string());
 
     // Without credentials the camera's challenge is reported clearly.
-    let res = app
-        .send(
-            req(Method::POST, "/api/v1/cameras/test-connection")
-                .cookie(&admin)
-                .json(body(json!({ "type": "none" }))),
-        )
+    let j = app
+        .test_connection(&admin, body(json!({ "type": "none" })))
         .await;
-    assert_eq!(res.json()["steps"][1]["error_category"], "auth_failed");
+    assert_eq!(j["steps"][1]["error_category"], "auth_failed");
 
     // Saved camera: test again without re-entering the password.
     let cam = app
@@ -272,15 +263,14 @@ async fn test_connection_against_axis_device_and_reuses_stored_credentials() {
         })))
         .await;
     let id = cam.json()["id"].as_str().unwrap().to_owned();
-    let res = app
-        .send(
-            req(Method::POST, "/api/v1/cameras/test-connection")
-                .cookie(&admin)
-                .json(json!({
-                    "host": addr.ip().to_string(), "port": addr.port(), "scheme": "http",
-                    "camera_id": id,
-                })),
+    let j = app
+        .test_connection(
+            &admin,
+            json!({
+                "host": addr.ip().to_string(), "port": addr.port(), "scheme": "http",
+                "camera_id": id,
+            }),
         )
         .await;
-    assert_eq!(res.json()["steps"][1]["ok"], true, "{}", res.text());
+    assert_eq!(j["steps"][1]["ok"], true, "{j}");
 }

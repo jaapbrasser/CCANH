@@ -27,6 +27,7 @@ pub mod action {
     pub const CREDENTIAL_SET_CREATE: &str = "credential_set.create";
     pub const CREDENTIAL_SET_UPDATE: &str = "credential_set.update";
     pub const CREDENTIAL_SET_DELETE: &str = "credential_set.delete";
+    pub const SETTINGS_UPDATE: &str = "settings.update";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, ToSchema)]

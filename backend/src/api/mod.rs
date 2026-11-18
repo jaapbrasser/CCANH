@@ -8,8 +8,10 @@ pub mod error;
 mod extract;
 pub mod health;
 mod pagination;
+mod settings;
 mod setup;
 mod static_files;
+mod tasks;
 mod users;
 pub mod ws;
 
@@ -41,7 +43,12 @@ pub const DOCS_PATH: &str = "/api/docs";
         title = "CCANH API",
         description = "Crane Camera Automated Navigation Hub. Each operation states its required role.",
     ),
-    components(schemas(error::Problem, ws::WsClientMessage, ws::WsServerMessage)),
+    components(schemas(
+        error::Problem,
+        ws::WsClientMessage,
+        ws::WsServerMessage,
+        credentials::TestConnectionResult,
+    )),
     modifiers(&SessionCookie),
     security(("session_cookie" = [])),
     tags(
@@ -52,6 +59,8 @@ pub const DOCS_PATH: &str = "/api/docs";
         (name = "audit", description = "Security audit log"),
         (name = "cameras", description = "Camera registry, status and capabilities"),
         (name = "credentials", description = "Shared camera credential sets (write-only secrets)"),
+        (name = "settings", description = "Admin-editable runtime settings"),
+        (name = "tasks", description = "Background task status and cancellation"),
         (name = "realtime", description = "WebSocket for live updates"),
     ),
 )]
@@ -94,6 +103,14 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(credentials::test_connection))
         .routes(routes!(credentials::list, credentials::create))
         .routes(routes!(credentials::update, credentials::delete))
+        .routes(routes!(settings::get))
+        .routes(routes!(
+            settings::update_monitoring,
+            settings::reset_monitoring
+        ))
+        .routes(routes!(tasks::list))
+        .routes(routes!(tasks::get))
+        .routes(routes!(tasks::cancel))
         .routes(routes!(ws::ws))
 }
 

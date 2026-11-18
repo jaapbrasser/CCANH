@@ -31,6 +31,7 @@ use crate::auth::session::{self, Timeouts, COOKIE_NAME};
 use crate::auth::{csrf, AuthUser, Role};
 use crate::cameras::{CameraStatusView, CameraSummary};
 use crate::events::{Event, Topic};
+use crate::tasks::Task;
 use crate::AppState;
 
 pub const HEARTBEAT: Duration = Duration::from_secs(20);
@@ -48,7 +49,7 @@ pub enum WsClientMessage {
 }
 
 /// Messages the server sends.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum WsServerMessage {
     /// First message after connecting.
@@ -79,6 +80,10 @@ pub enum WsServerMessage {
     CameraDeleted {
         camera_id: Uuid,
     },
+    /// A background task changed state or reported progress.
+    TaskUpdated {
+        task: Task,
+    },
 }
 
 impl From<Event> for WsServerMessage {
@@ -89,14 +94,19 @@ impl From<Event> for WsServerMessage {
             }
             Event::CameraChanged { camera } => WsServerMessage::CameraChanged { camera },
             Event::CameraDeleted { camera_id } => WsServerMessage::CameraDeleted { camera_id },
+            Event::TaskUpdated { task } => WsServerMessage::TaskUpdated { task },
         }
     }
 }
 
 /// Authorization hook for events. In the MVP every signed-in user sees every
-/// camera; per-group access (SPEC §18 Q4) plugs in here.
-fn may_see(_user: &AuthUser, _event: &Event) -> bool {
-    true
+/// camera; per-group access (SPEC §18 Q4) plugs in here. Tasks are visible to
+/// the user who started them, and to admins.
+fn may_see(user: &AuthUser, event: &Event) -> bool {
+    match event {
+        Event::TaskUpdated { task } => user.is_admin() || task.created_by == Some(user.id),
+        _ => true,
+    }
 }
 
 /// Open the real-time WebSocket.

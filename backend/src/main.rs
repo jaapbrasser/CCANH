@@ -168,6 +168,18 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     tracing::info!(address = %local, "listening on {scheme}://{local}");
 
     let state = AppState::new(config, db, credentials);
+    state
+        .settings
+        .load(&state.db)
+        .await
+        .context("loading runtime settings")?;
+    let interrupted = state.tasks.mark_interrupted().await?;
+    if interrupted > 0 {
+        tracing::warn!(
+            count = interrupted,
+            "marked tasks interrupted by the last shutdown as failed"
+        );
+    }
     if let Some(token) = state.issue_setup_token_if_needed().await? {
         // SPEC §14.2: the one-time token goes to the console and the log.
         tracing::warn!(

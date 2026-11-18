@@ -12,8 +12,10 @@ pub mod events;
 pub mod monitoring;
 pub mod providers;
 pub mod secret;
+pub mod settings;
 pub mod storage;
 pub mod supervisor;
+pub mod tasks;
 pub mod telemetry;
 pub mod tls;
 pub mod users;
@@ -32,9 +34,11 @@ use crate::auth::setup::SetupState;
 use crate::config::Config;
 use crate::credentials::CredentialStore;
 use crate::events::EventBus;
-use crate::monitoring::{Monitor, PollingPolicy};
+use crate::monitoring::{Monitor, MonitorStats};
 use crate::providers::ProviderFactory;
+use crate::settings::{MonitoringSettings, RuntimeSettings, SettingsHandle};
 use crate::supervisor::ServiceHealth;
+use crate::tasks::TaskManager;
 
 /// Shared application state, built once at startup and cloned into handlers.
 #[derive(Clone)]
@@ -45,22 +49,27 @@ pub struct AppState {
     pub login_limiter: Arc<LoginLimiter>,
     pub setup: Arc<SetupState>,
     pub events: EventBus,
-    pub providers: ProviderFactory,
     pub services: ServiceHealth,
+    /// Admin-editable runtime settings (defaults from `config`).
+    pub settings: SettingsHandle,
+    pub monitor_stats: Arc<MonitorStats>,
+    pub tasks: TaskManager,
     /// Encrypts camera credentials at rest (ADR 0003).
     pub credentials: Arc<dyn CredentialStore>,
 }
 
 impl AppState {
     pub fn new(config: Config, db: SqlitePool, credentials: Arc<dyn CredentialStore>) -> Self {
-        let providers = ProviderFactory::new(
-            config.mode,
-            Duration::from_secs(config.monitoring.timeout_secs),
-        );
+        let settings = SettingsHandle::new(RuntimeSettings {
+            monitoring: MonitoringSettings::from(&config.monitoring),
+        });
+        let events = EventBus::default();
         Self {
-            events: EventBus::default(),
-            providers,
+            tasks: TaskManager::new(db.clone(), events.clone()),
+            events,
             services: ServiceHealth::default(),
+            settings,
+            monitor_stats: Arc::default(),
             credentials,
             config: Arc::new(config),
             db,
@@ -68,6 +77,12 @@ impl AppState {
             login_limiter: Arc::new(LoginLimiter::default()),
             setup: Arc::new(SetupState::default()),
         }
+    }
+
+    /// A provider factory using the current request timeout setting.
+    pub fn providers(&self) -> ProviderFactory {
+        let timeout = self.settings.current().monitoring.timeout_secs;
+        ProviderFactory::new(self.config.mode, Duration::from_secs(timeout))
     }
 
     /// If no users exist, issue a one-time setup token and return it so the
@@ -116,16 +131,17 @@ pub async fn serve(
         state.services.clone(),
         shutdown.child_token(),
         {
-            let (db, factory, bus) = (state.db.clone(), state.providers, state.events.clone());
-            let store = state.credentials.clone();
-            let policy = PollingPolicy::from(&state.config.monitoring);
+            let (db, bus, mode) = (state.db.clone(), state.events.clone(), state.config.mode);
+            let (store, stats) = (state.credentials.clone(), state.monitor_stats.clone());
+            let settings = state.settings.clone();
             move |cancel| {
                 Monitor::new(
                     db.clone(),
-                    factory,
+                    mode,
                     bus.clone(),
-                    policy.clone(),
+                    settings.subscribe(),
                     store.clone(),
+                    stats.clone(),
                 )
                 .run(cancel)
             }
@@ -142,6 +158,15 @@ pub async fn serve(
         }
     });
 
+    // Cancel running tasks as soon as shutdown starts.
+    {
+        let tasks = state.tasks.clone();
+        let shutdown = shutdown.clone();
+        tokio::spawn(async move {
+            shutdown.cancelled().await;
+            tasks.shutdown();
+        });
+    }
     let make_service = app(state).into_make_service_with_connect_info::<SocketAddr>();
     let listener = listener.into_std()?;
     match tls {
@@ -178,6 +203,11 @@ async fn sweep_sessions(db: SqlitePool, timeouts: Timeouts, cancel: Cancellation
             Ok(0) => {}
             Ok(n) => tracing::debug!(removed = n, "purged expired sessions"),
             Err(err) => tracing::warn!(error = %err, "failed to purge expired sessions"),
+        }
+        match tasks::purge_old(&db).await {
+            Ok(0) => {}
+            Ok(n) => tracing::debug!(removed = n, "purged old tasks"),
+            Err(err) => tracing::warn!(error = %err, "failed to purge old tasks"),
         }
     }
 }

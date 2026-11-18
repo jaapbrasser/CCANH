@@ -1,0 +1,194 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id: Hyphenated\", kind, camera_id AS \"camera_id: Hyphenated\",\n                  created_by AS \"created_by: Hyphenated\", created_by_username,\n                  status AS \"status: TaskStatus\", progress_current, progress_total, message,\n                  error_category AS \"error_category: ErrorCategory\", error_message, result,\n                  created_at AS \"created_at: OffsetDateTime\",\n                  started_at AS \"started_at: OffsetDateTime\",\n                  completed_at AS \"completed_at: OffsetDateTime\"\n             FROM tasks WHERE id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "camera_id: Hyphenated",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "camera_id"
+          }
+        }
+      },
+      {
+        "name": "created_by: Hyphenated",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "created_by"
+          }
+        }
+      },
+      {
+        "name": "created_by_username",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "created_by_username"
+          }
+        }
+      },
+      {
+        "name": "status: TaskStatus",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "progress_current",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "progress_current"
+          }
+        }
+      },
+      {
+        "name": "progress_total",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "progress_total"
+          }
+        }
+      },
+      {
+        "name": "message",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "message"
+          }
+        }
+      },
+      {
+        "name": "error_category: ErrorCategory",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "error_category"
+          }
+        }
+      },
+      {
+        "name": "error_message",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "error_message"
+          }
+        }
+      },
+      {
+        "name": "result",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "result"
+          }
+        }
+      },
+      {
+        "name": "created_at: OffsetDateTime",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "name": "started_at: OffsetDateTime",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "name": "completed_at: OffsetDateTime",
+        "ordinal": 14,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tasks",
+            "name": "completed_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "a22cdad4009a6e15bafee892bfa01071c0bfe1704c01432adc8dd3755eb46975"
+}

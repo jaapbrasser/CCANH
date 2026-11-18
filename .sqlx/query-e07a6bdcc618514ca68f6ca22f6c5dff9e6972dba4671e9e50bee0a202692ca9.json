@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE tasks SET progress_current = ?2, progress_total = ?3, message = ?4 WHERE id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "e07a6bdcc618514ca68f6ca22f6c5dff9e6972dba4671e9e50bee0a202692ca9"
+}

@@ -27,6 +27,7 @@ use crate::providers::{
     StreamProfile,
 };
 use crate::secret::SecretString;
+use crate::tasks::{Creator, Task, TaskContext, TaskFailure};
 use crate::AppState;
 
 pub(crate) fn credential_error(err: CredentialSetError) -> ApiError {
@@ -304,7 +305,12 @@ fn step<T>(name: &str, r: &Result<T, ProviderError>) -> TestStep {
     }
 }
 
-async fn run_test(provider: &dyn CameraProvider, has_credentials: bool) -> TestConnectionResult {
+async fn run_test(
+    provider: &dyn CameraProvider,
+    has_credentials: bool,
+    ctx: &TaskContext,
+) -> TestConnectionResult {
+    ctx.progress(0, Some(4), "Checking reachability").await;
     let probe = provider.probe().await;
     let mut steps = vec![step("reachability", &probe)];
     let reachable = probe.is_ok();
@@ -330,6 +336,7 @@ async fn run_test(provider: &dyn CameraProvider, has_credentials: bool) -> TestC
     }
 
     // Stream profiles need at least a Viewer account: this verifies credentials.
+    ctx.progress(1, Some(4), "Verifying credentials").await;
     let streams = provider.get_stream_info().await;
     let mut cred_step = step("credentials", &streams);
     if !has_credentials && streams.is_err() {
@@ -339,28 +346,33 @@ async fn run_test(provider: &dyn CameraProvider, has_credentials: bool) -> TestC
     steps.push(cred_step);
     result.stream_profiles = streams.unwrap_or_default();
 
+    ctx.progress(2, Some(4), "Reading capabilities").await;
     let caps = provider.get_capabilities().await;
     steps.push(step("capabilities", &caps));
     result.capabilities = caps.map(|c| c.items).unwrap_or_default();
 
+    ctx.progress(3, Some(4), "Reading device details").await;
     let info = provider.get_device_info().await;
     steps.push(step("device_info", &info));
     if let Ok(info) = info {
         result.device = Some(info);
     }
 
+    ctx.progress(4, Some(4), "Done").await;
     result.ok = steps.iter().all(|s| s.ok || s.skipped);
     result.tls_fingerprint_sha256 = provider.tls_fingerprint();
     result.steps = steps;
     result
 }
 
-/// Test connecting to a camera without saving anything.
+/// Start a connection test for camera settings, without saving anything.
 ///
-/// Required role: admin. Probes reachability and identity, verifies the
-/// credentials, and reads capabilities and stream profiles. Each step reports
-/// its own error category. The camera's certificate fingerprint is returned so
-/// it can be pinned.
+/// Required role: admin. Runs as a background task (kind `test_connection`):
+/// returns 202 with the task; follow it via `GET /api/v1/tasks/{id}` or the
+/// `tasks` WebSocket topic. When it finishes, `result` is a
+/// `TestConnectionResult`: per-step outcomes (reachability, credentials,
+/// capabilities, device info) with error categories, and the certificate
+/// fingerprint for pinning.
 #[utoipa::path(
     post,
     path = "/cameras/test-connection",
@@ -368,7 +380,7 @@ async fn run_test(provider: &dyn CameraProvider, has_credentials: bool) -> TestC
     tag = "cameras",
     request_body = TestConnectionRequest,
     responses(
-        (status = 200, description = "Test result (see `ok` and `steps`)", body = TestConnectionResult),
+        (status = 202, description = "Test started", body = Task),
         (status = 400, description = "Invalid settings", body = Problem),
         (status = 401, description = "Not signed in", body = Problem),
         (status = 403, description = "Not an admin", body = Problem),
@@ -376,10 +388,10 @@ async fn run_test(provider: &dyn CameraProvider, has_credentials: bool) -> TestC
     )
 )]
 pub async fn test_connection(
-    _admin: AdminUser,
+    admin: AdminUser,
     State(state): State<AppState>,
     JsonBody(body): JsonBody<TestConnectionRequest>,
-) -> Result<Json<TestConnectionResult>, ApiError> {
+) -> Result<(StatusCode, Json<Task>), ApiError> {
     let host = validate_host(&body.host).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     let port = validate_port(body.port.unwrap_or_else(|| body.scheme.default_port()))
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -439,26 +451,48 @@ pub async fn test_connection(
         credentials,
         allow_basic_over_http: body.allow_basic_over_http,
     };
-    let provider = state.providers.create(&target);
-    let result = tokio::time::timeout(TEST_TIMEOUT, run_test(&*provider, has_credentials))
-        .await
-        .unwrap_or_else(|_| TestConnectionResult {
-            ok: false,
-            response_time_ms: None,
-            device: None,
-            capabilities: Vec::new(),
-            stream_profiles: Vec::new(),
-            tls_fingerprint_sha256: provider.tls_fingerprint(),
-            steps: vec![TestStep {
-                name: "reachability".into(),
-                ok: false,
-                skipped: false,
-                error_category: Some(ErrorCategory::Timeout),
-                message: Some(format!(
-                    "The test did not finish within {} seconds.",
-                    TEST_TIMEOUT.as_secs()
-                )),
-            }],
-        });
-    Ok(Json(result))
+    let provider = state.providers().create(&target);
+    let creator = Creator {
+        id: admin.id,
+        username: admin.username.clone(),
+    };
+    let task = state
+        .tasks
+        .spawn(
+            "test_connection",
+            body.camera_id,
+            Some(creator),
+            move |ctx| async move {
+                let result = match tokio::time::timeout(
+                    TEST_TIMEOUT,
+                    run_test(&*provider, has_credentials, &ctx),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_) => TestConnectionResult {
+                        ok: false,
+                        response_time_ms: None,
+                        device: None,
+                        capabilities: Vec::new(),
+                        stream_profiles: Vec::new(),
+                        tls_fingerprint_sha256: provider.tls_fingerprint(),
+                        steps: vec![TestStep {
+                            name: "reachability".into(),
+                            ok: false,
+                            skipped: false,
+                            error_category: Some(ErrorCategory::Timeout),
+                            message: Some(format!(
+                                "The test did not finish within {} seconds.",
+                                TEST_TIMEOUT.as_secs()
+                            )),
+                        }],
+                    },
+                };
+                serde_json::to_value(&result)
+                    .map_err(|e| TaskFailure::internal(format!("serializing result: {e}")))
+            },
+        )
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
 }

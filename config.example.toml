@@ -50,6 +50,12 @@ timeout_secs = 5
 max_concurrent = 32
 # Minutes between identity/credential re-checks of an online camera.
 identity_refresh_minutes = 15
+# Extra attempts within one check for transient errors (never for auth failures).
+retries = 1
+# Offline cameras are checked less often, backing off up to this many seconds.
+offline_max_interval_secs = 60
+# All [monitoring] values are defaults: admins can override them at runtime
+# under Settings (stored in the database).
 
 [logging]
 # tracing filter directive; RUST_LOG overrides it.

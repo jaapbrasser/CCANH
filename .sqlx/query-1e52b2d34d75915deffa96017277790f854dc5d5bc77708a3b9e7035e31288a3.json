@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO tasks (id, kind, camera_id, created_by, created_by_username, status, created_at)\n             VALUES (?1, ?2, ?3, ?4, ?5, 'queued', ?6)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "1e52b2d34d75915deffa96017277790f854dc5d5bc77708a3b9e7035e31288a3"
+}

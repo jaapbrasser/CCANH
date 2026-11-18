@@ -379,7 +379,7 @@ pub async fn refresh(
         .ok_or(ApiError::NotFound)?
         .provider_target(&*state.credentials)
         .map_err(|e| ApiError::Internal(format!("cannot decrypt camera credentials: {e}")))?;
-    let provider = state.providers.create(&target);
+    let provider = state.providers().create(&target);
     match monitoring::refresh_identity(&state.db, &*provider, id, REFRESH_TIMEOUT).await {
         Ok(()) => {}
         Err(monitoring::RefreshError::Provider(e)) => {

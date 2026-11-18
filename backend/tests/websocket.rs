@@ -206,3 +206,64 @@ async fn closes_when_session_ends() {
     .expect("socket was not closed after the session ended");
     assert_eq!(closed, Some(crane::api::ws::CLOSE_SESSION_ENDED));
 }
+
+#[tokio::test]
+async fn task_updates_only_reach_their_owner() {
+    let server = start().await;
+    let cookie = cookie_for(&server, "alice").await;
+    let alice = crane::users::find_credentials(&server.app.state.db, "alice")
+        .await
+        .unwrap()
+        .unwrap()
+        .user;
+    let origin = format!("http://{}", server.addr);
+    let mut socket = connect(&server, Some(&cookie), Some(&origin))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut socket).await["type"], "hello");
+    socket
+        .send(Message::Text(
+            json!({ "type": "subscribe", "topics": ["tasks"] })
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut socket).await["type"], "subscribed");
+
+    // Someone else's task: never delivered. Alice's own task: delivered.
+    let tasks = &server.app.state.tasks;
+    tasks
+        .spawn("other", None, None, |_| async {
+            Ok(serde_json::Value::Null)
+        })
+        .await
+        .unwrap();
+    let mine = tasks
+        .spawn(
+            "mine",
+            None,
+            Some(crane::tasks::Creator {
+                id: alice.id,
+                username: "alice".into(),
+            }),
+            |_| async { Ok(serde_json::Value::Null) },
+        )
+        .await
+        .unwrap();
+
+    let first = next_json(&mut socket).await;
+    assert_eq!(first["type"], "task_updated");
+    assert_eq!(
+        first["task"]["id"],
+        mine.id.to_string(),
+        "only own tasks: {first}"
+    );
+    loop {
+        let msg = next_json(&mut socket).await;
+        assert_eq!(msg["task"]["kind"], "mine", "{msg}");
+        if msg["task"]["status"] == "succeeded" {
+            break;
+        }
+    }
+}
