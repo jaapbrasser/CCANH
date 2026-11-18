@@ -342,6 +342,30 @@ export interface paths {
         patch: operations["update_monitoring_settings"];
         trace?: never;
     };
+    "/api/v1/settings/streaming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Reset live video settings to the startup defaults.
+         * @description Required role: admin.
+         */
+        delete: operations["reset_streaming_settings"];
+        options?: never;
+        head?: never;
+        /**
+         * Change live video settings (grace period, buffer caps).
+         * @description Required role: admin. Applies to streams immediately. Audited.
+         */
+        patch: operations["update_streaming_settings"];
+        trace?: never;
+    };
     "/api/v1/setup": {
         parameters: {
             query?: never;
@@ -361,6 +385,70 @@ export interface paths {
          *     startup. Only works while no users exist. Signs the new admin in.
          */
         post: operations["complete_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List active streams with their metrics.
+         * @description Required role: admin. Live updates of the same data are on the `streams`
+         *     WebSocket topic.
+         */
+        get: operations["list_streams"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/streams/{camera_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Force-stop a stream, disconnecting its viewers.
+         * @description Required role: admin. Audited. Viewers can reconnect, which starts a new
+         *     upstream connection.
+         */
+        delete: operations["stop_stream"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/streams/{camera_id}/ws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Watch a camera's live video.
+         * @description Required role: viewer. Upgrades to the media WebSocket described in ADR 0002
+         *     (session cookie plus a same-origin `Origin` header). All viewers of the same
+         *     camera and profile share one upstream camera connection.
+         */
+        get: operations["open_stream"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -932,6 +1020,7 @@ export interface components {
         Role: "admin" | "viewer";
         RuntimeSettings: {
             monitoring: components["schemas"]["MonitoringSettings"];
+            streaming: components["schemas"]["StreamingSettings"];
         };
         /** @enum {string} */
         Scheme: "http" | "https";
@@ -981,6 +1070,52 @@ export interface components {
             occurred_at: string;
             to_state: components["schemas"]["CameraState"];
         };
+        /** @description Per-stream metrics and state for the Streams page (SPEC §7.6). */
+        StreamInfo: {
+            /** @description Bytes held in the GOP cache. */
+            buffer_bytes: number;
+            /** Format: int64 */
+            bytes_in_total: number;
+            /** Format: int64 */
+            bytes_out_total: number;
+            /** Format: uuid */
+            camera_id: string;
+            codec?: string | null;
+            /** Format: int64 */
+            errors: number;
+            /** Format: int32 */
+            height?: number | null;
+            /**
+             * Format: int64
+             * @description Upstream bytes per second (last second).
+             */
+            in_bytes_per_sec: number;
+            /**
+             * Format: int64
+             * @description Viewers dropped to the next keyframe for falling behind.
+             */
+            lag_resyncs: number;
+            last_error?: string | null;
+            /**
+             * Format: int64
+             * @description Bytes per second sent to all viewers together (last second).
+             */
+            out_bytes_per_sec: number;
+            profile: string;
+            /** Format: int64 */
+            reconnects: number;
+            /** Format: date-time */
+            started_at: string;
+            /**
+             * Format: int64
+             * @description Time from the stream being requested to the first keyframe.
+             */
+            startup_ms?: number | null;
+            state: components["schemas"]["StreamState"];
+            subscribers: number;
+            /** Format: int32 */
+            width?: number | null;
+        };
         /**
          * @description A stream profile. AXIS profiles only carry the parameters an admin saved in
          *     them, so codec and resolution may be unknown (the camera default applies).
@@ -998,6 +1133,34 @@ export interface components {
             name: string;
             /** Format: int32 */
             width?: number | null;
+        };
+        /** @enum {string} */
+        StreamState: "starting" | "running" | "reconnecting" | "draining" | "failed" | "stopped";
+        StreamingPatch: {
+            /** Format: int32 */
+            global_buffer_mb?: number | null;
+            /** Format: int64 */
+            grace_period_secs?: number | null;
+            /** Format: int32 */
+            stream_buffer_mb?: number | null;
+        };
+        /** @description Live video (SPEC §7). */
+        StreamingSettings: {
+            /**
+             * Format: int32
+             * @description GOP cache cap across all streams in MiB (16–4096, at least the per-stream cap).
+             */
+            global_buffer_mb: number;
+            /**
+             * Format: int64
+             * @description Seconds an unwatched stream stays connected before closing (0–300).
+             */
+            grace_period_secs: number;
+            /**
+             * Format: int32
+             * @description GOP cache cap per stream in MiB (1–64).
+             */
+            stream_buffer_mb: number;
         };
         Task: {
             /** Format: uuid */
@@ -1093,7 +1256,7 @@ export interface components {
          * @description Subscription topics a WebSocket client can ask for.
          * @enum {string}
          */
-        Topic: "camera_status" | "cameras" | "tasks";
+        Topic: "camera_status" | "cameras" | "tasks" | "streams";
         UpdateUserRequest: {
             disabled?: boolean | null;
             role?: components["schemas"]["Role"] | null;
@@ -1173,6 +1336,10 @@ export interface components {
             task: components["schemas"]["Task"];
             /** @enum {string} */
             type: "task_updated";
+        } | {
+            streams: components["schemas"]["StreamInfo"][];
+            /** @enum {string} */
+            type: "streams_updated";
         };
     };
     responses: never;
@@ -2210,6 +2377,95 @@ export interface operations {
             };
         };
     };
+    reset_streaming_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default streaming settings, now in effect */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamingSettings"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_streaming_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamingPatch"];
+            };
+        };
+        responses: {
+            /** @description New streaming settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamingSettings"];
+                };
+            };
+            /** @description A value is out of range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_setup_status: {
         parameters: {
             query?: never;
@@ -2271,6 +2527,160 @@ export interface operations {
                 };
             };
             /** @description Setup already completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_streams: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active streams */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamInfo"][];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    stop_stream: {
+        parameters: {
+            query: {
+                /** @description Stream profile name (empty for the camera default stream). */
+                profile: string;
+            };
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                camera_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stopped */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such active stream */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    open_stream: {
+        parameters: {
+            query?: {
+                /** @description Stream profile name. Omit to let the server choose for `purpose`. */
+                profile?: string;
+                /**
+                 * @description What the video is for when no profile is given: `detail` (largest
+                 *     resolution, default) or `grid` (smallest).
+                 */
+                purpose?: "grid" | "detail";
+            };
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                camera_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching protocols */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Origin not allowed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such camera */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No playable stream profile, or stream refused */
             409: {
                 headers: {
                     [name: string]: unknown;

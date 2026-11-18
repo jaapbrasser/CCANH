@@ -16,6 +16,8 @@ const MONITORING = {
   identity_refresh_minutes: 15,
 };
 
+const STREAMING = { grace_period_secs: 15, stream_buffer_mb: 4, global_buffer_mb: 256 };
+
 function task(over: Record<string, unknown> = {}) {
   return {
     id: "00000000-0000-7000-8000-0000000000f2",
@@ -38,8 +40,8 @@ describe("settings page", () => {
     server.use(
       http.get("/api/v1/settings", () =>
         HttpResponse.json({
-          current: { monitoring: MONITORING },
-          defaults: { monitoring: MONITORING },
+          current: { monitoring: MONITORING, streaming: STREAMING },
+          defaults: { monitoring: MONITORING, streaming: STREAMING },
           monitor: {
             checks_total: 120,
             failures_total: 7,
@@ -88,6 +90,23 @@ describe("settings page", () => {
     await userEvent.type(interval, "1");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("between 2 and 3600");
+  });
+
+  it("saves live video settings separately", async () => {
+    let patch: unknown;
+    server.use(
+      http.patch("/api/v1/settings/streaming", async ({ request }) => {
+        patch = await request.json();
+        return HttpResponse.json({ ...STREAMING, grace_period_secs: 60 });
+      }),
+    );
+    renderApp("/settings");
+    const form = await screen.findByRole("form", { name: "Live video settings" });
+    const grace = within(form).getByLabelText("Grace period (seconds)");
+    await userEvent.clear(grace);
+    await userEvent.type(grace, "60");
+    await userEvent.click(within(form).getByRole("button", { name: "Save live video settings" }));
+    await waitFor(() => expect(patch).toEqual({ grace_period_secs: 60 }));
   });
 });
 

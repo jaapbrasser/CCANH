@@ -3,6 +3,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { meKey } from "./auth";
 import { cameraKeys, type CameraDetail, type CameraList } from "./cameras";
 import { isTerminal, taskKeys, type Task } from "./tasks";
+import { streamsKey } from "./streams";
 import { showToast } from "../components/toasts";
 import type { components } from "./schema";
 
@@ -63,6 +64,9 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage, myId?: str
       if (!isTerminal(prev?.status)) notifyTaskFinished(msg.task, myId);
       break;
     }
+    case "streams_updated":
+      qc.setQueryData(streamsKey, msg.streams);
+      break;
     case "resync":
       qc.invalidateQueries({ queryKey: cameraKeys.all });
       qc.invalidateQueries({ queryKey: taskKeys.all });
@@ -102,7 +106,7 @@ const MAX_BACKOFF_MS = 30_000;
  * query cache from events, and reconnect with exponential backoff. After a
  * reconnect the camera queries are refetched, since events may have been missed.
  */
-export function useLiveUpdates(enabled: boolean, myId?: string) {
+export function useLiveUpdates(enabled: boolean, myId?: string, admin = false) {
   const qc = useQueryClient();
   useEffect(() => {
     if (!enabled || typeof WebSocket === "undefined") return;
@@ -116,7 +120,9 @@ export function useLiveUpdates(enabled: boolean, myId?: string) {
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       socket = new WebSocket(url);
       socket.onopen = () => {
-        const subscribe: ClientMessage = { type: "subscribe", topics: ["camera_status", "cameras", "tasks"] };
+        const topics: ClientMessage["topics"] = ["camera_status", "cameras", "tasks"];
+        if (admin) topics.push("streams");
+        const subscribe: ClientMessage = { type: "subscribe", topics };
         socket?.send(JSON.stringify(subscribe));
         if (attempt > 0) {
           qc.invalidateQueries({ queryKey: cameraKeys.all });
@@ -152,5 +158,5 @@ export function useLiveUpdates(enabled: boolean, myId?: string) {
       socket?.close();
       setState("connecting");
     };
-  }, [enabled, qc, myId]);
+  }, [enabled, qc, myId, admin]);
 }

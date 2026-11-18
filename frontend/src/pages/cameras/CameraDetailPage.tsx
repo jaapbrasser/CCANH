@@ -11,6 +11,7 @@ import {
   type CapabilityGroup,
 } from "../../api/cameras";
 import { ApiError, errorMessage } from "../../api/client";
+import { LivePlayer } from "../../components/LivePlayer";
 import { StatusBadge } from "../../components/StatusBadge";
 import { Alert, Button, Dialog } from "../../components/ui";
 import { errorCategoryLabel, relativeTime } from "../../utils/format";
@@ -76,6 +77,48 @@ function CapabilitySections({ capabilities }: { capabilities: Capability[] }) {
         </Section>
       ))}
     </>
+  );
+}
+
+/** Live video with a profile picker (H.264 profiles only). */
+function LiveView({ camera }: { camera: CameraDetail }) {
+  const playable = camera.stream_profiles.filter((p) => p.codec == null || p.codec === "h264");
+  const [profile, setProfile] = useState<string | undefined>(undefined);
+  return (
+    <section aria-label="Live view" className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Live view</h2>
+        {playable.length > 1 && (
+          <select
+            aria-label="Stream profile"
+            className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-sm"
+            value={profile ?? ""}
+            onChange={(e) => setProfile(e.target.value || undefined)}
+          >
+            <option value="">Best quality (automatic)</option>
+            {playable.map((p) => (
+              <option key={p.id || "default"} value={p.id}>
+                {p.name}
+                {p.width && p.height ? ` (${p.width}×${p.height})` : ""}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      {camera.stream_profiles.length === 0 ? (
+        <div className="flex aspect-video items-center justify-center rounded bg-slate-900 text-sm text-slate-500">
+          Live view becomes available once the camera's stream profiles are known.
+        </div>
+      ) : playable.length === 0 ? (
+        <div className="flex aspect-video items-center justify-center rounded bg-slate-900 p-4 text-center text-sm text-slate-400">
+          Live view needs an H.264 stream profile. This camera only offers{" "}
+          {[...new Set(camera.stream_profiles.map((p) => p.codec?.toUpperCase()))].join(", ")}, which browsers can't play
+          live here.
+        </div>
+      ) : (
+        <LivePlayer cameraId={camera.id} profile={profile} purpose="detail" label={camera.name} />
+      )}
+    </section>
   );
 }
 
@@ -159,6 +202,9 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
           {s.identity_error_category === "auth_failed" && isAdmin && " Check the camera's credentials under Edit."}
         </Alert>
       )}
+      <div className="max-w-4xl">
+        <LiveView camera={camera} />
+      </div>
       {!camera.identity_updated_at && (
         <p className="text-sm text-slate-400">
           Device details appear after the first successful contact with the camera.
