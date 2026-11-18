@@ -3,8 +3,10 @@
 # Environment overrides: CRANE_<SECTION>__<KEY>, e.g. CRANE_SERVER__PORT=9000.
 # Precedence: CLI flags > environment > this file > defaults.
 
-# "production" or "demo" (demo mode arrives in Phase 2).
+# "production" or "demo" (simulated cameras, separate demo.db; see docs/demo.md).
 mode = "production"
+# Demo mode only: keep demo.db between runs instead of reseeding it.
+demo_keep_state = false
 
 # Database, logs and keys. Default: %ProgramData%\CraneCamera on Windows, ./data elsewhere.
 # data_dir = 'C:\ProgramData\CraneCamera'
@@ -34,6 +36,18 @@ self_signed_names = []
 idle_timeout_minutes = 480
 # ...and this long after sign-in regardless of activity.
 absolute_timeout_hours = 168
+# How often an open WebSocket re-validates its session.
+websocket_recheck_secs = 60
+
+[monitoring]
+# Seconds between status checks of each monitored camera, randomized by ±jitter.
+interval_secs = 10
+jitter_percent = 20
+# Consecutive failed checks before a camera is shown as offline.
+failure_threshold = 3
+timeout_secs = 5
+# Maximum checks in flight across all cameras.
+max_concurrent = 32
 
 [logging]
 # tracing filter directive; RUST_LOG overrides it.
