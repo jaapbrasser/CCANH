@@ -69,6 +69,18 @@ export function useUpdateCamera(id: string) {
   });
 }
 
+export type StreamProfileOverrides = components["schemas"]["StreamProfileOverrides"];
+
+/** Set which profiles this camera uses for grid tiles and the detail view. */
+export function useSetStreamProfiles(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: StreamProfileOverrides) =>
+      unwrap(api.PUT("/api/v1/cameras/{id}/stream-profiles", { params: { path: { id } }, body })),
+    onSuccess: (camera) => qc.setQueryData(cameraKeys.detail(id), camera),
+  });
+}
+
 export function useDeleteCamera() {
   const qc = useQueryClient();
   return useMutation({
