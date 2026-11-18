@@ -14,6 +14,9 @@ migrations are applied. All tables are `STRICT`.
 | `cameras` | Camera registry | Unique `(host, port)`; TLS mode + optional pinned fingerprint; identity columns and JSON `capabilities`/`stream_profiles`/`network` filled from the provider |
 | `camera_status` | Current status, one row per camera | Updated on every check; cascades on camera delete |
 | `camera_status_history` | Status transitions | Written only when the state changes (SPEC §10.2) |
+| `credential_sets` | Encrypted camera credentials | Ciphertext only (ADR 0003); shared (named) or private (per camera) |
+| `settings` | Runtime setting overrides | One JSON row per group (`monitoring`); defaults come from config (ADR 0008) |
+| `tasks` | Background tasks | Status, progress, categorized error, JSON result; interrupted tasks marked failed at startup; purged after 30 days |
 
 Queries are compile-time checked with `sqlx::query!` against `.sqlx/`
 (see development.md).
