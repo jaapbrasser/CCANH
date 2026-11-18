@@ -6,13 +6,13 @@ Read §0–3 before coding, then the section for the current phase (§17).
 
 ## Current phase
 
-Phases 0–4 are complete (Foundation, Auth & users, Camera core + demo, streaming
-spike → ADR 0002, AXIS provider + credentials + polling + tasks + runtime
-settings) and Phase 5 (stream manager, demo video, media WebSocket, live view,
-Streams page, AXIS RTSP via `retina`, grid/detail profile choices) are
-complete. Next: Phase 6 (Organization: groups, tags, favorites, bulk
-operations). Don't build ahead of the current phase, and post a plan before
-starting one.
+Phases 0–6 are complete: Foundation, Auth & users, Camera core + demo,
+streaming spike (ADR 0002), AXIS provider + credentials + polling + tasks +
+runtime settings, Phase 5 (stream manager, demo video, live view, Streams page,
+AXIS RTSP via `retina`, grid/detail profile choices) and Phase 6 (groups, tags,
+favorites, bulk operations, ADR 0009).
+Next: Phase 7 (Dashboards, ADR 0005). Don't build ahead of the current phase,
+and post a plan before starting one.
 
 ## Commands
 
@@ -77,6 +77,7 @@ backend/
   src/supervisor.rs    restart background services with backoff; health
   src/settings/        admin-editable runtime settings (watch channel, DB overrides)
   src/tasks/           background task manager (persisted, cancellable, `tasks` topic)
+  src/organization/    groups (tree, cycle checks), tags, favorites, memberships
   src/streaming/       MediaSource, H.264 parsing, fMP4 muxer, demo clip replay,
                        RTSP source (retina), profile resolution,
                        StreamManager (shared upstream, GOP cache, grace, reconnect)

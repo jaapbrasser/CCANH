@@ -16,6 +16,9 @@ The OpenAPI document is generated from code (`/api/openapi.json`, Swagger UI at
   states `Required role: none|viewer|admin`.
 - CSRF: non-GET requests need an `Origin` header matching the server (ADR 0004).
 - Live updates: one WebSocket at `/api/v1/ws` (ADR 0007).
+- Organization (ADR 0009): `GET /cameras` filters by `group_id` (includes
+  subgroups), `tag_id` and `favorites=true` (the caller's own). Bulk changes go
+  through `POST /cameras/bulk` and return 202 with a `bulk_cameras` task.
 - Live video: a media WebSocket per stream at
   `/api/v1/streams/{camera_id}/ws?profile=|purpose=`, carrying fMP4 for MSE
   (ADR 0002). It isn't in the OpenAPI document beyond the upgrade route.
