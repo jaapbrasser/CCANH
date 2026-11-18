@@ -31,6 +31,7 @@ use crate::auth::session::{self, Timeouts, COOKIE_NAME};
 use crate::auth::{csrf, AuthUser, Role};
 use crate::cameras::{CameraStatusView, CameraSummary};
 use crate::events::{Event, Topic};
+use crate::streaming::StreamInfo;
 use crate::tasks::Task;
 use crate::AppState;
 
@@ -84,6 +85,10 @@ pub enum WsServerMessage {
     TaskUpdated {
         task: Task,
     },
+    /// Metrics of all active streams (admins only).
+    StreamsUpdated {
+        streams: Vec<StreamInfo>,
+    },
 }
 
 impl From<Event> for WsServerMessage {
@@ -95,6 +100,7 @@ impl From<Event> for WsServerMessage {
             Event::CameraChanged { camera } => WsServerMessage::CameraChanged { camera },
             Event::CameraDeleted { camera_id } => WsServerMessage::CameraDeleted { camera_id },
             Event::TaskUpdated { task } => WsServerMessage::TaskUpdated { task },
+            Event::StreamsUpdated { streams } => WsServerMessage::StreamsUpdated { streams },
         }
     }
 }
@@ -105,6 +111,7 @@ impl From<Event> for WsServerMessage {
 fn may_see(user: &AuthUser, event: &Event) -> bool {
     match event {
         Event::TaskUpdated { task } => user.is_admin() || task.created_by == Some(user.id),
+        Event::StreamsUpdated { .. } => user.is_admin(),
         _ => true,
     }
 }

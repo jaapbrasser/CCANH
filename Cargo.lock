@@ -603,6 +603,7 @@ dependencies = [
  "axum-extra",
  "axum-server",
  "base64 0.23.1",
+ "bytes",
  "clap",
  "figment",
  "futures-util",

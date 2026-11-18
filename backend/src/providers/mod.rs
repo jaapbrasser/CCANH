@@ -195,10 +195,9 @@ pub struct StreamProfile {
     pub bitrate_kbps: Option<u32>,
 }
 
-/// An upstream media source. Its shape (timestamped, codec-tagged media units plus
-/// codec parameters) is decided by the streaming spike in Phase 3 (ADR 0002).
-/// Until then no provider returns one.
-pub trait MediaSource: Send {}
+/// An upstream media source: codec parameters, then timestamped access units.
+/// See [`crate::streaming::media`].
+pub use crate::streaming::media::MediaSource;
 
 /// The interface every camera integration implements (SPEC §4.3).
 ///

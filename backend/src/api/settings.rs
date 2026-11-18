@@ -10,7 +10,10 @@ use super::extract::JsonBody;
 use crate::audit::{self, action, Event as AuditEvent, Outcome};
 use crate::auth::{AdminUser, ClientIp};
 use crate::monitoring::MonitorStatsSnapshot;
-use crate::settings::{MonitoringPatch, MonitoringSettings, RuntimeSettings, SettingsError};
+use crate::settings::{
+    MonitoringPatch, MonitoringSettings, RuntimeSettings, SettingsError, StreamingPatch,
+    StreamingSettings,
+};
 use crate::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -122,6 +125,82 @@ pub async fn reset_monitoring(
         AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
             .actor(Some(admin.id), &admin.username)
             .target("settings", "monitoring")
+            .ip(ip)
+            .details(serde_json::json!({ "from": before, "to": after, "reset": true })),
+    )
+    .await?;
+    Ok(Json(after))
+}
+
+/// Change live video settings (grace period, buffer caps).
+///
+/// Required role: admin. Applies to streams immediately. Audited.
+#[utoipa::path(
+    patch,
+    path = "/settings/streaming",
+    operation_id = "update_streaming_settings",
+    tag = "settings",
+    request_body = StreamingPatch,
+    responses(
+        (status = 200, description = "New streaming settings", body = StreamingSettings),
+        (status = 400, description = "A value is out of range", body = Problem),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 403, description = "Not an admin", body = Problem),
+    )
+)]
+pub async fn update_streaming(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    JsonBody(patch): JsonBody<StreamingPatch>,
+) -> Result<Json<StreamingSettings>, ApiError> {
+    let (before, after) = state
+        .settings
+        .update_streaming(&state.db, &patch, &admin.username)
+        .await
+        .map_err(settings_error)?;
+    audit::record(
+        &state.db,
+        AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
+            .actor(Some(admin.id), &admin.username)
+            .target("settings", "streaming")
+            .ip(ip)
+            .details(serde_json::json!({ "from": before, "to": after })),
+    )
+    .await?;
+    Ok(Json(after))
+}
+
+/// Reset live video settings to the startup defaults.
+///
+/// Required role: admin.
+#[utoipa::path(
+    delete,
+    path = "/settings/streaming",
+    operation_id = "reset_streaming_settings",
+    tag = "settings",
+    responses(
+        (status = 200, description = "Default streaming settings, now in effect", body = StreamingSettings),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 403, description = "Not an admin", body = Problem),
+    )
+)]
+pub async fn reset_streaming(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+) -> Result<Json<StreamingSettings>, ApiError> {
+    let before = state.settings.current().streaming;
+    let after = state
+        .settings
+        .reset_streaming(&state.db)
+        .await
+        .map_err(settings_error)?;
+    audit::record(
+        &state.db,
+        AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
+            .actor(Some(admin.id), &admin.username)
+            .target("settings", "streaming")
             .ip(ip)
             .details(serde_json::json!({ "from": before, "to": after, "reset": true })),
     )

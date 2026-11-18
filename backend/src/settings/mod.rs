@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 use tokio::sync::watch;
 use utoipa::ToSchema;
 
-use crate::config::MonitoringConfig;
+use crate::config::{MonitoringConfig, StreamingConfig};
 
 /// Camera status monitoring (SPEC §10.2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -117,12 +117,78 @@ impl MonitoringSettings {
     }
 }
 
+/// Live video (SPEC §7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct StreamingSettings {
+    /// Seconds an unwatched stream stays connected before closing (0–300).
+    pub grace_period_secs: u64,
+    /// GOP cache cap per stream in MiB (1–64).
+    pub stream_buffer_mb: u32,
+    /// GOP cache cap across all streams in MiB (16–4096, at least the per-stream cap).
+    pub global_buffer_mb: u32,
+}
+
+impl From<&StreamingConfig> for StreamingSettings {
+    fn from(c: &StreamingConfig) -> Self {
+        Self {
+            grace_period_secs: c.grace_period_secs,
+            stream_buffer_mb: c.stream_buffer_mb,
+            global_buffer_mb: c.global_buffer_mb,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+pub struct StreamingPatch {
+    pub grace_period_secs: Option<u64>,
+    pub stream_buffer_mb: Option<u32>,
+    pub global_buffer_mb: Option<u32>,
+}
+
+impl StreamingSettings {
+    pub fn patched(&self, p: &StreamingPatch) -> Self {
+        Self {
+            grace_period_secs: p.grace_period_secs.unwrap_or(self.grace_period_secs),
+            stream_buffer_mb: p.stream_buffer_mb.unwrap_or(self.stream_buffer_mb),
+            global_buffer_mb: p.global_buffer_mb.unwrap_or(self.global_buffer_mb),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.grace_period_secs > 300 {
+            return Err("grace_period_secs must be between 0 and 300".into());
+        }
+        if !(1..=64).contains(&self.stream_buffer_mb) {
+            return Err("stream_buffer_mb must be between 1 and 64".into());
+        }
+        if !(16..=4096).contains(&self.global_buffer_mb)
+            || self.global_buffer_mb < self.stream_buffer_mb
+        {
+            return Err(
+                "global_buffer_mb must be between 16 and 4096 and at least stream_buffer_mb".into(),
+            );
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 pub struct RuntimeSettings {
     pub monitoring: MonitoringSettings,
+    pub streaming: StreamingSettings,
+}
+
+impl RuntimeSettings {
+    pub fn from_config(c: &crate::config::Config) -> Self {
+        Self {
+            monitoring: MonitoringSettings::from(&c.monitoring),
+            streaming: StreamingSettings::from(&c.streaming),
+        }
+    }
 }
 
 const MONITORING_KEY: &str = "monitoring";
+const STREAMING_KEY: &str = "streaming";
 
 /// Shared handle: current values plus the defaults they override.
 #[derive(Debug, Clone)]
@@ -152,13 +218,18 @@ impl SettingsHandle {
         self.tx.subscribe()
     }
 
+    async fn stored(db: &SqlitePool, key: &str) -> Result<Option<String>, sqlx::Error> {
+        sqlx::query_scalar!("SELECT value FROM settings WHERE key = ?1", key)
+            .fetch_optional(db)
+            .await
+    }
+
     /// Apply stored overrides. Invalid stored values are logged and ignored.
     pub async fn load(&self, db: &SqlitePool) -> Result<(), sqlx::Error> {
-        let stored =
-            sqlx::query_scalar!("SELECT value FROM settings WHERE key = ?1", MONITORING_KEY)
-                .fetch_optional(db)
-                .await?;
-        let monitoring = match stored.map(|v| serde_json::from_str::<MonitoringSettings>(&v)) {
+        let monitoring = match Self::stored(db, MONITORING_KEY)
+            .await?
+            .map(|v| serde_json::from_str::<MonitoringSettings>(&v))
+        {
             Some(Ok(m)) if m.validate().is_ok() => m,
             Some(_) => {
                 tracing::warn!("ignoring invalid stored monitoring settings; using defaults");
@@ -166,7 +237,36 @@ impl SettingsHandle {
             }
             None => self.defaults.monitoring.clone(),
         };
-        self.tx.send_replace(RuntimeSettings { monitoring });
+        let streaming = match Self::stored(db, STREAMING_KEY)
+            .await?
+            .map(|v| serde_json::from_str::<StreamingSettings>(&v))
+        {
+            Some(Ok(s)) if s.validate().is_ok() => s,
+            Some(_) => {
+                tracing::warn!("ignoring invalid stored streaming settings; using defaults");
+                self.defaults.streaming.clone()
+            }
+            None => self.defaults.streaming.clone(),
+        };
+        self.tx.send_replace(RuntimeSettings {
+            monitoring,
+            streaming,
+        });
+        Ok(())
+    }
+
+    async fn persist(db: &SqlitePool, key: &str, json: &str, by: &str) -> Result<(), sqlx::Error> {
+        let now = OffsetDateTime::now_utc();
+        sqlx::query!(
+            "INSERT INTO settings (key, value, updated_at, updated_by) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (key) DO UPDATE SET value = ?2, updated_at = ?3, updated_by = ?4",
+            key,
+            json,
+            now,
+            by
+        )
+        .execute(db)
+        .await?;
         Ok(())
     }
 
@@ -183,21 +283,38 @@ impl SettingsHandle {
         after.validate().map_err(SettingsError::Invalid)?;
         let json =
             serde_json::to_string(&after).map_err(|e| SettingsError::Invalid(e.to_string()))?;
-        let now = OffsetDateTime::now_utc();
-        sqlx::query!(
-            "INSERT INTO settings (key, value, updated_at, updated_by) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT (key) DO UPDATE SET value = ?2, updated_at = ?3, updated_by = ?4",
-            MONITORING_KEY,
-            json,
-            now,
-            by
-        )
-        .execute(db)
-        .await?;
-        self.tx.send_replace(RuntimeSettings {
-            monitoring: after.clone(),
-        });
+        Self::persist(db, MONITORING_KEY, &json, by).await?;
+        self.tx.send_modify(|s| s.monitoring = after.clone());
         Ok((before, after))
+    }
+
+    /// Validate, persist and publish new streaming settings.
+    pub async fn update_streaming(
+        &self,
+        db: &SqlitePool,
+        patch: &StreamingPatch,
+        by: &str,
+    ) -> Result<(StreamingSettings, StreamingSettings), SettingsError> {
+        let before = self.current().streaming;
+        let after = before.patched(patch);
+        after.validate().map_err(SettingsError::Invalid)?;
+        let json =
+            serde_json::to_string(&after).map_err(|e| SettingsError::Invalid(e.to_string()))?;
+        Self::persist(db, STREAMING_KEY, &json, by).await?;
+        self.tx.send_modify(|s| s.streaming = after.clone());
+        Ok((before, after))
+    }
+
+    pub async fn reset_streaming(
+        &self,
+        db: &SqlitePool,
+    ) -> Result<StreamingSettings, SettingsError> {
+        sqlx::query!("DELETE FROM settings WHERE key = ?1", STREAMING_KEY)
+            .execute(db)
+            .await?;
+        let defaults = self.defaults.streaming.clone();
+        self.tx.send_modify(|s| s.streaming = defaults.clone());
+        Ok(defaults)
     }
 
     /// Remove overrides and go back to the startup defaults.
@@ -209,9 +326,7 @@ impl SettingsHandle {
             .execute(db)
             .await?;
         let defaults = self.defaults.monitoring.clone();
-        self.tx.send_replace(RuntimeSettings {
-            monitoring: defaults.clone(),
-        });
+        self.tx.send_modify(|s| s.monitoring = defaults.clone());
         Ok(defaults)
     }
 }
@@ -229,9 +344,55 @@ mod tests {
     use super::*;
 
     fn defaults() -> RuntimeSettings {
-        RuntimeSettings {
-            monitoring: MonitoringSettings::from(&MonitoringConfig::default()),
-        }
+        RuntimeSettings::from_config(&crate::config::Config::default())
+    }
+
+    #[tokio::test]
+    async fn streaming_settings_validate_and_persist() {
+        let db = crate::storage::connect_in_memory().await.unwrap();
+        let handle = SettingsHandle::new(defaults());
+        assert!(handle
+            .update_streaming(
+                &db,
+                &StreamingPatch {
+                    grace_period_secs: Some(301),
+                    ..Default::default()
+                },
+                "a"
+            )
+            .await
+            .is_err());
+        assert!(handle
+            .update_streaming(
+                &db,
+                &StreamingPatch {
+                    stream_buffer_mb: Some(64),
+                    global_buffer_mb: Some(32),
+                    ..Default::default()
+                },
+                "a"
+            )
+            .await
+            .is_err());
+        handle
+            .update_streaming(
+                &db,
+                &StreamingPatch {
+                    grace_period_secs: Some(0),
+                    ..Default::default()
+                },
+                "a",
+            )
+            .await
+            .unwrap();
+        let fresh = SettingsHandle::new(defaults());
+        fresh.load(&db).await.unwrap();
+        assert_eq!(fresh.current().streaming.grace_period_secs, 0);
+        assert_eq!(
+            fresh.current().monitoring,
+            defaults().monitoring,
+            "groups are independent"
+        );
     }
 
     #[test]
