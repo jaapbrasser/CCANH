@@ -16,7 +16,7 @@ use crate::audit::{self, action, Event as AuditEvent, Outcome};
 use crate::auth::{AdminUser, AuthUser, ClientIp};
 use crate::cameras::{
     self, CameraDetail, CameraError, CameraPatch, CameraSettings, CameraSort, CameraState,
-    CameraSummary, NewCamera, StatusTransition, TlsMode,
+    CameraSummary, NewCamera, StatusTransition, StreamProfileOverrides, TlsMode,
 };
 use crate::events::Event;
 use crate::monitoring;
@@ -303,6 +303,78 @@ pub async fn update(
             .details(serde_json::json!({
                 "from": settings_json(&before),
                 "to": settings_json(&after),
+            })),
+    )
+    .await?;
+    state.events.publish(Event::CameraChanged {
+        camera: after.summary.clone(),
+    });
+    Ok(Json(after))
+}
+
+/// Choose which stream profiles this camera uses for grid tiles and the
+/// detail view.
+///
+/// Required role: admin. Each value is a profile id from the camera's
+/// `stream_profiles` that browsers can play (H.264), or `null` to use the
+/// global default (runtime settings, `streaming`), else a pick by resolution.
+/// Streams already running keep their profile; new viewers get the new one.
+#[utoipa::path(
+    put,
+    path = "/cameras/{id}/stream-profiles",
+    operation_id = "set_camera_stream_profiles",
+    tag = "cameras",
+    params(("id" = Uuid, Path, description = "Camera ID")),
+    request_body = StreamProfileOverrides,
+    responses(
+        (status = 200, description = "Updated camera", body = CameraDetail),
+        (status = 400, description = "Not one of the camera's playable profiles", body = Problem),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 403, description = "Not an admin", body = Problem),
+        (status = 404, description = "No such camera", body = Problem),
+    )
+)]
+pub async fn set_stream_profiles(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    PathParam(id): PathParam<Uuid>,
+    JsonBody(body): JsonBody<StreamProfileOverrides>,
+) -> Result<Json<CameraDetail>, ApiError> {
+    let before = cameras::get(&state.db, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    for (field, choice) in [
+        ("grid_profile", &body.grid_profile),
+        ("detail_profile", &body.detail_profile),
+    ] {
+        if let Some(want) = choice {
+            let ok = before
+                .stream_profiles
+                .iter()
+                .any(|p| &p.id.0 == want && crate::streaming::profiles::playable(p));
+            if !ok {
+                return Err(ApiError::BadRequest(format!(
+                    "{field} must be one of this camera's H.264 stream profiles (refresh the camera if its profiles changed)"
+                )));
+            }
+        }
+    }
+    if !cameras::set_stream_overrides(&state.db, id, &body).await? {
+        return Err(ApiError::NotFound);
+    }
+    let after = cameras::get(&state.db, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    audit::record(
+        &state.db,
+        AuditEvent::new(action::CAMERA_UPDATE, Outcome::Success)
+            .actor(Some(admin.id), &admin.username)
+            .target("camera", id)
+            .ip(ip)
+            .details(serde_json::json!({
+                "from": { "grid_profile": before.grid_profile, "detail_profile": before.detail_profile },
+                "to": { "grid_profile": after.grid_profile, "detail_profile": after.detail_profile },
             })),
     )
     .await?;

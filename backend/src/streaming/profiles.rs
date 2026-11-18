@@ -1,5 +1,6 @@
 //! Choosing stream profiles (SPEC §7.4): grid tiles use a low-resolution
-//! profile, the detail view the main one. Per-camera overrides arrive in 5b.
+//! profile, the detail view the main one. A camera's own choice wins, then the
+//! global default name, then a pick by resolution.
 
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -39,6 +40,28 @@ pub fn default_profile(
     chosen
         .or_else(|| candidates.first().copied())
         .map(|p| p.id.clone())
+}
+
+/// The profile to play for `purpose`: the camera's override, else the global
+/// default name, else [`default_profile`]. Preferences that the camera doesn't
+/// have (or can't play) are skipped, so a fleet-wide name like "grid" works
+/// on cameras that define it and falls back elsewhere.
+pub fn resolve_profile(
+    profiles: &[StreamProfile],
+    purpose: ViewPurpose,
+    camera_choice: Option<&str>,
+    global_choice: Option<&str>,
+) -> Option<StreamProfileId> {
+    [camera_choice, global_choice]
+        .into_iter()
+        .flatten()
+        .find_map(|want| {
+            profiles
+                .iter()
+                .find(|p| p.id.0 == want && playable(p))
+                .map(|p| p.id.clone())
+        })
+        .or_else(|| default_profile(profiles, purpose))
 }
 
 #[cfg(test)]
@@ -86,5 +109,38 @@ mod tests {
             ""
         );
         assert!(default_profile(&[], ViewPurpose::Grid).is_none());
+    }
+
+    #[test]
+    fn camera_choice_beats_global_beats_size() {
+        let profiles = [
+            p("main", Some(VideoCodec::H264), Some((1920, 1080))),
+            p("mid", Some(VideoCodec::H264), Some((1280, 720))),
+            p("grid", Some(VideoCodec::H264), Some((640, 360))),
+            p("main-h265", Some(VideoCodec::H265), Some((3840, 2160))),
+        ];
+        let r = |cam, global| {
+            resolve_profile(&profiles, ViewPurpose::Grid, cam, global)
+                .unwrap()
+                .0
+        };
+        assert_eq!(r(None, None), "grid");
+        assert_eq!(r(None, Some("mid")), "mid");
+        assert_eq!(r(Some("main"), Some("mid")), "main");
+        assert_eq!(
+            r(Some("gone"), Some("mid")),
+            "mid",
+            "missing override is skipped"
+        );
+        assert_eq!(
+            r(None, Some("absent-here")),
+            "grid",
+            "global name not on this camera"
+        );
+        assert_eq!(
+            r(Some("main-h265"), None),
+            "grid",
+            "unplayable override is skipped"
+        );
     }
 }

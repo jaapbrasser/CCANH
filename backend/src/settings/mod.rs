@@ -126,6 +126,12 @@ pub struct StreamingSettings {
     pub stream_buffer_mb: u32,
     /// GOP cache cap across all streams in MiB (16–4096, at least the per-stream cap).
     pub global_buffer_mb: u32,
+    /// Profile name preferred for grid tiles on cameras that have it (≤ 64 chars).
+    #[serde(default)]
+    pub default_grid_profile: Option<String>,
+    /// Profile name preferred for the detail view on cameras that have it (≤ 64 chars).
+    #[serde(default)]
+    pub default_detail_profile: Option<String>,
 }
 
 impl From<&StreamingConfig> for StreamingSettings {
@@ -134,23 +140,42 @@ impl From<&StreamingConfig> for StreamingSettings {
             grace_period_secs: c.grace_period_secs,
             stream_buffer_mb: c.stream_buffer_mb,
             global_buffer_mb: c.global_buffer_mb,
+            default_grid_profile: non_empty(c.default_grid_profile.as_deref()),
+            default_detail_profile: non_empty(c.default_detail_profile.as_deref()),
         }
     }
 }
 
+fn non_empty(s: Option<&str>) -> Option<String> {
+    s.map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+}
+
+/// Omitted fields are unchanged. For the profile names, `""` clears the name.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct StreamingPatch {
     pub grace_period_secs: Option<u64>,
     pub stream_buffer_mb: Option<u32>,
     pub global_buffer_mb: Option<u32>,
+    pub default_grid_profile: Option<String>,
+    pub default_detail_profile: Option<String>,
 }
+
+const MAX_PROFILE_NAME: usize = 64;
 
 impl StreamingSettings {
     pub fn patched(&self, p: &StreamingPatch) -> Self {
+        let name = |patch: &Option<String>, current: &Option<String>| match patch {
+            Some(v) => non_empty(Some(v)),
+            None => current.clone(),
+        };
         Self {
             grace_period_secs: p.grace_period_secs.unwrap_or(self.grace_period_secs),
             stream_buffer_mb: p.stream_buffer_mb.unwrap_or(self.stream_buffer_mb),
             global_buffer_mb: p.global_buffer_mb.unwrap_or(self.global_buffer_mb),
+            default_grid_profile: name(&p.default_grid_profile, &self.default_grid_profile),
+            default_detail_profile: name(&p.default_detail_profile, &self.default_detail_profile),
         }
     }
 
@@ -167,6 +192,18 @@ impl StreamingSettings {
             return Err(
                 "global_buffer_mb must be between 16 and 4096 and at least stream_buffer_mb".into(),
             );
+        }
+        for (field, v) in [
+            ("default_grid_profile", &self.default_grid_profile),
+            ("default_detail_profile", &self.default_detail_profile),
+        ] {
+            if v.as_ref().is_some_and(|v| {
+                v.chars().count() > MAX_PROFILE_NAME || v.chars().any(char::is_control)
+            }) {
+                return Err(format!(
+                    "{field} must be at most {MAX_PROFILE_NAME} characters, without control characters"
+                ));
+            }
         }
         Ok(())
     }
@@ -393,6 +430,37 @@ mod tests {
             defaults().monitoring,
             "groups are independent"
         );
+    }
+
+    #[test]
+    fn profile_names_are_set_cleared_and_optional_in_stored_json() {
+        let d = defaults().streaming;
+        let set = d.patched(&StreamingPatch {
+            default_grid_profile: Some(" grid ".into()),
+            ..Default::default()
+        });
+        assert_eq!(set.default_grid_profile.as_deref(), Some("grid"));
+        assert_eq!(set.default_detail_profile, None);
+        let kept = set.patched(&StreamingPatch::default());
+        assert_eq!(kept.default_grid_profile.as_deref(), Some("grid"));
+        let cleared = set.patched(&StreamingPatch {
+            default_grid_profile: Some(String::new()),
+            ..Default::default()
+        });
+        assert_eq!(cleared.default_grid_profile, None);
+        assert!(d
+            .patched(&StreamingPatch {
+                default_detail_profile: Some("x".repeat(65)),
+                ..Default::default()
+            })
+            .validate()
+            .is_err());
+        // Settings stored before Phase 5b have no profile names.
+        let old: StreamingSettings = serde_json::from_str(
+            r#"{"grace_period_secs":15,"stream_buffer_mb":4,"global_buffer_mb":256}"#,
+        )
+        .unwrap();
+        assert_eq!(old.default_grid_profile, None);
     }
 
     #[test]

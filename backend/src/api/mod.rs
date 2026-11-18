@@ -101,6 +101,7 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(cameras::list, cameras::create))
         .routes(routes!(cameras::get, cameras::update, cameras::delete))
         .routes(routes!(cameras::status_history))
+        .routes(routes!(cameras::set_stream_profiles))
         .routes(routes!(cameras::refresh))
         .routes(routes!(credentials::test_connection))
         .routes(routes!(credentials::list, credentials::create))

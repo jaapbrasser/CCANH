@@ -266,3 +266,69 @@ async fn unsupported_profile_reports_failed() {
     }
     assert!(failed);
 }
+
+#[tokio::test]
+async fn camera_and_global_profile_choices_pick_the_stream() {
+    let s = start().await;
+    // Global default: the detail view uses "grid" on cameras that have it.
+    let patched = s
+        .app
+        .send(
+            req(Method::PATCH, "/api/v1/settings/streaming")
+                .cookie(&s.admin)
+                .json(json!({ "default_detail_profile": "grid" })),
+        )
+        .await;
+    assert_eq!(patched.status, StatusCode::OK, "{}", patched.text());
+    let mut detail = connect(&s, &s.admin, "", true).await.unwrap();
+    assert_eq!(handshake(&mut detail).await.0["width"], 640);
+
+    // The camera's own choice wins over the global default.
+    let set = s
+        .app
+        .send(
+            req(
+                Method::PUT,
+                &format!("/api/v1/cameras/{}/stream-profiles", s.camera),
+            )
+            .cookie(&s.admin)
+            .json(json!({ "grid_profile": "main", "detail_profile": "main" })),
+        )
+        .await;
+    assert_eq!(set.status, StatusCode::OK, "{}", set.text());
+    assert_eq!(set.json()["grid_profile"], "main");
+    let mut grid = connect(&s, &s.admin, "?purpose=grid", true).await.unwrap();
+    assert_eq!(handshake(&mut grid).await.0["width"], 1280);
+
+    // Only the camera's own playable profiles are accepted; null clears.
+    let bad = s
+        .app
+        .send(
+            req(
+                Method::PUT,
+                &format!("/api/v1/cameras/{}/stream-profiles", s.camera),
+            )
+            .cookie(&s.admin)
+            .json(json!({ "grid_profile": "nope", "detail_profile": null })),
+        )
+        .await;
+    assert_eq!(bad.status, StatusCode::BAD_REQUEST);
+    let cleared = s
+        .app
+        .send(
+            req(
+                Method::PUT,
+                &format!("/api/v1/cameras/{}/stream-profiles", s.camera),
+            )
+            .cookie(&s.admin)
+            .json(json!({ "grid_profile": null, "detail_profile": null })),
+        )
+        .await;
+    assert_eq!(cleared.json()["grid_profile"], Value::Null);
+
+    let audit = s
+        .app
+        .send(req(Method::GET, "/api/v1/audit?action=camera.update").cookie(&s.admin))
+        .await;
+    assert_eq!(audit.json()["total"], 2, "both changes are audited");
+}
