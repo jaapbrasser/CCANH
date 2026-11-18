@@ -6,11 +6,10 @@ Read §0–3 before coding, then the section for the current phase (§17).
 
 ## Current phase
 
-Phases 0–3 are complete (Foundation, Auth & users, Camera core + demo, streaming
-spike → ADR 0002: fMP4 over WebSocket to MSE). Phase 4 is split: 4a (AXIS
-provider, credentials, test connection) is done; next is 4b (polling service
-upgrades, task manager, runtime settings). Don't build ahead of the current
-phase, and post a plan before starting one.
+Phases 0–4 are complete (Foundation, Auth & users, Camera core + demo, streaming
+spike → ADR 0002, AXIS provider + credentials + polling + tasks + runtime
+settings). Next: Phase 5 (stream manager + live view, per ADR 0002). Don't build
+ahead of the current phase, and post a plan before starting one.
 
 ## Commands
 
@@ -73,6 +72,8 @@ backend/
   src/events/          typed broadcast event bus
   src/demo/            demo seeding and demo.db reset
   src/supervisor.rs    restart background services with backoff; health
+  src/settings/        admin-editable runtime settings (watch channel, DB overrides)
+  src/tasks/           background task manager (persisted, cancellable, `tasks` topic)
   src/tls/             rustls (ring) config: PEM files or self-signed
   src/secret.rs        SecretString re-export
   src/config/          figment layering: defaults < TOML < CRANE_* env < CLI
@@ -110,6 +111,11 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
 - Any new `CameraProvider` method gets a DemoProvider implementation in the same
   change, and the contract suite (`providers/contract.rs`) covers it.
 - New WebSocket message types or topics: update `api::ws` and ADR 0007.
+- Long-running operations: `state.tasks.spawn(kind, camera, creator, job)` and
+  return 202 with the task; report progress via `TaskContext::progress` and
+  honour `ctx.cancel` (ADR 0008).
+- New runtime-editable settings: add a group to `settings/` with bounds,
+  defaults from config, and subscribe via `state.settings.subscribe()`.
 - Every AXIS endpoint must be verified against official VAPIX docs and logged in
   `docs/vapix.md`, with a fixture in `backend/tests/fixtures/vapix/`.
 - Camera credentials: only ever ciphertext in SQLite and responses expose

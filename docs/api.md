@@ -16,3 +16,6 @@ The OpenAPI document is generated from code (`/api/openapi.json`, Swagger UI at
   states `Required role: none|viewer|admin`.
 - CSRF: non-GET requests need an `Origin` header matching the server (ADR 0004).
 - Live updates: one WebSocket at `/api/v1/ws` (ADR 0007).
+- Long-running operations return **202 with a task**, which you follow via
+  `GET /api/v1/tasks/{id}` or the `tasks` topic. The task's `result` holds the
+  outcome (ADR 0008). `POST /api/v1/cameras/test-connection` works this way.

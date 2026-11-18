@@ -48,11 +48,12 @@ Server → client:
 | `camera_status` | `camera_id`, `status` | after each status check (topic `camera_status`) |
 | `camera_changed` | `camera` (summary) | camera added/edited/identity refreshed (topic `cameras`) |
 | `camera_deleted` | `camera_id` | camera removed (topic `cameras`) |
+| `task_updated` | `task` | task created, progressed or finished (topic `tasks`; own tasks only, admins see all) |
 | `resync` | `reason` | client fell behind the event stream; refetch over REST |
 | `error` | `code`, `message` | malformed message or unknown topic |
 
-Topics so far: `camera_status`, `cameras`. Later phases add e.g. `tasks`,
-`discovery:{job_id}` and `streams`. Unknown topics are rejected with `error`.
+Topics so far: `camera_status`, `cameras`, `tasks` (added in Phase 4b, see
+ADR 0008). Later phases add e.g. `discovery:{job_id}` and `streams`. Unknown topics are rejected with `error`.
 
 ### Delivery semantics
 - At-most-once, best effort. The server holds a bounded broadcast buffer (1024
