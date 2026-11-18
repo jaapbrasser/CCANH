@@ -1,0 +1,12 @@
+{
+  "apiVersion": "1.0",
+  "context": "Client defined request ID 1",
+  "method": "getApiList",
+  "data": {
+    "apiList": [
+      { "id": "api-discovery", "version": "1.0", "status": "released", "docLink": "link to doc", "name": "API name as described in the VAPIX documentation." },
+      { "id": "api-discovery", "version": "2.0", "status": "released", "docLink": "link to doc", "name": "API name as described in the VAPIX documentation." },
+      { "id": "basic-device-info", "version": "1.2", "status": "released", "docLink": "link to doc", "name": "API name as described in the VAPIX documentation." }
+    ]
+  }
+}

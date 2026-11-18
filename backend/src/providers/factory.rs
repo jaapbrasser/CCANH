@@ -1,33 +1,52 @@
 //! Builds the right provider for a camera record and run mode (SPEC §4.3).
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use async_trait::async_trait;
-use tokio_util::sync::CancellationToken;
-
+use super::axis::tls::TlsPolicy;
+use super::axis::AxisProvider;
 use super::demo::DemoProvider;
-use super::{
-    CameraCapabilities, CameraProvider, CameraStatus, DeviceInfo, MediaSource, ProbeResult,
-    ProviderError, StreamProfile, StreamProfileId,
-};
+use super::CameraProvider;
 use crate::config::Mode;
+use crate::credentials::Credentials;
 
-/// What a provider needs to know about the camera it talks to.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What a provider needs to know about the camera it talks to. `Debug` never
+/// shows the password (see [`Credentials`]).
+#[derive(Debug, Clone)]
 pub struct ProviderTarget {
     pub host: String,
     pub port: u16,
     pub https: bool,
+    pub tls: TlsPolicy,
+    pub credentials: Option<Credentials>,
+    /// Allow Basic authentication over plain HTTP (off unless an admin opts in).
+    pub allow_basic_over_http: bool,
+}
+
+impl ProviderTarget {
+    /// A target with no credentials and strict TLS; mostly for tests.
+    pub fn simple(host: impl Into<String>, port: u16, https: bool) -> Self {
+        Self {
+            host: host.into(),
+            port,
+            https,
+            tls: TlsPolicy::Strict,
+            credentials: None,
+            allow_basic_over_http: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct ProviderFactory {
     mode: Mode,
+    timeout: Duration,
 }
 
 impl ProviderFactory {
-    pub fn new(mode: Mode) -> Self {
-        Self { mode }
+    /// `timeout` bounds each individual camera request.
+    pub fn new(mode: Mode, timeout: Duration) -> Self {
+        Self { mode, timeout }
     }
 
     pub fn mode(&self) -> Mode {
@@ -42,41 +61,8 @@ impl ProviderFactory {
     pub fn create(&self, target: &ProviderTarget) -> Arc<dyn CameraProvider> {
         match self.mode {
             Mode::Demo => Arc::new(DemoProvider::for_target(target)),
-            Mode::Production => Arc::new(PendingAxisProvider),
+            Mode::Production => Arc::new(AxisProvider::new(target, self.timeout)),
         }
-    }
-}
-
-/// Production placeholder until the AXIS provider lands in Phase 4: every call
-/// reports `Unsupported`, which the monitor treats as "status unknown", not as a
-/// failure. Removed when `AxisProvider` exists.
-struct PendingAxisProvider;
-
-const PENDING: &str = "AXIS integration (arrives in Phase 4)";
-
-#[async_trait]
-impl CameraProvider for PendingAxisProvider {
-    async fn probe(&self) -> Result<ProbeResult, ProviderError> {
-        Err(ProviderError::unsupported(PENDING))
-    }
-    async fn get_device_info(&self) -> Result<DeviceInfo, ProviderError> {
-        Err(ProviderError::unsupported(PENDING))
-    }
-    async fn get_status(&self) -> Result<CameraStatus, ProviderError> {
-        Err(ProviderError::unsupported(PENDING))
-    }
-    async fn get_capabilities(&self) -> Result<CameraCapabilities, ProviderError> {
-        Err(ProviderError::unsupported(PENDING))
-    }
-    async fn get_stream_info(&self) -> Result<Vec<StreamProfile>, ProviderError> {
-        Err(ProviderError::unsupported(PENDING))
-    }
-    async fn open_stream(
-        &self,
-        _profile: &StreamProfileId,
-        _cancel: CancellationToken,
-    ) -> Result<Box<dyn MediaSource>, ProviderError> {
-        Err(ProviderError::unsupported(PENDING))
     }
 }
 
@@ -86,16 +72,12 @@ mod tests {
     use crate::providers::ErrorCategory;
 
     fn target(host: &str) -> ProviderTarget {
-        ProviderTarget {
-            host: host.into(),
-            port: 443,
-            https: true,
-        }
+        ProviderTarget::simple(host, 443, true)
     }
 
     #[tokio::test(start_paused = true)]
     async fn demo_mode_always_uses_demo_provider_even_for_real_looking_hosts() {
-        let factory = ProviderFactory::new(Mode::Demo);
+        let factory = ProviderFactory::new(Mode::Demo, Duration::from_secs(5));
         // A host that is not in the demo catalog still gets a simulated camera.
         let provider = factory.create(&target("10.1.2.3"));
         let probe = provider.probe().await.unwrap();
@@ -103,13 +85,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn production_reports_unsupported_until_axis_provider_exists() {
-        let factory = ProviderFactory::new(Mode::Production);
+    async fn production_uses_axis_provider() {
+        // Nothing listens on this port: the AXIS provider reports it unreachable.
+        let factory = ProviderFactory::new(Mode::Production, Duration::from_secs(2));
         let err = factory
-            .create(&target("camera.local"))
+            .create(&ProviderTarget::simple("127.0.0.1", 1, false))
             .probe()
             .await
             .unwrap_err();
-        assert_eq!(err.category(), ErrorCategory::Unsupported);
+        assert_eq!(err.category(), ErrorCategory::Unreachable);
     }
 }

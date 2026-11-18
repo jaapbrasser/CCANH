@@ -299,9 +299,9 @@ impl ModelProfile {
             .map(|(id, name, codec, w, h, fps, kbps)| StreamProfile {
                 id: StreamProfileId((*id).to_owned()),
                 name: (*name).to_owned(),
-                codec: *codec,
-                width: *w,
-                height: *h,
+                codec: Some(*codec),
+                width: Some(*w),
+                height: Some(*h),
                 fps: Some(*fps),
                 bitrate_kbps: Some(*kbps),
             })

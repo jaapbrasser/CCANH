@@ -9,7 +9,11 @@ use uuid::Uuid;
 
 pub use model::*;
 
-use crate::providers::{CameraCapabilities, DeviceInfo, ErrorCategory, StreamProfile};
+use crate::credentials::{self as creds, CredentialError, CredentialSetError, CredentialStore};
+use crate::providers::axis::tls::TlsPolicy;
+use crate::providers::{
+    CameraCapabilities, DeviceInfo, ErrorCategory, ProviderError, ProviderTarget, StreamProfile,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CameraError {
@@ -19,6 +23,10 @@ pub enum CameraError {
     Duplicate,
     #[error(transparent)]
     Invalid(#[from] ValidationError),
+    #[error(transparent)]
+    Credentials(#[from] CredentialSetError),
+    #[error("the selected credential set does not exist")]
+    UnknownCredentialSet,
     #[error(transparent)]
     Database(#[from] sqlx::Error),
 }
@@ -56,6 +64,8 @@ struct SummaryRow {
     consecutive_failures: i64,
     error_category: Option<ErrorCategory>,
     error_message: Option<String>,
+    identity_error_category: Option<ErrorCategory>,
+    identity_error_message: Option<String>,
 }
 
 impl From<SummaryRow> for CameraSummary {
@@ -80,6 +90,8 @@ impl From<SummaryRow> for CameraSummary {
                 consecutive_failures: u32::try_from(r.consecutive_failures).unwrap_or(u32::MAX),
                 error_category: r.error_category,
                 error_message: r.error_message,
+                identity_error_category: r.identity_error_category,
+                identity_error_message: r.identity_error_message,
             },
         }
     }
@@ -160,7 +172,9 @@ pub async fn list(
                   s.last_change_at AS "last_change_at: OffsetDateTime",
                   s.last_checked_at AS "last_checked_at: OffsetDateTime",
                   s.response_time_ms, s.consecutive_failures,
-                  s.error_category AS "error_category: ErrorCategory", s.error_message
+                  s.error_category AS "error_category: ErrorCategory", s.error_message,
+                  s.identity_error_category AS "identity_error_category: ErrorCategory",
+                  s.identity_error_message
              FROM cameras c JOIN camera_status s ON s.camera_id = c.id
             WHERE (?1 IS NULL OR c.name LIKE ?1 ESCAPE '\' OR c.host LIKE ?1 ESCAPE '\'
                    OR c.model LIKE ?1 ESCAPE '\')
@@ -200,6 +214,8 @@ pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx
                   c.manufacturer, c.model, c.firmware_version,
                   c.monitoring_enabled AS "monitoring_enabled: bool",
                   c.tls_mode AS "tls_mode: TlsMode", c.tls_pinned_sha256,
+                  c.credential_set_id AS "credential_set_id: Hyphenated", cs.name AS credential_set_name,
+                  c.allow_basic_over_http AS "allow_basic_over_http: bool",
                   c.serial_number, c.mac_address, c.device_name, c.device_hostname,
                   c.capabilities, c.stream_profiles, c.network,
                   c.identity_updated_at AS "identity_updated_at: OffsetDateTime",
@@ -211,8 +227,11 @@ pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx
                   s.last_change_at AS "last_change_at: OffsetDateTime",
                   s.last_checked_at AS "last_checked_at: OffsetDateTime",
                   s.response_time_ms, s.consecutive_failures,
-                  s.error_category AS "error_category: ErrorCategory", s.error_message
+                  s.error_category AS "error_category: ErrorCategory", s.error_message,
+                  s.identity_error_category AS "identity_error_category: ErrorCategory",
+                  s.identity_error_message
              FROM cameras c JOIN camera_status s ON s.camera_id = c.id
+             LEFT JOIN credential_sets cs ON cs.id = c.credential_set_id
             WHERE c.id = ?1"#,
         hid
     )
@@ -239,9 +258,20 @@ pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx
             consecutive_failures: r.consecutive_failures,
             error_category: r.error_category,
             error_message: r.error_message,
+            identity_error_category: r.identity_error_category,
+            identity_error_message: r.identity_error_message,
         }),
         tls_mode: r.tls_mode,
         tls_pinned_sha256: r.tls_pinned_sha256,
+        has_credentials: r.credential_set_id.is_some(),
+        credential_set: r
+            .credential_set_id
+            .zip(r.credential_set_name)
+            .map(|(id, name)| CredentialSetRef {
+                id: id.into_uuid(),
+                name,
+            }),
+        allow_basic_over_http: r.allow_basic_over_http,
         serial_number: r.serial_number,
         mac_address: r.mac_address,
         device_name: r.device_name,
@@ -271,12 +301,20 @@ pub struct CameraSettings {
     pub tls_mode: TlsMode,
     pub tls_pinned_sha256: Option<String>,
     pub monitoring_enabled: bool,
+    pub allow_basic_over_http: bool,
+}
+
+/// What to do with a camera's credentials.
+pub enum CredentialChange {
+    Keep,
+    Set(CredentialInput),
 }
 
 impl CameraSettings {
-    pub fn from_new(n: NewCamera) -> Result<Self, ValidationError> {
+    /// Validate a new camera, splitting off its credential input.
+    pub fn from_new(n: NewCamera) -> Result<(Self, Option<CredentialInput>), ValidationError> {
         let scheme = n.scheme;
-        Self::validated(Self {
+        let settings = Self::validated(Self {
             name: n.name,
             host: n.host,
             port: n.port.unwrap_or_else(|| scheme.default_port()),
@@ -284,11 +322,21 @@ impl CameraSettings {
             tls_mode: n.tls_mode,
             tls_pinned_sha256: n.tls_pinned_sha256,
             monitoring_enabled: n.monitoring_enabled,
-        })
+            allow_basic_over_http: n.allow_basic_over_http,
+        })?;
+        Ok((settings, n.credentials))
+    }
+
+    /// The TLS policy providers should use.
+    pub fn tls_policy(&self) -> TlsPolicy {
+        tls_policy(self.tls_mode, self.tls_pinned_sha256.as_deref())
     }
 
     /// Apply a patch to the current settings.
-    pub fn patched(current: &CameraDetail, p: CameraPatch) -> Result<Self, ValidationError> {
+    pub fn patched(
+        current: &CameraDetail,
+        p: CameraPatch,
+    ) -> Result<(Self, CredentialChange), ValidationError> {
         let s = &current.summary;
         let tls_mode = p.tls_mode.unwrap_or(current.tls_mode);
         let pin = match (p.tls_pinned_sha256, tls_mode) {
@@ -296,7 +344,7 @@ impl CameraSettings {
             (None, TlsMode::Pinned) => current.tls_pinned_sha256.clone(),
             (None, _) => None,
         };
-        Self::validated(Self {
+        let settings = Self::validated(Self {
             name: p.name.unwrap_or_else(|| s.name.clone()),
             host: p.host.unwrap_or_else(|| s.host.clone()),
             port: p.port.unwrap_or(s.port),
@@ -304,7 +352,14 @@ impl CameraSettings {
             tls_mode,
             tls_pinned_sha256: pin,
             monitoring_enabled: p.monitoring_enabled.unwrap_or(s.monitoring_enabled),
-        })
+            allow_basic_over_http: p
+                .allow_basic_over_http
+                .unwrap_or(current.allow_basic_over_http),
+        })?;
+        let change = p
+            .credentials
+            .map_or(CredentialChange::Keep, CredentialChange::Set);
+        Ok((settings, change))
     }
 
     fn validated(mut s: Self) -> Result<Self, ValidationError> {
@@ -326,16 +381,66 @@ impl CameraSettings {
     }
 }
 
-pub async fn create(db: &SqlitePool, s: &CameraSettings) -> Result<CameraDetail, CameraError> {
+pub fn tls_policy(mode: TlsMode, pin: Option<&str>) -> TlsPolicy {
+    match (mode, pin) {
+        (TlsMode::Pinned, Some(fp)) => TlsPolicy::Pinned(fp.to_owned()),
+        // Validation guarantees a pin in pinned mode; fail closed if not.
+        (TlsMode::Pinned, None) => TlsPolicy::Pinned(String::new()),
+        (TlsMode::InsecureSkipVerify, _) => TlsPolicy::InsecureSkipVerify,
+        (TlsMode::Strict, _) => TlsPolicy::Strict,
+    }
+}
+
+/// Resolve a credential input to a credential set id within a transaction,
+/// creating a private set for inline credentials.
+async fn resolve_credentials(
+    tx: &mut sqlx::SqliteConnection,
+    store: &dyn CredentialStore,
+    input: CredentialInput,
+) -> Result<Option<Uuid>, CameraError> {
+    match input {
+        CredentialInput::None => Ok(None),
+        CredentialInput::Set { id } => {
+            let hid = id.hyphenated();
+            let shared = sqlx::query_scalar!(
+                r#"SELECT shared AS "shared: bool" FROM credential_sets WHERE id = ?1"#,
+                hid
+            )
+            .fetch_optional(&mut *tx)
+            .await?;
+            match shared {
+                Some(true) => Ok(Some(id)),
+                _ => Err(CameraError::UnknownCredentialSet),
+            }
+        }
+        CredentialInput::Inline { username, password } => {
+            let c = creds::Credentials { username, password };
+            Ok(Some(creds::create_private(tx, store, &c).await?))
+        }
+    }
+}
+
+pub async fn create(
+    db: &SqlitePool,
+    store: &dyn CredentialStore,
+    s: &CameraSettings,
+    credentials: Option<CredentialInput>,
+) -> Result<CameraDetail, CameraError> {
     let id = Uuid::now_v7();
     let hid = id.hyphenated();
     let now = OffsetDateTime::now_utc();
     let port = i64::from(s.port);
     let mut tx = db.begin().await?;
+    let set_id = match credentials {
+        Some(input) => resolve_credentials(&mut tx, store, input).await?,
+        None => None,
+    };
+    let set_hid = set_id.map(|u| u.hyphenated());
     let inserted = sqlx::query!(
         "INSERT INTO cameras (id, name, host, port, scheme, tls_mode, tls_pinned_sha256,
-                              monitoring_enabled, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)",
+                              monitoring_enabled, credential_set_id, allow_basic_over_http,
+                              created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
         hid,
         s.name,
         s.host,
@@ -344,6 +449,8 @@ pub async fn create(db: &SqlitePool, s: &CameraSettings) -> Result<CameraDetail,
         s.tls_mode,
         s.tls_pinned_sha256,
         s.monitoring_enabled,
+        set_hid,
+        s.allow_basic_over_http,
         now
     )
     .execute(&mut *tx)
@@ -364,21 +471,36 @@ pub async fn create(db: &SqlitePool, s: &CameraSettings) -> Result<CameraDetail,
 /// its identity and resets its status, since it may be a different device.
 pub async fn update(
     db: &SqlitePool,
+    store: &dyn CredentialStore,
     id: Uuid,
     patch: CameraPatch,
 ) -> Result<(CameraDetail, CameraDetail), CameraError> {
     let before = get(db, id).await?.ok_or(CameraError::NotFound)?;
-    let s = CameraSettings::patched(&before, patch)?;
+    let (s, change) = CameraSettings::patched(&before, patch)?;
     let reset = s.targets_differ(&before);
     let hid = id.hyphenated();
     let now = OffsetDateTime::now_utc();
     let port = i64::from(s.port);
 
     let mut tx = db.begin().await?;
+    let old_set: Option<Uuid> = sqlx::query_scalar!(
+        r#"SELECT credential_set_id AS "id: Hyphenated" FROM cameras WHERE id = ?1"#,
+        hid
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    .flatten()
+    .map(Hyphenated::into_uuid);
+    let new_set = match change {
+        CredentialChange::Keep => old_set,
+        CredentialChange::Set(input) => resolve_credentials(&mut tx, store, input).await?,
+    };
+    let new_set_hid = new_set.map(|u| u.hyphenated());
     let updated = sqlx::query!(
         "UPDATE cameras
             SET name = ?2, host = ?3, port = ?4, scheme = ?5, tls_mode = ?6,
-                tls_pinned_sha256 = ?7, monitoring_enabled = ?8, updated_at = ?9
+                tls_pinned_sha256 = ?7, monitoring_enabled = ?8, credential_set_id = ?9,
+                allow_basic_over_http = ?10, updated_at = ?11
           WHERE id = ?1",
         hid,
         s.name,
@@ -388,6 +510,8 @@ pub async fn update(
         s.tls_mode,
         s.tls_pinned_sha256,
         s.monitoring_enabled,
+        new_set_hid,
+        s.allow_basic_over_http,
         now
     )
     .execute(&mut *tx)
@@ -397,6 +521,9 @@ pub async fn update(
         Ok(_) => {}
         Err(e) if is_unique_violation(&e) => return Err(CameraError::Duplicate),
         Err(e) => return Err(e.into()),
+    }
+    if let Some(old) = old_set.filter(|o| Some(*o) != new_set) {
+        creds::delete_private_if_unused(&mut tx, old).await?;
     }
     if reset {
         sqlx::query!(
@@ -412,7 +539,8 @@ pub async fn update(
         sqlx::query!(
             "UPDATE camera_status SET state = 'unknown', last_change_at = NULL,
                     response_time_ms = NULL, consecutive_failures = 0,
-                    error_category = NULL, error_message = NULL
+                    error_category = NULL, error_message = NULL,
+                    identity_error_category = NULL, identity_error_message = NULL
               WHERE camera_id = ?1",
             hid
         )
@@ -426,41 +554,117 @@ pub async fn update(
 
 pub async fn delete(db: &SqlitePool, id: Uuid) -> Result<(), CameraError> {
     let hid = id.hyphenated();
+    let mut tx = db.begin().await?;
+    let set: Option<Uuid> = sqlx::query_scalar!(
+        r#"SELECT credential_set_id AS "id: Hyphenated" FROM cameras WHERE id = ?1"#,
+        hid
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    .flatten()
+    .map(Hyphenated::into_uuid);
     let result = sqlx::query!("DELETE FROM cameras WHERE id = ?1", hid)
-        .execute(db)
+        .execute(&mut *tx)
         .await?;
     if result.rows_affected() == 0 {
         return Err(CameraError::NotFound);
     }
+    if let Some(set) = set {
+        creds::delete_private_if_unused(&mut tx, set).await?;
+    }
+    tx.commit().await?;
     Ok(())
 }
 
-/// What the status monitor needs for each monitored camera.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What a provider (and the status monitor) needs for one camera. Holds the
+/// credential *ciphertext*; decrypt only when building a provider.
+#[derive(Clone, PartialEq, Eq)]
 pub struct MonitorTarget {
     pub id: Uuid,
     pub host: String,
     pub port: u16,
     pub scheme: Scheme,
+    pub tls_mode: TlsMode,
+    pub tls_pinned_sha256: Option<String>,
+    pub allow_basic_over_http: bool,
+    pub credential_secret: Option<Vec<u8>>,
     pub updated_at: OffsetDateTime,
-    pub has_identity: bool,
+    /// Also changes when a shared credential set is edited.
+    pub credentials_updated_at: Option<OffsetDateTime>,
+    pub identity_updated_at: Option<OffsetDateTime>,
     pub status: CameraStatusView,
 }
 
+impl std::fmt::Debug for MonitorTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MonitorTarget")
+            .field("id", &self.id)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("has_credentials", &self.credential_secret.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+impl MonitorTarget {
+    /// Decrypt credentials and build the provider target.
+    pub fn provider_target(
+        &self,
+        store: &dyn CredentialStore,
+    ) -> Result<ProviderTarget, CredentialError> {
+        let credentials = self
+            .credential_secret
+            .as_deref()
+            .map(|s| store.open(s))
+            .transpose()?;
+        Ok(ProviderTarget {
+            host: self.host.clone(),
+            port: self.port,
+            https: self.scheme == Scheme::Https,
+            tls: tls_policy(self.tls_mode, self.tls_pinned_sha256.as_deref()),
+            credentials,
+            allow_basic_over_http: self.allow_basic_over_http,
+        })
+    }
+
+    /// Key that changes whenever the provider must be rebuilt.
+    pub fn config_version(&self) -> (OffsetDateTime, Option<OffsetDateTime>) {
+        (self.updated_at, self.credentials_updated_at)
+    }
+}
+
+/// Monitored cameras (or one camera by id, monitored or not).
 pub async fn monitor_targets(db: &SqlitePool) -> Result<Vec<MonitorTarget>, sqlx::Error> {
+    targets(db, None).await
+}
+
+pub async fn target(db: &SqlitePool, id: Uuid) -> Result<Option<MonitorTarget>, sqlx::Error> {
+    Ok(targets(db, Some(id)).await?.into_iter().next())
+}
+
+async fn targets(db: &SqlitePool, only: Option<Uuid>) -> Result<Vec<MonitorTarget>, sqlx::Error> {
+    let only = only.map(|u| u.hyphenated());
     let rows = sqlx::query!(
         r#"SELECT c.id AS "id: Hyphenated", c.host, c.port, c.scheme AS "scheme: Scheme",
+                  c.tls_mode AS "tls_mode: TlsMode", c.tls_pinned_sha256,
+                  c.allow_basic_over_http AS "allow_basic_over_http: bool",
+                  cs.secret AS "credential_secret?: Vec<u8>",
+                  cs.updated_at AS "credentials_updated_at?: OffsetDateTime",
                   c.updated_at AS "updated_at: OffsetDateTime",
-                  (c.identity_updated_at IS NOT NULL) AS "has_identity!: bool",
+                  c.identity_updated_at AS "identity_updated_at: OffsetDateTime",
                   s.state AS "state: CameraState",
                   s.last_success_at AS "last_success_at: OffsetDateTime",
                   s.last_failure_at AS "last_failure_at: OffsetDateTime",
                   s.last_change_at AS "last_change_at: OffsetDateTime",
                   s.last_checked_at AS "last_checked_at: OffsetDateTime",
                   s.response_time_ms, s.consecutive_failures,
-                  s.error_category AS "error_category: ErrorCategory", s.error_message
+                  s.error_category AS "error_category: ErrorCategory", s.error_message,
+                  s.identity_error_category AS "identity_error_category: ErrorCategory",
+                  s.identity_error_message
              FROM cameras c JOIN camera_status s ON s.camera_id = c.id
-            WHERE c.monitoring_enabled = 1"#
+             LEFT JOIN credential_sets cs ON cs.id = c.credential_set_id
+            WHERE (?1 IS NULL AND c.monitoring_enabled = 1) OR c.id = ?1"#,
+        only
     )
     .fetch_all(db)
     .await?;
@@ -471,8 +675,13 @@ pub async fn monitor_targets(db: &SqlitePool) -> Result<Vec<MonitorTarget>, sqlx
             host: r.host,
             port: port_u16(r.port),
             scheme: r.scheme,
+            tls_mode: r.tls_mode,
+            tls_pinned_sha256: r.tls_pinned_sha256,
+            allow_basic_over_http: r.allow_basic_over_http,
+            credential_secret: r.credential_secret,
             updated_at: r.updated_at,
-            has_identity: r.has_identity,
+            credentials_updated_at: r.credentials_updated_at,
+            identity_updated_at: r.identity_updated_at,
             status: CameraStatusView {
                 state: r.state,
                 last_success_at: r.last_success_at,
@@ -483,9 +692,32 @@ pub async fn monitor_targets(db: &SqlitePool) -> Result<Vec<MonitorTarget>, sqlx
                 consecutive_failures: u32::try_from(r.consecutive_failures).unwrap_or(u32::MAX),
                 error_category: r.error_category,
                 error_message: r.error_message,
+                identity_error_category: r.identity_error_category,
+                identity_error_message: r.identity_error_message,
             },
         })
         .collect())
+}
+
+/// Record the outcome of an identity/credential check (`None` = success).
+pub async fn record_identity_result(
+    db: &SqlitePool,
+    id: Uuid,
+    error: Option<&ProviderError>,
+) -> Result<(), sqlx::Error> {
+    let hid = id.hyphenated();
+    let category = error.map(ProviderError::category);
+    let message = error.map(|e| e.to_string().chars().take(300).collect::<String>());
+    sqlx::query!(
+        "UPDATE camera_status SET identity_error_category = ?2, identity_error_message = ?3
+          WHERE camera_id = ?1",
+        hid,
+        category,
+        message
+    )
+    .execute(db)
+    .await?;
+    Ok(())
 }
 
 /// Persist the current status, and a history row when `transition` is given.
@@ -629,8 +861,15 @@ mod tests {
             tls_mode: TlsMode::Strict,
             tls_pinned_sha256: None,
             monitoring_enabled: true,
+            credentials: None,
+            allow_basic_over_http: false,
         })
         .unwrap()
+        .0
+    }
+
+    fn store() -> Box<dyn CredentialStore> {
+        Box::new(crate::credentials::AesGcmStore::ephemeral())
     }
 
     async fn db() -> SqlitePool {
@@ -640,44 +879,45 @@ mod tests {
     #[tokio::test]
     async fn create_get_and_duplicate() {
         let db = db().await;
-        let cam = create(&db, &new("Crane 1", "192.0.2.1")).await.unwrap();
+        let cam = create(&db, &*store(), &new("Crane 1", "192.0.2.1"), None)
+            .await
+            .unwrap();
         assert_eq!(cam.summary.port, 443);
         assert_eq!(cam.summary.status.state, CameraState::Unknown);
         assert!(cam.capabilities.is_empty());
         assert_eq!(get(&db, cam.summary.id).await.unwrap(), Some(cam));
         assert!(matches!(
-            create(&db, &new("Other", "192.0.2.1")).await,
+            create(&db, &*store(), &new("Other", "192.0.2.1"), None).await,
             Err(CameraError::Duplicate)
         ));
     }
 
     #[tokio::test]
     async fn pinned_requires_valid_fingerprint() {
-        let base = NewCamera {
+        let base = |pin: Option<String>| NewCamera {
             name: "c".into(),
             host: "cam.local".into(),
             port: None,
             scheme: Scheme::Https,
             tls_mode: TlsMode::Pinned,
-            tls_pinned_sha256: None,
+            tls_pinned_sha256: pin,
             monitoring_enabled: true,
+            credentials: None,
+            allow_basic_over_http: false,
         };
         assert_eq!(
-            CameraSettings::from_new(base.clone()),
-            Err(ValidationError::PinMissing)
+            CameraSettings::from_new(base(None)).err(),
+            Some(ValidationError::PinMissing)
         );
-        let ok = CameraSettings::from_new(NewCamera {
-            tls_pinned_sha256: Some("ab".repeat(32)),
-            ..base
-        })
-        .unwrap();
-        assert!(ok.tls_pinned_sha256.unwrap().starts_with("AB:"));
+        let (ok, _) = CameraSettings::from_new(base(Some("ab".repeat(32)))).unwrap();
+        assert!(ok.tls_pinned_sha256.clone().unwrap().starts_with("AB:"));
+        assert!(matches!(ok.tls_policy(), TlsPolicy::Pinned(fp) if fp.starts_with("AB:")));
     }
 
     #[tokio::test]
     async fn status_transitions_are_recorded_only_when_given() {
         let db = db().await;
-        let id = create(&db, &new("c", "192.0.2.2"))
+        let id = create(&db, &*store(), &new("c", "192.0.2.2"), None)
             .await
             .unwrap()
             .summary
@@ -710,7 +950,7 @@ mod tests {
     #[tokio::test]
     async fn changing_host_resets_identity_and_status() {
         let db = db().await;
-        let id = create(&db, &new("c", "192.0.2.3"))
+        let id = create(&db, &*store(), &new("c", "192.0.2.3"), None)
             .await
             .unwrap()
             .summary
@@ -723,6 +963,7 @@ mod tests {
         save_identity(&db, id, &device, None, None).await.unwrap();
         let (_, after) = update(
             &db,
+            &*store(),
             id,
             CameraPatch {
                 name: Some("renamed".into()),
@@ -739,6 +980,7 @@ mod tests {
 
         let (_, after) = update(
             &db,
+            &*store(),
             id,
             CameraPatch {
                 host: Some("192.0.2.99".into()),
@@ -759,7 +1001,9 @@ mod tests {
             ("alpha", "192.0.2.4"),
             ("Charlie", "cam.local"),
         ] {
-            create(&db, &new(name, host)).await.unwrap();
+            create(&db, &*store(), &new(name, host), None)
+                .await
+                .unwrap();
         }
         let params = |search, state, sort, descending| ListParams {
             search,
@@ -795,9 +1039,124 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn credentials_lifecycle() {
+        use crate::secret::{ExposeSecret, SecretString};
+        let db = db().await;
+        let store = store();
+        let inline = |user: &str| CredentialInput::Inline {
+            username: user.into(),
+            password: SecretString::from("cam-pass-123".to_owned()),
+        };
+        let cam = create(&db, &*store, &new("c", "192.0.2.7"), Some(inline("root")))
+            .await
+            .unwrap();
+        assert!(cam.has_credentials);
+        assert!(
+            cam.credential_set.is_none(),
+            "inline credentials are private"
+        );
+        let id = cam.summary.id;
+
+        // The target decrypts the credentials for the provider.
+        let t = target(&db, id).await.unwrap().unwrap();
+        let pt = t.provider_target(&*store).unwrap();
+        let c = pt.credentials.unwrap();
+        assert_eq!(c.username, "root");
+        assert_eq!(c.password.expose_secret(), "cam-pass-123");
+        assert!(!format!("{t:?}").contains("cam-pass"));
+
+        // Switching to a shared set removes the private one.
+        let shared = crate::credentials::create_shared(
+            &db,
+            &*store,
+            "Site A",
+            &crate::credentials::Credentials {
+                username: "svc".into(),
+                password: SecretString::from("shared-pass-1".to_owned()),
+            },
+        )
+        .await
+        .unwrap();
+        let (_, after) = update(
+            &db,
+            &*store,
+            id,
+            CameraPatch {
+                credentials: Some(CredentialInput::Set { id: shared.id }),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(after.credential_set.as_ref().unwrap().name, "Site A");
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM credential_sets WHERE shared = 0")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(n, 0, "orphaned private set was removed");
+
+        // A shared set in use can't be deleted.
+        assert!(matches!(
+            crate::credentials::delete_shared(&db, shared.id).await,
+            Err(CredentialSetError::InUse(1))
+        ));
+
+        // Unknown sets are rejected.
+        let bad = update(
+            &db,
+            &*store,
+            id,
+            CameraPatch {
+                credentials: Some(CredentialInput::Set { id: Uuid::now_v7() }),
+                ..Default::default()
+            },
+        )
+        .await;
+        assert!(matches!(bad, Err(CameraError::UnknownCredentialSet)));
+
+        // Removing credentials.
+        let (_, after) = update(
+            &db,
+            &*store,
+            id,
+            CameraPatch {
+                credentials: Some(CredentialInput::None),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert!(!after.has_credentials);
+    }
+
+    #[tokio::test]
+    async fn deleting_camera_removes_its_private_credentials() {
+        use crate::secret::SecretString;
+        let db = db().await;
+        let store = store();
+        let cam = create(
+            &db,
+            &*store,
+            &new("c", "192.0.2.8"),
+            Some(CredentialInput::Inline {
+                username: "root".into(),
+                password: SecretString::from("x-pass-12345".to_owned()),
+            }),
+        )
+        .await
+        .unwrap();
+        delete(&db, cam.summary.id).await.unwrap();
+        let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM credential_sets")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[tokio::test]
     async fn delete_cascades_status_and_history() {
         let db = db().await;
-        let id = create(&db, &new("c", "192.0.2.6"))
+        let id = create(&db, &*store(), &new("c", "192.0.2.6"), None)
             .await
             .unwrap()
             .summary

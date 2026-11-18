@@ -15,6 +15,7 @@ name = "crane"
 path = "src/lib.rs"
 
 [dependencies]
+aes-gcm = "0.11"
 anyhow = "1"
 async-trait = "0.1"
 argon2 = { version = "0.6", features = ["zeroize"] }
@@ -26,7 +27,10 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 clap = { version = "4", features = ["derive", "env"] }
 figment = { version = "0.10", features = ["toml", "env"] }
 getrandom = "0.4"
+md-5 = "0.11"
 mime_guess = "2"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json"] }
+rustls-platform-verifier = "0.7"
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring"] }
 rpassword = "7"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging", "tls12"] }
@@ -50,9 +54,13 @@ utoipa = { version = "6", features = ["axum_extras", "time", "uuid"] }
 utoipa-axum = "0.3"
 utoipa-swagger-ui = { version = "10", features = ["axum", "vendored"] }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Memory"] }
+
 [dev-dependencies]
 http-body-util = "0.1"
 tempfile = "3"
+wiremock = "0.6"
 tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
 tokio-tungstenite = "0.30"
 futures-util = "0.3"

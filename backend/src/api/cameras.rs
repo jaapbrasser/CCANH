@@ -16,11 +16,10 @@ use crate::audit::{self, action, Event as AuditEvent, Outcome};
 use crate::auth::{AdminUser, AuthUser, ClientIp};
 use crate::cameras::{
     self, CameraDetail, CameraError, CameraPatch, CameraSettings, CameraSort, CameraState,
-    CameraSummary, NewCamera, Scheme, StatusTransition, TlsMode,
+    CameraSummary, NewCamera, StatusTransition, TlsMode,
 };
 use crate::events::Event;
 use crate::monitoring;
-use crate::providers::ProviderTarget;
 use crate::users::SortOrder;
 use crate::AppState;
 
@@ -34,6 +33,10 @@ fn camera_error(err: CameraError) -> ApiError {
             ApiError::Conflict("A camera with this host and port already exists.".into())
         }
         CameraError::Invalid(e) => ApiError::BadRequest(e.to_string()),
+        CameraError::UnknownCredentialSet => {
+            ApiError::BadRequest("The selected credential set does not exist.".into())
+        }
+        CameraError::Credentials(e) => super::credentials::credential_error(e),
         CameraError::Database(e) => ApiError::from(e),
     }
 }
@@ -209,6 +212,9 @@ fn settings_json(c: &CameraDetail) -> serde_json::Value {
         "scheme": c.summary.scheme,
         "tls_mode": c.tls_mode,
         "monitoring_enabled": c.summary.monitoring_enabled,
+        "has_credentials": c.has_credentials,
+        "credential_set": c.credential_set.as_ref().map(|s| &s.name),
+        "allow_basic_over_http": c.allow_basic_over_http,
     })
 }
 
@@ -236,8 +242,9 @@ pub async fn create(
     ClientIp(ip): ClientIp,
     JsonBody(body): JsonBody<NewCamera>,
 ) -> Result<(StatusCode, Json<CameraDetail>), ApiError> {
-    let settings = CameraSettings::from_new(body).map_err(|e| camera_error(e.into()))?;
-    let camera = cameras::create(&state.db, &settings)
+    let (settings, credentials) =
+        CameraSettings::from_new(body).map_err(|e| camera_error(e.into()))?;
+    let camera = cameras::create(&state.db, &*state.credentials, &settings, credentials)
         .await
         .map_err(camera_error)?;
     warn_if_insecure(&camera, &admin);
@@ -283,7 +290,7 @@ pub async fn update(
     PathParam(id): PathParam<Uuid>,
     JsonBody(body): JsonBody<CameraPatch>,
 ) -> Result<Json<CameraDetail>, ApiError> {
-    let (before, after) = cameras::update(&state.db, id, body)
+    let (before, after) = cameras::update(&state.db, &*state.credentials, id, body)
         .await
         .map_err(camera_error)?;
     warn_if_insecure(&after, &admin);
@@ -367,14 +374,12 @@ pub async fn refresh(
     State(state): State<AppState>,
     PathParam(id): PathParam<Uuid>,
 ) -> Result<Json<CameraDetail>, ApiError> {
-    let camera = cameras::get(&state.db, id)
+    let target = cameras::target(&state.db, id)
         .await?
-        .ok_or(ApiError::NotFound)?;
-    let provider = state.providers.create(&ProviderTarget {
-        host: camera.summary.host.clone(),
-        port: camera.summary.port,
-        https: camera.summary.scheme == Scheme::Https,
-    });
+        .ok_or(ApiError::NotFound)?
+        .provider_target(&*state.credentials)
+        .map_err(|e| ApiError::Internal(format!("cannot decrypt camera credentials: {e}")))?;
+    let provider = state.providers.create(&target);
     match monitoring::refresh_identity(&state.db, &*provider, id, REFRESH_TIMEOUT).await {
         Ok(()) => {}
         Err(monitoring::RefreshError::Provider(e)) => {

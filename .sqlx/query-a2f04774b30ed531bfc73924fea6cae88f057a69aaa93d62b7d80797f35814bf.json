@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT credential_set_id AS \"id: Hyphenated\" FROM cameras WHERE id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "credential_set_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "a2f04774b30ed531bfc73924fea6cae88f057a69aaa93d62b7d80797f35814bf"
+}

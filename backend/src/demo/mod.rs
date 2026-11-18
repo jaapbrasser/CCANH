@@ -12,6 +12,7 @@ use utoipa::ToSchema;
 
 use crate::auth::{password, Role};
 use crate::cameras::{self, CameraSettings, Scheme, TlsMode};
+use crate::credentials::CredentialStore;
 use crate::providers::demo::catalog::FLEET;
 use crate::secret::SecretString;
 use crate::users;
@@ -83,7 +84,7 @@ pub struct SeedSummary {
 
 /// Seed demo users and cameras into an empty database. Does nothing to tables
 /// that already have rows, so `--demo-keep-state` keeps edits.
-pub async fn seed(db: &SqlitePool) -> Result<SeedSummary, DemoError> {
+pub async fn seed(db: &SqlitePool, store: &dyn CredentialStore) -> Result<SeedSummary, DemoError> {
     let mut summary = SeedSummary::default();
     if users::count(db).await? == 0 {
         for account in ACCOUNTS {
@@ -103,8 +104,9 @@ pub async fn seed(db: &SqlitePool) -> Result<SeedSummary, DemoError> {
                 tls_mode: TlsMode::Strict,
                 tls_pinned_sha256: None,
                 monitoring_enabled: true,
+                allow_basic_over_http: false,
             };
-            cameras::create(db, &settings).await?;
+            cameras::create(db, store, &settings, None).await?;
             summary.cameras += 1;
         }
     }
@@ -118,7 +120,8 @@ mod tests {
     #[tokio::test]
     async fn seeds_once_with_valid_demo_passwords() {
         let db = crate::storage::connect_in_memory().await.unwrap();
-        let first = seed(&db).await.unwrap();
+        let store = crate::credentials::AesGcmStore::ephemeral();
+        let first = seed(&db, &store).await.unwrap();
         assert_eq!(
             first,
             SeedSummary {
@@ -127,7 +130,7 @@ mod tests {
             }
         );
         assert_eq!(
-            seed(&db).await.unwrap(),
+            seed(&db, &store).await.unwrap(),
             SeedSummary::default(),
             "idempotent"
         );

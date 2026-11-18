@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE camera_status SET identity_error_category = ?2, identity_error_message = ?3\n          WHERE camera_id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "0ac26bd8a4397b58d5703c8c785b7a491cca6540b1646328059e6f4c94e06723"
+}

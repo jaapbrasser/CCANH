@@ -161,6 +161,8 @@ pub struct MonitoringConfig {
     pub timeout_secs: u64,
     /// Maximum checks in flight across all cameras.
     pub max_concurrent: usize,
+    /// Minutes between identity/credential re-checks of an online camera.
+    pub identity_refresh_minutes: u64,
 }
 
 impl Default for MonitoringConfig {
@@ -171,6 +173,7 @@ impl Default for MonitoringConfig {
             failure_threshold: 3,
             timeout_secs: 5,
             max_concurrent: 32,
+            identity_refresh_minutes: 15,
         }
     }
 }

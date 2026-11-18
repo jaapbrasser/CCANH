@@ -1,0 +1,13 @@
+{
+  "apiVersion": "1.0",
+  "context": "my context",
+  "method": "list",
+  "data": {
+    "streamProfile": [
+      { "name": "My full HD profile", "description": "HD profile", "parameters": "resolution=1920x1080&videocodec=h264&fps=30" },
+      { "name": "My inverted image profile", "description": "Inverted", "parameters": "resolution=640x360&fps=25&rotation=180" },
+      { "name": "My high compression profile", "description": "", "parameters": "compression=60" }
+    ],
+    "maxProfiles": 26
+  }
+}

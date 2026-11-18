@@ -24,6 +24,9 @@ pub mod action {
     pub const CAMERA_CREATE: &str = "camera.create";
     pub const CAMERA_UPDATE: &str = "camera.update";
     pub const CAMERA_DELETE: &str = "camera.delete";
+    pub const CREDENTIAL_SET_CREATE: &str = "credential_set.create";
+    pub const CREDENTIAL_SET_UPDATE: &str = "credential_set.update";
+    pub const CREDENTIAL_SET_DELETE: &str = "credential_set.delete";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, ToSchema)]

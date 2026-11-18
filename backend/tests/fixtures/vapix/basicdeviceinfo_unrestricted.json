@@ -1,0 +1,19 @@
+{
+  "apiVersion": "1.0",
+  "method": "getAllUnrestrictedProperties",
+  "data": {
+    "propertyList": {
+      "Brand": "AXIS",
+      "BuildDate": "Jan 15 2026 09:12",
+      "HardwareID": "932.1",
+      "ProdFullName": "AXIS P3265-LVE Dome Camera",
+      "ProdNbr": "P3265-LVE",
+      "ProdShortName": "AXIS P3265-LVE",
+      "ProdType": "Dome Camera",
+      "ProdVariant": "",
+      "SerialNumber": "ACCC8E000000",
+      "Version": "11.11.73",
+      "WebURL": "http://www.axis.com"
+    }
+  }
+}

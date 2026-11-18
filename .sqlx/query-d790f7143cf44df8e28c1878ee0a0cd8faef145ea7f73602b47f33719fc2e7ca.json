@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE cameras\n            SET name = ?2, host = ?3, port = ?4, scheme = ?5, tls_mode = ?6,\n                tls_pinned_sha256 = ?7, monitoring_enabled = ?8, credential_set_id = ?9,\n                allow_basic_over_http = ?10, updated_at = ?11\n          WHERE id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 11
+    },
+    "nullable": []
+  },
+  "hash": "d790f7143cf44df8e28c1878ee0a0cd8faef145ea7f73602b47f33719fc2e7ca"
+}

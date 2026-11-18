@@ -3,6 +3,7 @@
 mod audit;
 mod auth;
 mod cameras;
+mod credentials;
 pub mod error;
 mod extract;
 pub mod health;
@@ -50,6 +51,7 @@ pub const DOCS_PATH: &str = "/api/docs";
         (name = "users", description = "User administration"),
         (name = "audit", description = "Security audit log"),
         (name = "cameras", description = "Camera registry, status and capabilities"),
+        (name = "credentials", description = "Shared camera credential sets (write-only secrets)"),
         (name = "realtime", description = "WebSocket for live updates"),
     ),
 )]
@@ -89,6 +91,9 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(cameras::get, cameras::update, cameras::delete))
         .routes(routes!(cameras::status_history))
         .routes(routes!(cameras::refresh))
+        .routes(routes!(credentials::test_connection))
+        .routes(routes!(credentials::list, credentials::create))
+        .routes(routes!(credentials::update, credentials::delete))
         .routes(routes!(ws::ws))
 }
 

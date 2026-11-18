@@ -1,0 +1,25 @@
+{
+  "apiVersion": "1.0",
+  "context": "abc",
+  "method": "getNetworkInfo",
+  "data": {
+    "system": {
+      "hostname": { "useDhcpHostname": true, "hostname": "somehostname", "staticHostname": "somestatichostname" }
+    },
+    "devices": [
+      {
+        "name": "eth0",
+        "type": "wired",
+        "macAddress": "ac:cc:8e:68:8e:c4",
+        "IPv4": {
+          "enabled": true,
+          "configurationMode": "dhcp",
+          "addresses": [ { "address": "192.0.2.165", "prefixLength": 24, "origin": "dhcp", "scope": "global" } ],
+          "staticAddressConfigurations": [ { "address": "192.0.2.90", "prefixLength": 24 } ],
+          "defaultRouter": "192.0.2.1",
+          "staticDefaultRouter": "192.0.2.1"
+        }
+      }
+    ]
+  }
+}
