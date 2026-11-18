@@ -68,6 +68,22 @@ Set `server.tls.mode = "self_signed"` to get HTTPS with a generated certificate
 directory's ACL to administrators and the account running crane: it holds the
 database and the TLS private key.
 
+## Local RTSP test source (streaming development)
+
+No AXIS camera is needed for streaming work. A local RTSP source publishes H.264
+test patterns shaped like a camera's main and grid profiles (SPEC §15.5):
+
+```bash
+pwsh scripts/rtsp-test-source.ps1
+```
+
+This serves `rtsp://127.0.0.1:8554/test/main` (720p25, 2 Mbit/s) and
+`rtsp://127.0.0.1:8554/test/grid` (360p15, 400 kbit/s). It needs `ffmpeg` and
+`mediamtx` on PATH, as dev tools only: on macOS `brew install ffmpeg mediamtx`;
+on Windows `winget install Gyan.FFmpeg` plus the MediaMTX release zip. The
+Phase 3 spike that used it is on branch `spike/streaming`; the findings are in
+ADR 0002.
+
 ## Database queries (SQLx offline mode)
 
 Queries use `sqlx::query!` macros, checked at compile time against `.sqlx/`.
