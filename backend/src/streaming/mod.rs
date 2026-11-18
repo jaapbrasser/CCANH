@@ -10,5 +10,6 @@ pub mod manager;
 pub mod media;
 pub mod opener;
 pub mod profiles;
+pub mod rtsp;
 
 pub use manager::{Packet, StreamInfo, StreamKey, StreamManager, StreamState};

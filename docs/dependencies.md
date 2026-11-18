@@ -32,6 +32,8 @@ One line per non-trivial dependency and why it's here. See ADR 0001 for the base
 | rpassword | Hidden password prompt for `--create-admin` |
 | async-trait | `dyn CameraProvider` with async methods (SPEC §4.3) |
 | bytes | Cheaply cloned media buffers shared by all viewers of a stream (ADR 0002) |
+| retina | RTSP client for AXIS live video: Digest auth, RTP over TCP, H.264 depacketizing and MP4 sample entries; pure Rust (ADR 0002) |
+| url | RTSP URLs for retina, with query values encoded |
 | reqwest (`rustls-no-provider`, `json`) | VAPIX HTTP client; TLS via our rustls config (ring), no aws-lc |
 | rustls-platform-verifier | "Strict" camera TLS mode uses the operating-system trust store (incl. enterprise CAs on Windows) |
 | md-5 | HTTP Digest MD5 (RFC 7616 / 2617); SHA-256 Digest uses `sha2` |
