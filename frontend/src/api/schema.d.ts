@@ -132,6 +132,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cameras/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply one action to many cameras (tag, group, monitoring, delete).
+         * @description Required role: admin. Validated up front (400 for unknown cameras, tags
+         *     or groups), then runs as a background task (`bulk_cameras`) whose result
+         *     is `{"action", "processed"}`. Follow it via the `tasks` topic. Cancelling
+         *     stops between cameras; work already done stays done.
+         */
+        post: operations["bulk_update_cameras"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cameras/test-connection": {
         parameters: {
             query?: never;
@@ -298,6 +321,102 @@ export interface paths {
          *     their next check.
          */
         patch: operations["update_credential_set"];
+        trace?: never;
+    };
+    "/api/v1/favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's favorite camera ids, most recent first.
+         * @description Required role: viewer. Only ever the caller's own favorites.
+         */
+        get: operations["list_favorites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/favorites/{camera_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mark a camera as a favorite of the signed-in user (idempotent).
+         * @description Required role: viewer.
+         */
+        put: operations["add_favorite"];
+        post?: never;
+        /**
+         * Remove a camera from the signed-in user's favorites (idempotent).
+         * @description Required role: viewer.
+         */
+        delete: operations["remove_favorite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all groups (flat; build the tree from `parent_id`).
+         * @description Required role: viewer.
+         */
+        get: operations["list_groups"];
+        put?: never;
+        /**
+         * Create a group, optionally under a parent.
+         * @description Required role: admin. Sibling names must be unique (ignoring case).
+         */
+        post: operations["create_group"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a group.
+         * @description Required role: admin. `mode=move_up` moves subgroups and cameras to the
+         *     parent group (for a top-level group: subgroups become top-level, cameras
+         *     leave it); `mode=detach` makes subgroups top-level and removes the cameras
+         *     from the group. Cameras themselves are never deleted.
+         */
+        delete: operations["delete_group"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename and/or move a group.
+         * @description Required role: admin. `parent_id: null` moves it to the top level. Moving
+         *     a group into itself or one of its subgroups is refused.
+         */
+        patch: operations["update_group"];
         trace?: never;
     };
     "/api/v1/health": {
@@ -477,6 +596,54 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all tags with how many cameras have each.
+         * @description Required role: viewer.
+         */
+        get: operations["list_tags"];
+        put?: never;
+        /**
+         * Create a tag.
+         * @description Required role: admin. Names are unique, ignoring case.
+         */
+        post: operations["create_tag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tags/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a tag. It's removed from every camera.
+         * @description Required role: admin.
+         */
+        delete: operations["delete_tag"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a tag.
+         * @description Required role: admin.
+         */
+        patch: operations["update_tag"];
         trace?: never;
     };
     "/api/v1/tasks": {
@@ -664,6 +831,36 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        /** @description What to do to every selected camera. */
+        BulkAction: {
+            tag_ids: string[];
+            /** @enum {string} */
+            type: "add_tags";
+        } | {
+            tag_ids: string[];
+            /** @enum {string} */
+            type: "remove_tags";
+        } | {
+            group_ids: string[];
+            /** @enum {string} */
+            type: "add_groups";
+        } | {
+            group_ids: string[];
+            /** @enum {string} */
+            type: "remove_groups";
+        } | {
+            enabled: boolean;
+            /** @enum {string} */
+            type: "set_monitoring";
+        } | {
+            /** @enum {string} */
+            type: "delete";
+        };
+        BulkRequest: {
+            action: components["schemas"]["BulkAction"];
+            /** @description 1–500 camera ids. */
+            camera_ids: string[];
+        };
         /** @description Everything known about a camera (SPEC §6.3). */
         CameraDetail: components["schemas"]["CameraSummary"] & {
             allow_basic_over_http: boolean;
@@ -707,12 +904,16 @@ export interface components {
         CameraPatch: {
             allow_basic_over_http?: boolean | null;
             credentials?: components["schemas"]["CredentialInput"] | null;
+            /** @description Replace the camera's groups. */
+            group_ids?: string[] | null;
             host?: string | null;
             monitoring_enabled?: boolean | null;
             name?: string | null;
             /** Format: int32 */
             port?: number | null;
             scheme?: components["schemas"]["Scheme"] | null;
+            /** @description Replace the camera's tags. */
+            tag_ids?: string[] | null;
             tls_mode?: components["schemas"]["TlsMode"] | null;
             tls_pinned_sha256?: string | null;
         };
@@ -742,6 +943,8 @@ export interface components {
         /** @description A camera as shown in lists. */
         CameraSummary: {
             firmware_version?: string | null;
+            /** @description Groups the camera is directly in, by name. */
+            groups: components["schemas"]["GroupRef"][];
             host: string;
             /** Format: uuid */
             id: string;
@@ -753,6 +956,8 @@ export interface components {
             port: number;
             scheme: components["schemas"]["Scheme"];
             status: components["schemas"]["CameraStatusView"];
+            /** @description Tags, by name. */
+            tags: components["schemas"]["TagRef"][];
         };
         /** @description One capability (an API or feature) and whether this camera supports it. */
         Capability: {
@@ -855,6 +1060,41 @@ export interface components {
          * @enum {string}
          */
         ErrorCategory: "unreachable" | "timeout" | "auth_failed" | "tls_error" | "unsupported" | "protocol_error" | "rate_limited" | "internal";
+        /** @description A group in the hierarchy. */
+        Group: {
+            /**
+             * Format: int64
+             * @description Cameras directly in this group (not counting subgroups).
+             */
+            camera_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /**
+             * Format: uuid
+             * @description `null` for a top-level group.
+             */
+            parent_id?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * @description Rename and/or move a group. Omitted fields are unchanged; `parent_id: null`
+         *     moves the group to the top level.
+         */
+        GroupPatch: {
+            name?: string | null;
+            /** Format: uuid */
+            parent_id?: string | null;
+        };
+        /** @description A group or tag as listed on a camera. */
+        GroupRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
         HealthChecks: {
             database: components["schemas"]["ComponentHealth"];
         };
@@ -997,6 +1237,8 @@ export interface components {
              */
             allow_basic_over_http?: boolean;
             credentials?: components["schemas"]["CredentialInput"] | null;
+            /** @description Groups to put the camera in. */
+            group_ids?: string[];
             /** @description IP address or hostname, without scheme, port or path. */
             host: string;
             monitoring_enabled?: boolean;
@@ -1007,6 +1249,8 @@ export interface components {
              */
             port?: number | null;
             scheme?: components["schemas"]["Scheme"];
+            /** @description Tags to give the camera. */
+            tag_ids?: string[];
             tls_mode?: components["schemas"]["TlsMode"];
             /** @description SHA-256 certificate fingerprint (hex, colons optional). Required for `pinned`. */
             tls_pinned_sha256?: string | null;
@@ -1017,6 +1261,19 @@ export interface components {
             password: string;
             username: string;
         };
+        NewGroup: {
+            name: string;
+            /**
+             * Format: uuid
+             * @description Omit or `null` for a top-level group.
+             */
+            parent_id?: string | null;
+        };
+        /**
+         * @description Which organization list changed.
+         * @enum {string}
+         */
+        OrganizationKind: "groups" | "tags";
         /** @enum {string} */
         Outcome: "success" | "failure";
         /** @description Problem details body (RFC 9457). */
@@ -1206,6 +1463,25 @@ export interface components {
              */
             stream_buffer_mb: number;
         };
+        Tag: {
+            /** Format: int64 */
+            camera_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TagInput: {
+            name: string;
+        };
+        TagRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
         Task: {
             /** Format: uuid */
             camera_id?: string | null;
@@ -1384,6 +1660,10 @@ export interface components {
             streams: components["schemas"]["StreamInfo"][];
             /** @enum {string} */
             type: "streams_updated";
+        } | {
+            kind: components["schemas"]["OrganizationKind"];
+            /** @enum {string} */
+            type: "organization_changed";
         };
     };
     responses: never;
@@ -1618,6 +1898,12 @@ export interface operations {
                 status?: "unknown" | "online" | "offline";
                 sort?: "name" | "host" | "model" | "state" | "last_success_at" | "last_change_at";
                 order?: "asc" | "desc";
+                /** @description Only cameras in this group or any of its subgroups. */
+                group_id?: string;
+                /** @description Only cameras with this tag. */
+                tag_id?: string;
+                /** @description `true`: only the signed-in user's favorites. */
+                favorites?: boolean;
             };
             header?: never;
             path?: never;
@@ -1705,6 +1991,57 @@ export interface operations {
             };
             /** @description Host and port already registered */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    bulk_update_cameras: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkRequest"];
+            };
+        };
+        responses: {
+            /** @description Task started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description Invalid selection or action */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2328,6 +2665,334 @@ export interface operations {
             };
         };
     };
+    list_favorites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Favorite camera ids */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    add_favorite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                camera_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Added */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such camera */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_favorite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                camera_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_groups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All groups, by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"][];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_group: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewGroup"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            /** @description Invalid name or parent */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Name taken at that level */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_group: {
+        parameters: {
+            query: {
+                /** @description Required: what happens to subgroups and cameras. */
+                mode: "move_up" | "detach";
+            };
+            header?: never;
+            path: {
+                /** @description Group ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid mode */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such group */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A subgroup's name clashes where it would move */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_group: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Group ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupPatch"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            /** @description Invalid name, parent or move */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such group */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Name taken at that level */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_health: {
         parameters: {
             query?: never;
@@ -2788,6 +3453,215 @@ export interface operations {
                 };
             };
             /** @description No playable stream profile, or stream refused */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_tags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All tags, by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"][];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_tag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            /** @description Invalid name */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Name taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_tag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tag ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such tag */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_tag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tag ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagInput"];
+            };
+        };
+        responses: {
+            /** @description Renamed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            /** @description Invalid name */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such tag */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Name taken */
             409: {
                 headers: {
                     [name: string]: unknown;

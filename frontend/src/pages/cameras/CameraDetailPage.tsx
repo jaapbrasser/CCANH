@@ -12,7 +12,9 @@ import {
   type CapabilityGroup,
 } from "../../api/cameras";
 import { ApiError, errorMessage } from "../../api/client";
+import { groupTree, useGroups } from "../../api/organization";
 import { LivePlayer } from "../../components/LivePlayer";
+import { Chips, FavoriteButton } from "../../components/organization";
 import { StatusBadge } from "../../components/StatusBadge";
 import { showToast } from "../../components/toasts";
 import { Alert, Button, Dialog } from "../../components/ui";
@@ -121,6 +123,27 @@ function LiveView({ camera }: { camera: CameraDetail }) {
         <LivePlayer cameraId={camera.id} profile={profile} purpose="detail" label={camera.name} />
       )}
     </section>
+  );
+}
+
+/** The camera's groups (as full paths) and tags. */
+function Organization({ camera }: { camera: CameraDetail }) {
+  const groups = useGroups();
+  const paths = new Map(groupTree(groups.data ?? []).map((g) => [g.id, g.path]));
+  return (
+    <dl className="grid grid-cols-[8rem_1fr] gap-y-2 text-sm">
+      <dt className="text-slate-400">Groups</dt>
+      <dd>
+        <Chips
+          items={camera.groups.map((g) => ({ id: g.id, name: paths.get(g.id) ?? g.name }))}
+          label="Camera groups"
+        />
+      </dd>
+      <dt className="text-slate-400">Tags</dt>
+      <dd>
+        <Chips items={camera.tags} label="Camera tags" />
+      </dd>
+    </dl>
   );
 }
 
@@ -245,6 +268,7 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
       </Link>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
+          <FavoriteButton cameraId={camera.id} name={camera.name} />
           <h1 className="text-2xl font-semibold">{camera.name}</h1>
           <StatusBadge status={s} />
         </div>
@@ -292,6 +316,9 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
               ["Monitoring", camera.monitoring_enabled ? "On" : "Off"],
             ]}
           />
+        </Section>
+        <Section title="Groups and tags">
+          <Organization camera={camera} />
         </Section>
         <Section title="Identity">
           <Facts

@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from "react";
+import { groupTree, useGroups, useTags } from "../../api/organization";
+import { MultiPick } from "../../components/organization";
 import { errorMessage } from "../../api/client";
 import {
   useCreateCamera,
@@ -34,6 +36,8 @@ interface FormState {
   setId: string;
   username: string;
   password: string;
+  group_ids: string[];
+  tag_ids: string[];
 }
 
 function initial(camera?: CameraDetail): FormState {
@@ -50,6 +54,8 @@ function initial(camera?: CameraDetail): FormState {
     setId: camera?.credential_set?.id ?? "",
     username: "",
     password: "",
+    group_ids: camera?.groups.map((g) => g.id) ?? [],
+    tag_ids: camera?.tags.map((t) => t.id) ?? [],
   };
 }
 
@@ -84,6 +90,8 @@ function toBody(f: FormState): NewCamera {
     ...connectionFields(f),
     monitoring_enabled: f.monitoring_enabled,
     credentials: credentialInput(f) ?? null,
+    group_ids: f.group_ids,
+    tag_ids: f.tag_ids,
   };
 }
 
@@ -158,6 +166,8 @@ export function CameraFormDialog({
   onSaved: (c: CameraDetail) => void;
 }) {
   const [form, setForm] = useState(() => initial(camera));
+  const groups = useGroups();
+  const tags = useTags();
   const create = useCreateCamera();
   const update = useUpdateCamera(camera?.id ?? "");
   const mutation = camera ? update : create;
@@ -335,6 +345,23 @@ export function CameraFormDialog({
             </label>
           )}
         </fieldset>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MultiPick
+            legend="Groups"
+            options={groupTree(groups.data ?? []).map((g) => ({ id: g.id, label: g.name, depth: g.depth }))}
+            selected={form.group_ids}
+            onChange={(ids) => set("group_ids", ids)}
+            empty="No groups yet (Groups & tags)."
+          />
+          <MultiPick
+            legend="Tags"
+            options={(tags.data ?? []).map((t) => ({ id: t.id, label: t.name }))}
+            selected={form.tag_ids}
+            onChange={(ids) => set("tag_ids", ids)}
+            empty="No tags yet (Groups & tags)."
+          />
+        </div>
 
         <label className="flex items-center gap-2 text-sm text-slate-300">
           <input
