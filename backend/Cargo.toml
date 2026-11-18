@@ -1,0 +1,43 @@
+[package]
+name = "crane"
+description = "Crane Camera Automated Navigation Hub server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "crane"
+path = "src/main.rs"
+
+[lib]
+name = "crane"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+clap = { version = "4", features = ["derive", "env"] }
+figment = { version = "0.10", features = ["toml", "env"] }
+mime_guess = "2"
+rust-embed = { version = "8", features = ["mime-guess"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tower = "0.5"
+tower-http = { version = "0.7", features = ["trace", "set-header"] }
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+utoipa = { version = "6", features = ["axum_extras"] }
+utoipa-axum = "0.3"
+utoipa-swagger-ui = { version = "10", features = ["axum", "vendored"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tempfile = "3"
+tokio-util = "0.7"
+figment = { version = "0.10", features = ["toml", "env", "test"] }
