@@ -189,10 +189,12 @@ impl VapixClient {
         req.send().await.map_err(|e| self.transport_error(&e))
     }
 
+    /// Categorize a transport failure. Order matters: TLS handshake failures
+    /// also count as "connect" errors, and a connection that can't be
+    /// established in time is *unreachable* (e.g. Windows retries a refused
+    /// connection for ~2 s instead of failing fast). `Timeout` is kept for a
+    /// camera that accepted the connection but didn't answer.
     fn transport_error(&self, e: &reqwest::Error) -> ProviderError {
-        if e.is_timeout() {
-            return ProviderError::Timeout(format!("no response from {}", self.host));
-        }
         // Walk the source chain for a TLS cause without exposing URLs.
         let mut src: Option<&dyn std::error::Error> = Some(e);
         while let Some(s) = src {
@@ -207,6 +209,9 @@ impl VapixClient {
         }
         if e.is_connect() {
             return ProviderError::Unreachable(format!("cannot connect to {}", self.host));
+        }
+        if e.is_timeout() {
+            return ProviderError::Timeout(format!("no response from {}", self.host));
         }
         ProviderError::Unreachable(format!("request to {} failed", self.host))
     }
