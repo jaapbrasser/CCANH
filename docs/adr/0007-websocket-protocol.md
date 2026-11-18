@@ -49,11 +49,14 @@ Server → client:
 | `camera_changed` | `camera` (summary) | camera added/edited/identity refreshed (topic `cameras`) |
 | `camera_deleted` | `camera_id` | camera removed (topic `cameras`) |
 | `task_updated` | `task` | task created, progressed or finished (topic `tasks`; own tasks only, admins see all) |
+| `streams_updated` | `streams` (list as in `GET /api/v1/streams`) | every second while any stream exists, once more after the last ends (topic `streams`, admins only) |
 | `resync` | `reason` | client fell behind the event stream; refetch over REST |
 | `error` | `code`, `message` | malformed message or unknown topic |
 
 Topics so far: `camera_status`, `cameras`, `tasks` (added in Phase 4b, see
-ADR 0008). Later phases add e.g. `discovery:{job_id}` and `streams`. Unknown topics are rejected with `error`.
+ADR 0008), `streams` (Phase 5; admin only, a viewer's subscription is accepted
+but receives nothing). Later phases add e.g. `discovery:{job_id}`. Live video
+itself uses separate media sockets (ADR 0002). Unknown topics are rejected with `error`.
 
 ### Delivery semantics
 - At-most-once, best effort. The server holds a bounded broadcast buffer (1024

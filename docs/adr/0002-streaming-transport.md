@@ -140,6 +140,47 @@ pub trait MediaSource: Send {
   re-sending init on parameter changes. The frontend jumps to the live edge when
   more than ~1 s behind and trims the buffer.
 
+### As built (Phase 5a)
+
+- **Endpoint:** `GET /api/v1/streams/{camera_id}/ws?profile=<id>` or
+  `?purpose=grid|detail` (viewer role, origin check). Without `profile` the
+  server picks a playable (H.264) profile: the smallest for `grid`, the
+  largest for `detail` (§7.4). Unknown camera → 404; no playable profile → 409.
+- **Media socket messages:**
+
+  | Frame | Content |
+  |---|---|
+  | text | `{"type":"init","codec":"avc1.4D401F","width":1280,"height":720}` |
+  | binary (after `init`) | fMP4 init segment (`ftyp`+`moov`) |
+  | binary | 1 flag byte (bit 0 = keyframe) + one `moof`+`mdat` (one frame) |
+  | text | `{"type":"state","state":"starting\|running\|reconnecting\|draining\|failed\|stopped","message":…}` |
+
+  Ping frames every 20 s keep the socket alive. A viewer that falls more than
+  256 packets behind is skipped forward to the next keyframe (no reconnect).
+- **Stream manager:** `streaming::StreamManager` keeps one hub per
+  `(camera, profile)`; a hub caches the current GOP so new viewers start at
+  once. A GOP that would exceed `stream_buffer_mb`, or push the total past
+  `global_buffer_mb`, isn't cached (a truncated GOP can't be decoded); those
+  viewers wait for the next keyframe instead. The hub
+  stays up for `grace_period_secs` after its last viewer leaves (runtime
+  settings group `streaming`, ADR 0008). Retryable source errors reconnect with
+  backoff (state `reconnecting`); permanent ones (auth failure, unsupported
+  profile) end in `failed`.
+- **Admin overview:** `GET /api/v1/streams` (per-hub viewers, bytes/s in and
+  out, startup time, buffer, reconnects, lag resyncs) and
+  `DELETE /api/v1/streams/{camera_id}?profile=` (force stop, audited as
+  `stream.force_stop`). The control socket's `streams` topic pushes the same
+  list every second while any stream exists, and once after the last ends.
+- **Frontend:** `src/streaming/registry.ts` shares one media socket per
+  `(camera, profile)` across all players in the tab, reference-counted with a
+  3 s linger so re-renders don't restart streams; late players get the cached
+  init + GOP. `src/streaming/player.ts` feeds MSE, waits for a keyframe after
+  any gap, chases the live edge (> 1.5 s behind) and trims the buffer.
+- **Demo:** the demo clips (`assets/demo/`) are replayed through the same
+  manager and egress, so subscriber counts and bandwidth are real.
+- **Deferred:** the MJPEG fallback (decision 2) is not built yet; H.265-only
+  cameras show an explanation instead of a player.
+
 ## Consequences
 
 - No native dependencies: `retina` and the muxer are pure Rust, so the Windows

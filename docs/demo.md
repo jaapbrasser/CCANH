@@ -33,6 +33,13 @@ or `mode = "demo"` in `config.toml`. The UI shows a **DEMO MODE** banner.
   - `B Storage – Aisle 4` rejects its credentials (auth failure).
 - Cameras an admin adds in demo mode are simulated too: demo mode never opens a
   connection to a camera.
+- Live video: every online camera with an H.264 profile plays one of four
+  bundled test patterns (`assets/demo/`, regenerated with
+  `scripts/gen-demo-clips.ps1`): 1280×720 at 25 fps for full-size profiles,
+  640×360 at 15 fps for `grid`. Clips go through the real stream manager, so
+  the **Streams** page shows true viewer counts and bandwidth: open one camera
+  in three tabs and it shows one camera connection with three viewers. Offline
+  cameras fail to stream; H.265-only models show why they can't play.
 
-Live video (Phase 5), groups/tags/favorites (Phase 6), dashboards (Phase 7)
+Groups/tags/favorites (Phase 6), dashboards (Phase 7)
 and discovery simulation (Phase 8) are added to demo mode as those phases land.

@@ -8,8 +8,10 @@ Read §0–3 before coding, then the section for the current phase (§17).
 
 Phases 0–4 are complete (Foundation, Auth & users, Camera core + demo, streaming
 spike → ADR 0002, AXIS provider + credentials + polling + tasks + runtime
-settings). Next: Phase 5 (stream manager + live view, per ADR 0002). Don't build
-ahead of the current phase, and post a plan before starting one.
+settings). Phase 5a (stream manager, demo video, media WebSocket, live view,
+Streams page) is done. Next: Phase 5b (AXIS RTSP source via `retina`,
+per-camera grid/detail profile override). Don't build ahead of the current
+phase, and post a plan before starting one.
 
 ## Commands
 
@@ -74,6 +76,8 @@ backend/
   src/supervisor.rs    restart background services with backoff; health
   src/settings/        admin-editable runtime settings (watch channel, DB overrides)
   src/tasks/           background task manager (persisted, cancellable, `tasks` topic)
+  src/streaming/       MediaSource, H.264 parsing, fMP4 muxer, demo clip replay,
+                       StreamManager (shared upstream, GOP cache, grace, reconnect)
   src/tls/             rustls (ring) config: PEM files or self-signed
   src/secret.rs        SecretString re-export
   src/config/          figment layering: defaults < TOML < CRANE_* env < CLI
@@ -82,7 +86,9 @@ backend/
   migrations/          sqlx migrations (embedded)
   tests/               in-process integration tests (common/ = helpers)
 .sqlx/                 SQLx offline query cache (committed)
+assets/demo/           bundled H.264 demo clips (embedded; scripts/gen-demo-clips.ps1)
 frontend/src/          App (routes), pages/, components/, auth/ (guards),
+                       streaming/ (shared media sockets, MSE player),
                        api/ (client.ts, hooks, generated schema.d.ts), test/ (MSW)
 scripts/               build, dev, gen-api-types, smoke-test
 docs/                  SPEC.md, adr/, development.md, dependencies.md
@@ -140,3 +146,7 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
 - Tokio paused-time tests need `#[tokio::test(start_paused = true)]` (dev
   feature `test-util` is enabled).
 - Without rustup (e.g. Homebrew Rust), `rust-toolchain.toml` is ignored locally.
+- Live view needs MSE; jsdom has none, so `LivePlayer` renders "not supported"
+  in tests and opens no socket. Test stream sharing via `StreamRegistry` with a
+  fake socket factory (`src/streaming/registry.test.ts`).
+- Live video uses its own media WebSocket per stream, not the control socket.
