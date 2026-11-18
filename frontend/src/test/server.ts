@@ -56,6 +56,7 @@ const liveHandler = live.addEventListener("connection", ({ client }) => {
 export const server = setupServer(
   liveHandler,
   http.get("/api/v1/cameras", () => HttpResponse.json({ items: [], total: 0, page: 1, page_size: 50 })),
+  http.get("/api/v1/credential-sets", () => HttpResponse.json([])),
   http.get("/api/v1/health", () =>
     HttpResponse.json({
       status: "ok",

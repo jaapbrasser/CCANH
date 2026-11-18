@@ -28,6 +28,8 @@ function summary(id: string, name: string, extra: Partial<CameraSummary> = {}): 
       consecutive_failures: 0,
       error_category: null,
       error_message: null,
+      identity_error_category: null,
+      identity_error_message: null,
     },
     ...extra,
   };
@@ -44,6 +46,9 @@ function detail(s: CameraSummary): CameraDetail {
     ...s,
     tls_mode: "strict",
     tls_pinned_sha256: null,
+    has_credentials: true,
+    credential_set: { id: "00000000-0000-7000-8000-0000000000c1", name: "Site A" },
+    allow_basic_over_http: false,
     serial_number: "ACCC8E000011",
     mac_address: "AC:CC:8E:00:00:11",
     device_name: s.name,
@@ -158,6 +163,28 @@ describe("camera detail", () => {
     const history = screen.getByRole("region", { name: "Status history" });
     await waitFor(() => expect(history).toHaveTextContent("unknown → online"));
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+  });
+
+  it("warns about rejected credentials on an online camera", async () => {
+    signedInAs(ADMIN);
+    server.use(
+      http.get("/api/v1/cameras/:id", () =>
+        HttpResponse.json(
+          detail({
+            ...HOOK,
+            status: {
+              ...HOOK.status,
+              identity_error_category: "auth_failed",
+              identity_error_message: "authentication failed: the camera rejected the configured credentials",
+            },
+          }),
+        ),
+      ),
+    );
+    renderApp(`/cameras/${HOOK.id}`);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Authentication failed");
+    expect(screen.getByRole("alert")).toHaveTextContent("Check the camera's credentials under Edit.");
+    expect(screen.getByRole("region", { name: "Connection" })).toHaveTextContent("Shared set: Site A");
   });
 
   it("reports a missing camera", async () => {

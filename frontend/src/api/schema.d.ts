@@ -132,6 +132,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cameras/test-connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test connecting to a camera without saving anything.
+         * @description Required role: admin. Probes reachability and identity, verifies the
+         *     credentials, and reads capabilities and stream profiles. Each step reports
+         *     its own error category. The camera's certificate fingerprint is returned so
+         *     it can be pinned.
+         */
+        post: operations["test_camera_connection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cameras/{id}": {
         parameters: {
             query?: never;
@@ -200,6 +223,55 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/credential-sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List shared credential sets.
+         * @description Required role: admin. Never returns usernames or passwords.
+         */
+        get: operations["list_credential_sets"];
+        put?: never;
+        /**
+         * Create a shared credential set.
+         * @description Required role: admin. The credentials are encrypted before storage.
+         */
+        post: operations["create_credential_set"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/credential-sets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a credential set.
+         * @description Required role: admin. Refused while any camera uses it.
+         */
+        delete: operations["delete_credential_set"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a credential set or replace its credentials.
+         * @description Required role: admin. Cameras using the set pick up new credentials on
+         *     their next check.
+         */
+        patch: operations["update_credential_set"];
         trace?: never;
     };
     "/api/v1/health": {
@@ -374,12 +446,16 @@ export interface components {
         };
         /** @description Everything known about a camera (SPEC §6.3). */
         CameraDetail: components["schemas"]["CameraSummary"] & {
+            allow_basic_over_http: boolean;
             /** @description Supported and unsupported capabilities. Empty until the first successful probe. */
             capabilities: components["schemas"]["Capability"][];
             /** Format: date-time */
             created_at: string;
+            credential_set?: components["schemas"]["CredentialSetRef"] | null;
             device_hostname?: string | null;
             device_name?: string | null;
+            /** @description Whether credentials are configured. Credentials themselves are write-only. */
+            has_credentials: boolean;
             /** Format: date-time */
             identity_updated_at?: string | null;
             mac_address?: string | null;
@@ -405,6 +481,8 @@ export interface components {
          *     together with a non-pinned `tls_mode` to clear a pin.
          */
         CameraPatch: {
+            allow_basic_over_http?: boolean | null;
+            credentials?: components["schemas"]["CredentialInput"] | null;
             host?: string | null;
             monitoring_enabled?: boolean | null;
             name?: string | null;
@@ -423,6 +501,8 @@ export interface components {
             error_category?: components["schemas"]["ErrorCategory"] | null;
             /** @description Short, non-sensitive description of the last error. */
             error_message?: string | null;
+            identity_error_category?: components["schemas"]["ErrorCategory"] | null;
+            identity_error_message?: string | null;
             /** Format: date-time */
             last_change_at?: string | null;
             /** Format: date-time */
@@ -485,11 +565,66 @@ export interface components {
             role: components["schemas"]["Role"];
             username: string;
         };
+        /** @description How a camera authenticates. Credentials are write-only. */
+        CredentialInput: {
+            /** @enum {string} */
+            type: "none";
+        } | {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "set";
+        } | {
+            /** Format: password */
+            password: string;
+            /** @enum {string} */
+            type: "inline";
+            username: string;
+        };
+        /** @description Rename a set and/or replace its credentials (username and password together). */
+        CredentialSetPatch: {
+            name?: string | null;
+            /** Format: password */
+            password?: string | null;
+            username?: string | null;
+        };
+        /** @description A reference to a shared credential set (never contains secrets). */
+        CredentialSetRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        /** @description A shared credential set as shown to admins. Never contains secrets. */
+        CredentialSetSummary: {
+            /**
+             * Format: int64
+             * @description Number of cameras using this set.
+             */
+            camera_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         /** @description A documented demo account. These exist only in `demo.db`. */
         DemoAccount: {
             password: string;
             role: components["schemas"]["Role"];
             username: string;
+        };
+        /** @description Device identification. Every field is optional: models differ. */
+        DeviceInfo: {
+            device_name?: string | null;
+            firmware_version?: string | null;
+            hostname?: string | null;
+            mac_address?: string | null;
+            manufacturer?: string | null;
+            model?: string | null;
+            network?: components["schemas"]["NetworkInfo"] | null;
+            serial_number?: string | null;
         };
         /**
          * @description Error categories shared by the API, UI and retry policy (SPEC §10.4).
@@ -542,6 +677,12 @@ export interface components {
             subnet_mask?: string | null;
         };
         NewCamera: {
+            /**
+             * @description Allow Basic authentication over plain HTTP, which sends the password
+             *     unencrypted. Off by default (SPEC §4.5).
+             */
+            allow_basic_over_http?: boolean;
+            credentials?: components["schemas"]["CredentialInput"] | null;
             /** @description IP address or hostname, without scheme, port or path. */
             host: string;
             monitoring_enabled?: boolean;
@@ -555,6 +696,12 @@ export interface components {
             tls_mode?: components["schemas"]["TlsMode"];
             /** @description SHA-256 certificate fingerprint (hex, colons optional). Required for `pinned`. */
             tls_pinned_sha256?: string | null;
+        };
+        NewCredentialSet: {
+            name: string;
+            /** Format: password */
+            password: string;
+            username: string;
         };
         /** @enum {string} */
         Outcome: "success" | "failure";
@@ -625,18 +772,63 @@ export interface components {
             occurred_at: string;
             to_state: components["schemas"]["CameraState"];
         };
+        /**
+         * @description A stream profile. AXIS profiles only carry the parameters an admin saved in
+         *     them, so codec and resolution may be unknown (the camera default applies).
+         */
         StreamProfile: {
             /** Format: int32 */
             bitrate_kbps?: number | null;
-            codec: components["schemas"]["VideoCodec"];
+            codec?: components["schemas"]["VideoCodec"] | null;
             /** Format: int32 */
             fps?: number | null;
             /** Format: int32 */
-            height: number;
+            height?: number | null;
+            /** @description Profile name used in stream requests. Empty for the camera's default stream. */
             id: string;
             name: string;
             /** Format: int32 */
-            width: number;
+            width?: number | null;
+        };
+        TestConnectionRequest: {
+            allow_basic_over_http?: boolean;
+            /**
+             * Format: uuid
+             * @description When editing an existing camera: use its stored credentials if
+             *     `credentials` is omitted.
+             */
+            camera_id?: string | null;
+            credentials?: components["schemas"]["CredentialInput"] | null;
+            host: string;
+            /** Format: int32 */
+            port?: number | null;
+            scheme?: components["schemas"]["Scheme"];
+            tls_mode?: components["schemas"]["TlsMode"];
+            tls_pinned_sha256?: string | null;
+        };
+        TestConnectionResult: {
+            capabilities: components["schemas"]["Capability"][];
+            device?: components["schemas"]["DeviceInfo"] | null;
+            /** @description True when every non-skipped step succeeded. */
+            ok: boolean;
+            /** Format: int32 */
+            response_time_ms?: number | null;
+            steps: components["schemas"]["TestStep"][];
+            stream_profiles: components["schemas"]["StreamProfile"][];
+            /**
+             * @description Fingerprint of the certificate the camera presented (HTTPS only), so it
+             *     can be checked and pinned.
+             */
+            tls_fingerprint_sha256?: string | null;
+        };
+        TestStep: {
+            error_category?: components["schemas"]["ErrorCategory"] | null;
+            message?: string | null;
+            /** @description `reachability`, `credentials`, `capabilities` or `device_info`. */
+            name: string;
+            ok: boolean;
+            /** @description `true` when the step doesn't apply (e.g. no credentials to verify). */
+            skipped: boolean;
         };
         /**
          * @description Per-camera certificate validation (SPEC §4.5).
@@ -1053,6 +1245,66 @@ export interface operations {
             };
         };
     };
+    test_camera_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Test result (see `ok` and `steps`) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestConnectionResult"];
+                };
+            };
+            /** @description Invalid settings */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unknown camera_id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_camera: {
         parameters: {
             query?: never;
@@ -1308,6 +1560,233 @@ export interface operations {
             };
             /** @description No such camera */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_credential_sets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential sets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialSetSummary"][];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_credential_set: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewCredentialSet"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialSetSummary"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Name taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_credential_set: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Credential set ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such set */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description In use */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_credential_set: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Credential set ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialSetPatch"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialSetSummary"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such set */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Name taken */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
