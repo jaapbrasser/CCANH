@@ -12,9 +12,28 @@ mode = "production"
 [server]
 bind = "127.0.0.1"
 port = 8080
-# Serve /api/docs and /api/openapi.json to non-admins once auth exists (Phase 1).
+# Serve /api/docs and /api/openapi.json without signing in (default: admins only).
 public_api_docs = false
 shutdown_timeout_secs = 10
+# Extra origins accepted by the CSRF check on state-changing requests, e.g. when
+# users reach the server by a DNS name that differs from the Host header.
+allowed_origins = []
+
+[server.tls]
+# "off" (plain HTTP; warns when bound to a non-loopback address),
+# "files" (your own PEM certificate chain and key), or
+# "self_signed" (generated into <data_dir>/tls/ on first run; fingerprint is logged).
+mode = "off"
+# cert_path = 'C:\ProgramData\CraneCamera\tls\server.crt'
+# key_path = 'C:\ProgramData\CraneCamera\tls\server.key'
+# Extra names for the self-signed certificate (localhost and the hostname are included).
+self_signed_names = []
+
+[auth]
+# Sessions end after this long without activity...
+idle_timeout_minutes = 480
+# ...and this long after sign-in regardless of activity.
+absolute_timeout_hours = 168
 
 [logging]
 # tracing filter directive; RUST_LOG overrides it.

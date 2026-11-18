@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"n!: i64\" FROM audit_log\n            WHERE (?1 IS NULL OR action = ?1)\n              AND (?2 IS NULL OR action LIKE ?2)\n              AND (?3 IS NULL OR actor_username = ?3 COLLATE NOCASE)\n              AND (?4 IS NULL OR outcome = ?4)\n              AND (?5 IS NULL OR occurred_at >= ?5)\n              AND (?6 IS NULL OR occurred_at < ?6)",
+  "describe": {
+    "columns": [
+      {
+        "name": "n!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "501723a6c25282ad0699f9c48f90ff6692fca3ea866f3312907c4d6c14a81517"
+}

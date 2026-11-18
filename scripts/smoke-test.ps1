@@ -38,9 +38,13 @@ try {
     }
     Write-Host 'UI shell: embedded'
 
-    $spec = Invoke-RestMethod "$base/api/openapi.json"
-    if (-not $spec.paths.'/api/v1/health') { throw 'OpenAPI document missing /api/v1/health' }
-    Write-Host 'OpenAPI: ok'
+    $setup = Invoke-RestMethod "$base/api/v1/setup"
+    if (-not $setup.setup_required) { throw 'fresh install should require first-run setup' }
+    Write-Host 'Setup: required on fresh install'
+
+    $docs = Invoke-WebRequest "$base/api/openapi.json" -UseBasicParsing -SkipHttpErrorCheck
+    if ($docs.StatusCode -ne 401) { throw "OpenAPI should be admin-only, got HTTP $($docs.StatusCode)" }
+    Write-Host 'OpenAPI: protected'
 } finally {
     if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
     Remove-Item -Recurse -Force $data -ErrorAction SilentlyContinue
