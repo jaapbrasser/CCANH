@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Streaming spike</title>
+<style>
+  body { font: 14px system-ui; background: #0f172a; color: #e2e8f0; margin: 16px; }
+  video { width: 640px; background: #000; display: block; }
+  pre { font-size: 12px; }
+</style>
+</head>
+<body>
+<video id="v" muted autoplay playsinline></video>
+<pre id="s">connecting…</pre>
+<script>
+const profile = new URLSearchParams(location.search).get("profile") || "main";
+const video = document.getElementById("v");
+const out = document.getElementById("s");
+const stats = (window.__spike = {
+  profile, codec: null, startupMs: null, latencyMs: null, latencySamples: [],
+  bufferMs: null, bytes: 0, fragments: 0, errors: [],
+});
+const t0 = performance.now();
+const queue = [];
+const timeline = []; // [{ptsSec, ingestMs}]
+let sb = null;
+let ptsOffset = null; // first fragment's pts, so the media timeline starts near 0
+
+const ms = new MediaSource();
+video.src = URL.createObjectURL(ms);
+
+function pump() {
+  if (!sb || sb.updating || !queue.length) return;
+  try { sb.appendBuffer(queue.shift()); } catch (e) { stats.errors.push(String(e)); }
+}
+
+ms.addEventListener("sourceopen", () => {
+  const ws = new WebSocket(`ws://${location.host}/ws/${profile}`);
+  ws.binaryType = "arraybuffer";
+  let initPending = true;
+  ws.onmessage = (e) => {
+    if (typeof e.data === "string") {
+      const msg = JSON.parse(e.data);
+      stats.codec = msg.codec;
+      sb = ms.addSourceBuffer(`video/mp4; codecs="${msg.codec}"`);
+      sb.mode = "segments";
+      sb.addEventListener("updateend", pump);
+      return;
+    }
+    if (initPending) { initPending = false; queue.push(e.data); pump(); return; }
+    const dv = new DataView(e.data);
+    const ingestMs = Number(dv.getBigUint64(0));
+    const ptsMs = Number(dv.getBigUint64(8));
+    if (ptsOffset === null) ptsOffset = 0;
+    timeline.push({ ptsSec: ptsMs / 1000, ingestMs });
+    if (timeline.length > 600) timeline.shift();
+    stats.bytes += e.data.byteLength;
+    stats.fragments += 1;
+    queue.push(e.data.slice(16));
+    pump();
+  };
+  ws.onclose = () => stats.errors.push("socket closed");
+});
+
+video.addEventListener("playing", () => {
+  if (stats.startupMs === null) stats.startupMs = Math.round(performance.now() - t0);
+});
+
+setInterval(() => {
+  if (!sb || !sb.buffered.length) return;
+  const end = sb.buffered.end(sb.buffered.length - 1);
+  // Live edge: if we are more than 1 s behind (e.g. after replaying the cached
+  // GOP), jump close to the newest frame.
+  if (end - video.currentTime > 1.0) video.currentTime = Math.max(sb.buffered.start(0), end - 0.2);
+  if (!sb.updating && video.currentTime > 30) {
+    try { sb.remove(0, video.currentTime - 20); } catch {}
+  }
+  if (video.paused) video.play().catch(() => {});
+  stats.bufferMs = Math.round((end - video.currentTime) * 1000);
+  // Latency = now − ingest time of the frame currently on screen.
+  const t = video.currentTime;
+  let best = null;
+  for (const f of timeline) if (f.ptsSec <= t) best = f;
+  if (best) {
+    const lat = Math.round(Date.now() - (best.ingestMs + (t - best.ptsSec) * 1000));
+    stats.latencyMs = lat;
+    stats.latencySamples.push(lat);
+    if (stats.latencySamples.length > 120) stats.latencySamples.shift();
+  }
+  out.textContent = JSON.stringify(
+    { ...stats, latencySamples: undefined, quality: video.getVideoPlaybackQuality?.() }, null, 2);
+}, 250);
+</script>
+</body>
+</html>
