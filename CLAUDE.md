@@ -8,10 +8,11 @@ Read §0–3 before coding, then the section for the current phase (§17).
 
 Phases 0–4 are complete (Foundation, Auth & users, Camera core + demo, streaming
 spike → ADR 0002, AXIS provider + credentials + polling + tasks + runtime
-settings). Phase 5a (stream manager, demo video, media WebSocket, live view,
-Streams page) is done. Next: Phase 5b (AXIS RTSP source via `retina`,
-per-camera grid/detail profile override). Don't build ahead of the current
-phase, and post a plan before starting one.
+settings) and Phase 5 (stream manager, demo video, media WebSocket, live view,
+Streams page, AXIS RTSP via `retina`, grid/detail profile choices) are
+complete. Next: Phase 6 (Organization: groups, tags, favorites, bulk
+operations). Don't build ahead of the current phase, and post a plan before
+starting one.
 
 ## Commands
 
@@ -77,6 +78,7 @@ backend/
   src/settings/        admin-editable runtime settings (watch channel, DB overrides)
   src/tasks/           background task manager (persisted, cancellable, `tasks` topic)
   src/streaming/       MediaSource, H.264 parsing, fMP4 muxer, demo clip replay,
+                       RTSP source (retina), profile resolution,
                        StreamManager (shared upstream, GOP cache, grace, reconnect)
   src/tls/             rustls (ring) config: PEM files or self-signed
   src/secret.rs        SecretString re-export
@@ -150,3 +152,6 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
   in tests and opens no socket. Test stream sharing via `StreamRegistry` with a
   fake socket factory (`src/streaming/registry.test.ts`).
 - Live video uses its own media WebSocket per stream, not the control socket.
+- AXIS RTSP tests use the in-process fake server in
+  `providers/axis/rtsp_tests.rs` (`FakeCamera::start_with`); the AXIS contract
+  suite needs it too, since `open_stream` really connects.
