@@ -19,7 +19,18 @@ One line per non-trivial dependency and why it's here. See ADR 0001 for the base
 | tracing, tracing-subscriber, tracing-appender | Structured logs, rolling daily files |
 | tokio-util | `CancellationToken` for graceful shutdown |
 | rust-embed, mime_guess | Embed `frontend/dist` in the release binary |
-| *dev:* tempfile, http-body-util, figment (`test`) | Test helpers |
+| argon2 | Argon2id password hashing (SPEC §14.2) |
+| secrecy | `SecretString`: redacted `Debug`, no `Serialize`, zeroize on drop (SPEC §4.6) |
+| getrandom | OS randomness for session and setup tokens |
+| sha2, base64 | Token hashing/encoding; certificate fingerprints |
+| axum-extra (`cookie`) | Cookie jar extractor and cookie builder |
+| time | Timestamps (RFC 3339 via `time::serde::rfc3339`), also the cookie `Max-Age` type. Chosen over chrono, which RUSTSEC-2026-0543 flags as unmaintained |
+| uuid (v7) | IDs (SPEC §13.1) |
+| axum-server (`tls-rustls-ring`) | HTTP/HTTPS serving with graceful shutdown |
+| rustls (`ring`) | Server TLS without native build deps on Windows (ADR 0004). PEM parsing via `rustls-pki-types` (`rustls-pemfile` is archived, RUSTSEC-2025-0134) |
+| rcgen (`ring`) | Self-signed certificate generation on first run |
+| rpassword | Hidden password prompt for `--create-admin` |
+| *dev:* tempfile, http-body-util, figment (`test`), tokio-rustls | Test helpers; TLS client for the HTTPS test |
 
 ## Frontend (npm)
 
@@ -27,6 +38,7 @@ One line per non-trivial dependency and why it's here. See ADR 0001 for the base
 |---|---|
 | react, react-dom | UI (SPEC §2) |
 | @tanstack/react-query | Server state |
+| react-router | Client-side routing and route guards |
 | openapi-fetch | Typed fetch client over the generated schema |
 | vite, @vitejs/plugin-react | Dev server and bundler |
 | tailwindcss, @tailwindcss/vite | Styling |
@@ -34,6 +46,13 @@ One line per non-trivial dependency and why it's here. See ADR 0001 for the base
 | openapi-typescript | Generates `src/api/schema.d.ts` from the OpenAPI document |
 | eslint, typescript-eslint, react-hooks / react-refresh plugins | Linting |
 | vitest, @testing-library/*, jsdom | Unit and component tests |
+| msw | API mocking in tests (SPEC §15.4) |
+
+## Dev tools (not dependencies)
+
+- `sqlx-cli` (`cargo install sqlx-cli --no-default-features --features sqlite,rustls`):
+  regenerates `.sqlx/` via `scripts/sqlx-prepare.ps1`.
+- `cargo-deny`: supply-chain checks (`cargo deny check`).
 
 ## Known advisories
 
