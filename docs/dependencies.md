@@ -30,7 +30,9 @@ One line per non-trivial dependency and why it's here. See ADR 0001 for the base
 | rustls (`ring`) | Server TLS without native build deps on Windows (ADR 0004). PEM parsing via `rustls-pki-types` (`rustls-pemfile` is archived, RUSTSEC-2025-0134) |
 | rcgen (`ring`) | Self-signed certificate generation on first run |
 | rpassword | Hidden password prompt for `--create-admin` |
-| *dev:* tempfile, http-body-util, figment (`test`), tokio-rustls | Test helpers; TLS client for the HTTPS test |
+| async-trait | `dyn CameraProvider` with async methods (SPEC §4.3) |
+| futures-util | Splitting the WebSocket into sink and stream |
+| *dev:* tempfile, http-body-util, figment (`test`), tokio-rustls, tokio-tungstenite, tokio (`test-util`) | Test helpers; TLS and WebSocket clients; paused-time tests |
 
 ## Frontend (npm)
 

@@ -6,8 +6,9 @@ Read §0–3 before coding, then the section for the current phase (§17).
 
 ## Current phase
 
-Phases 0 (Foundation) and 1 (Auth & users) are complete. Next: Phase 2 (Camera core
-+ demo). Don't build ahead of the current phase, and post a plan before starting one.
+Phases 0–2 (Foundation, Auth & users, Camera core + demo) are complete. Next:
+Phase 3 (streaming spike, throwaway branch + ADR 0002). Don't build ahead of the
+current phase, and post a plan before starting one.
 
 ## Commands
 
@@ -15,6 +16,7 @@ Backend (repo root):
 
 ```bash
 cargo run -p crane -- --data-dir data     # serve on http://127.0.0.1:8080
+cargo run -p crane -- --demo --data-dir data   # demo mode: simulated cameras, demo.db
 cargo run -p crane -- --print-openapi     # OpenAPI JSON to stdout, no server
 cargo run -p crane -- --data-dir data --create-admin admin   # prompt for password
 cargo fmt --check
@@ -53,11 +55,18 @@ backend/
   src/main.rs          CLI, startup, signal handling
   src/lib.rs           AppState, app(), serve() with graceful shutdown
   src/api/             router, security headers, problem+json errors, handlers
-                       (health, setup, auth, users, audit), extractor wrappers
+                       (health, setup, auth, users, audit, cameras, ws), extractors
   src/auth/            roles, Argon2id, sessions, rate limiter, CSRF guard,
                        AuthUser/AdminUser extractors, first-run setup
   src/users/           user model + repository (last-admin guard in SQL)
   src/audit/           append-only audit log
+  src/cameras/         camera registry: models, validation, repository, status
+  src/providers/       CameraProvider trait, factory, demo/ (simulated fleet),
+                       contract.rs (provider contract test suite)
+  src/monitoring/      status monitor (PollingPolicy, transitions, identity refresh)
+  src/events/          typed broadcast event bus
+  src/demo/            demo seeding and demo.db reset
+  src/supervisor.rs    restart background services with backoff; health
   src/tls/             rustls (ring) config: PEM files or self-signed
   src/secret.rs        SecretString re-export
   src/config/          figment layering: defaults < TOML < CRANE_* env < CLI
@@ -92,6 +101,9 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
 - Secrets are `SecretString`; never log request bodies of credential endpoints.
 - Significant decisions get an ADR in `docs/adr/`. New dependencies go in
   `docs/dependencies.md`.
+- Any new `CameraProvider` method gets a DemoProvider implementation in the same
+  change, and the contract suite (`providers/contract.rs`) covers it.
+- New WebSocket message types or topics: update `api::ws` and ADR 0007.
 - Every AXIS endpoint must be verified against official VAPIX docs and logged in
   `docs/vapix.md` (from Phase 4).
 - Frontend API calls go through `src/api/client.ts` (typed `openapi-fetch`).
@@ -104,5 +116,10 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
   integration tests send `Origin: http://localhost` + `Host: localhost`.
 - `query!` macros need `.sqlx/` (offline) or `DATABASE_URL`. CI sets
   `SQLX_OFFLINE=true`.
-- MSW 3 uses `onUnhandledFrame`, not `onUnhandledRequest`.
+- MSW 3 uses `onUnhandledFrame`, not `onUnhandledRequest`. The live socket is
+  mocked in `src/test/server.ts` (`live.broadcast(...)` to push messages).
+- Production mode has no camera provider until Phase 4: checks report
+  `unsupported` and status stays `unknown`.
+- Tokio paused-time tests need `#[tokio::test(start_paused = true)]` (dev
+  feature `test-util` is enabled).
 - Without rustup (e.g. Homebrew Rust), `rust-toolchain.toml` is ignored locally.
