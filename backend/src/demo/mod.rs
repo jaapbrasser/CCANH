@@ -52,6 +52,8 @@ pub enum DemoError {
     #[error(transparent)]
     Camera(#[from] cameras::CameraError),
     #[error(transparent)]
+    Organization(#[from] crate::organization::OrgError),
+    #[error(transparent)]
     Database(#[from] sqlx::Error),
 }
 
@@ -80,6 +82,106 @@ pub fn reset_database_file(path: &Path) -> Result<(), DemoError> {
 pub struct SeedSummary {
     pub users: usize,
     pub cameras: usize,
+    pub groups: usize,
+}
+
+/// The demo group tree (SPEC §9 example): (name, parent).
+const GROUPS: [(&str, Option<&str>); 12] = [
+    ("Site A", None),
+    ("Building 1", Some("Site A")),
+    ("Crane 1", Some("Building 1")),
+    ("Crane 2", Some("Building 1")),
+    ("Building 2", Some("Site A")),
+    ("Crane 3", Some("Building 2")),
+    ("Crane 4", Some("Building 2")),
+    ("Yard", Some("Site A")),
+    ("Site B", None),
+    ("Loading Area", Some("Site B")),
+    ("Storage Area", Some("Site B")),
+    ("Perimeter", Some("Site B")),
+];
+
+/// Camera name prefix → group.
+const GROUP_OF: [(&str, &str); 8] = [
+    ("A1 Crane 1", "Crane 1"),
+    ("A1 Crane 2", "Crane 2"),
+    ("A2 Crane 3", "Crane 3"),
+    ("A2 Crane 4", "Crane 4"),
+    ("A Yard", "Yard"),
+    ("B Loading", "Loading Area"),
+    ("B Storage", "Storage Area"),
+    ("B Perimeter", "Perimeter"),
+];
+
+/// Tag → camera name substrings that get it.
+const TAGS: [(&str, &[&str]); 5] = [
+    ("Hook", &["Hook"]),
+    ("Cabin", &["Cabin"]),
+    ("Gate", &["Gate", "Entrance"]),
+    ("Outdoor", &["Yard", "Perimeter", "Loading"]),
+    ("Critical", &["Hook", "Gate North", "Entrance"]),
+];
+
+/// Each demo user's favorites.
+const FAVORITES: [(&str, &[&str]); 2] = [
+    ("admin", &["A Yard – Gate North", "A Yard – Overview"]),
+    (
+        "viewer",
+        &[
+            "A1 Crane 1 – Hook",
+            "A2 Crane 3 – Hook",
+            "B Loading – Dock 1",
+        ],
+    ),
+];
+
+async fn seed_organization(db: &SqlitePool) -> Result<usize, DemoError> {
+    use crate::organization::{favorites, groups, tags, NewGroup};
+    use std::collections::HashMap;
+
+    let mut ids: HashMap<&str, uuid::Uuid> = HashMap::new();
+    for (name, parent) in GROUPS {
+        let g = groups::create(
+            db,
+            &NewGroup {
+                name: name.to_owned(),
+                parent_id: parent.and_then(|p| ids.get(p).copied()),
+            },
+        )
+        .await?;
+        ids.insert(name, g.id);
+    }
+    let (cams, _) = cameras::list(
+        db,
+        cameras::ListParams {
+            limit: i64::MAX,
+            ..Default::default()
+        },
+    )
+    .await?;
+    let mut tag_ids = Vec::new();
+    for (tag, _) in TAGS {
+        tag_ids.push(tags::create(db, tag).await?.id);
+    }
+    for cam in &cams {
+        if let Some((_, group)) = GROUP_OF.iter().find(|(p, _)| cam.name.starts_with(p)) {
+            groups::add_cameras(db, &[cam.id], &[ids[group]]).await?;
+        }
+        for ((_, matches), tag) in TAGS.iter().zip(&tag_ids) {
+            if matches.iter().any(|m| cam.name.contains(m)) {
+                tags::add_cameras(db, &[cam.id], &[*tag]).await?;
+            }
+        }
+    }
+    for (username, names) in FAVORITES {
+        let Some(user) = users::find_credentials(db, username).await? else {
+            continue;
+        };
+        for cam in cams.iter().filter(|c| names.contains(&c.name.as_str())) {
+            favorites::add(db, user.user.id, cam.id).await?;
+        }
+    }
+    Ok(GROUPS.len())
 }
 
 /// Seed demo users and cameras into an empty database. Does nothing to tables
@@ -109,6 +211,7 @@ pub async fn seed(db: &SqlitePool, store: &dyn CredentialStore) -> Result<SeedSu
             cameras::create(db, store, &settings, None).await?;
             summary.cameras += 1;
         }
+        summary.groups = seed_organization(db).await?;
     }
     Ok(summary)
 }
@@ -126,7 +229,8 @@ mod tests {
             first,
             SeedSummary {
                 users: 2,
-                cameras: FLEET.len()
+                cameras: FLEET.len(),
+                groups: GROUPS.len(),
             }
         );
         assert_eq!(
@@ -134,6 +238,29 @@ mod tests {
             SeedSummary::default(),
             "idempotent"
         );
+
+        // Site A holds the 8 crane cameras (via Building → Crane) and the 4 yard ones.
+        let groups = crate::organization::groups::list(&db).await.unwrap();
+        let site_a = groups.iter().find(|g| g.name == "Site A").unwrap().id;
+        let (_, total) = cameras::list(
+            &db,
+            cameras::ListParams {
+                group: Some(site_a),
+                limit: 100,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(total, 12);
+        let viewer = users::find_credentials(&db, "viewer")
+            .await
+            .unwrap()
+            .unwrap();
+        let favs = crate::organization::favorites::list(&db, viewer.user.id)
+            .await
+            .unwrap();
+        assert_eq!(favs.len(), 3);
 
         for account in ACCOUNTS {
             password::validate(&SecretString::from(account.password.to_owned())).unwrap();

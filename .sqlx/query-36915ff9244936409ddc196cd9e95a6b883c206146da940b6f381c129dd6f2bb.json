@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT cg.camera_id AS \"camera_id: Hyphenated\", g.id AS \"id: Hyphenated\", g.name\n             FROM camera_groups cg JOIN groups g ON g.id = cg.group_id\n            WHERE cg.camera_id IN (SELECT value FROM json_each(?1))\n            ORDER BY g.name COLLATE NOCASE",
+  "describe": {
+    "columns": [
+      {
+        "name": "camera_id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_groups",
+            "name": "camera_id"
+          }
+        }
+      },
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "groups",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "groups",
+            "name": "name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "36915ff9244936409ddc196cd9e95a6b883c206146da940b6f381c129dd6f2bb"
+}

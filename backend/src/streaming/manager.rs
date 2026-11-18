@@ -340,6 +340,23 @@ impl StreamManager {
         }
     }
 
+    /// Stop every stream of a camera (it was removed). Returns how many.
+    pub fn stop_camera(&self, camera_id: Uuid, reason: &str) -> usize {
+        let hubs: Vec<_> = {
+            let mut map = lock(&self.inner.hubs);
+            let keys: Vec<StreamKey> = map
+                .keys()
+                .filter(|k| k.camera_id == camera_id)
+                .cloned()
+                .collect();
+            keys.iter().filter_map(|k| map.remove(k)).collect()
+        };
+        for hub in &hubs {
+            hub.stop(Some(reason.to_owned()));
+        }
+        hubs.len()
+    }
+
     /// Stop every stream (server shutdown).
     pub fn shutdown(&self) {
         self.inner.root.cancel();

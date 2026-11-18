@@ -10,6 +10,7 @@ pub mod credentials;
 pub mod demo;
 pub mod events;
 pub mod monitoring;
+pub mod organization;
 pub mod providers;
 pub mod secret;
 pub mod settings;

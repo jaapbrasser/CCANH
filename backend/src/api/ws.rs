@@ -30,7 +30,7 @@ use super::error::{ApiError, Problem};
 use crate::auth::session::{self, Timeouts, COOKIE_NAME};
 use crate::auth::{csrf, AuthUser, Role};
 use crate::cameras::{CameraStatusView, CameraSummary};
-use crate::events::{Event, Topic};
+use crate::events::{Event, OrganizationKind, Topic};
 use crate::streaming::StreamInfo;
 use crate::tasks::Task;
 use crate::AppState;
@@ -89,6 +89,11 @@ pub enum WsServerMessage {
     StreamsUpdated {
         streams: Vec<StreamInfo>,
     },
+    /// Groups or tags were created, renamed, moved or deleted; refetch them
+    /// (topic `cameras`). Camera memberships arrive as `camera_changed`.
+    OrganizationChanged {
+        kind: OrganizationKind,
+    },
 }
 
 impl From<Event> for WsServerMessage {
@@ -101,6 +106,7 @@ impl From<Event> for WsServerMessage {
             Event::CameraDeleted { camera_id } => WsServerMessage::CameraDeleted { camera_id },
             Event::TaskUpdated { task } => WsServerMessage::TaskUpdated { task },
             Event::StreamsUpdated { streams } => WsServerMessage::StreamsUpdated { streams },
+            Event::OrganizationChanged { kind } => WsServerMessage::OrganizationChanged { kind },
         }
     }
 }

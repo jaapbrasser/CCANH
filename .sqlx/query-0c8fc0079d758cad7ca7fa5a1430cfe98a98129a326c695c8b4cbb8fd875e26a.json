@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO camera_groups (camera_id, group_id) SELECT ?1, value FROM json_each(?2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "0c8fc0079d758cad7ca7fa5a1430cfe98a98129a326c695c8b4cbb8fd875e26a"
+}

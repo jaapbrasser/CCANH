@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT camera_id AS \"id: Hyphenated\" FROM camera_groups WHERE group_id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "camera_groups",
+            "name": "camera_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0683b44fe34c8e21da649bfbdc7964e2fd800436ed1ea10020055d568f82583a"
+}

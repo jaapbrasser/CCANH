@@ -29,6 +29,13 @@ pub mod action {
     pub const CREDENTIAL_SET_DELETE: &str = "credential_set.delete";
     pub const SETTINGS_UPDATE: &str = "settings.update";
     pub const STREAM_FORCE_STOP: &str = "stream.force_stop";
+    pub const CAMERA_BULK_UPDATE: &str = "camera.bulk_update";
+    pub const GROUP_CREATE: &str = "group.create";
+    pub const GROUP_UPDATE: &str = "group.update";
+    pub const GROUP_DELETE: &str = "group.delete";
+    pub const TAG_CREATE: &str = "tag.create";
+    pub const TAG_UPDATE: &str = "tag.update";
+    pub const TAG_DELETE: &str = "tag.delete";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, ToSchema)]

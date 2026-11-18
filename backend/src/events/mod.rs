@@ -18,12 +18,20 @@ use crate::tasks::Task;
 pub enum Topic {
     /// Live status of every camera.
     CameraStatus,
-    /// Cameras added, changed or removed.
+    /// Cameras added, changed or removed; groups and tags changed.
     Cameras,
     /// Background task progress and completion (own tasks; admins see all).
     Tasks,
     /// Active stream metrics, about once a second (admins only).
     Streams,
+}
+
+/// Which organization list changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum OrganizationKind {
+    Groups,
+    Tags,
 }
 
 /// A domain event. Serialized as-is into WebSocket server messages.
@@ -46,13 +54,18 @@ pub enum Event {
     StreamsUpdated {
         streams: Vec<StreamInfo>,
     },
+    OrganizationChanged {
+        kind: OrganizationKind,
+    },
 }
 
 impl Event {
     pub fn topic(&self) -> Topic {
         match self {
             Event::CameraStatus { .. } => Topic::CameraStatus,
-            Event::CameraChanged { .. } | Event::CameraDeleted { .. } => Topic::Cameras,
+            Event::CameraChanged { .. }
+            | Event::CameraDeleted { .. }
+            | Event::OrganizationChanged { .. } => Topic::Cameras,
             Event::TaskUpdated { .. } => Topic::Tasks,
             Event::StreamsUpdated { .. } => Topic::Streams,
         }
