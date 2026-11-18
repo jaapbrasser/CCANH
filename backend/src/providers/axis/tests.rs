@@ -432,6 +432,20 @@ async fn closed_port_is_unreachable() {
 }
 
 #[tokio::test]
+async fn connect_timeout_is_unreachable_not_timeout() {
+    // RFC 5737 TEST-NET-1 never answers: depending on the network this either
+    // fails immediately or hits the connect timeout. Both mean "unreachable".
+    let p = AxisProvider::new(
+        &ProviderTarget::simple("192.0.2.1", 80, false),
+        Duration::from_secs(1),
+    );
+    assert_eq!(
+        p.probe().await.unwrap_err().category(),
+        ErrorCategory::Unreachable
+    );
+}
+
+#[tokio::test]
 async fn axis_provider_passes_contract_suite() {
     let healthy = MockServer::start().await;
     mount_camera(&healthy, true).await;
