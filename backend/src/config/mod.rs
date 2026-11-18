@@ -480,6 +480,19 @@ mod tests {
     }
 
     #[test]
+    fn example_config_is_valid() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../config.example.toml");
+        let config = Config::load_with_env(Some(&path), &Overrides::default(), no_env())
+            .unwrap_or_else(|e| panic!("config.example.toml: {e}"));
+        let defaults = Config::default();
+        assert_eq!(config.server.port, defaults.server.port);
+        assert_eq!(
+            config.monitoring.interval_secs,
+            defaults.monitoring.interval_secs
+        );
+    }
+
+    #[test]
     fn demo_mode_uses_separate_database() {
         let mut config = Config::default();
         let prod = config.database_path();
