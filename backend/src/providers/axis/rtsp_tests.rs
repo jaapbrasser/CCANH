@@ -222,6 +222,8 @@ async fn serve(sock: tokio::net::TcpStream, cfg: Arc<FakeConfig>, log: Arc<Mutex
                         "{sprop}",
                         &format!("{},{}", b64.encode(&es.sps), b64.encode(&es.pps)),
                     )
+                    // The fixture may be checked out with CRLF (Windows).
+                    .replace("\r\n", "\n")
                     .replace('\n', "\r\n");
                 reply(
                     "200 OK",

@@ -160,7 +160,11 @@ fn classify(status: Option<u16>, message: &str, step: &str) -> ProviderError {
         Some(code @ (453 | 503)) => {
             ProviderError::RateLimited(format!("the camera is busy (RTSP {code})"))
         }
-        Some(code) => ProviderError::Protocol(format!("RTSP {step} returned {code}")),
+        // Includes a 200 whose content retina couldn't use (e.g. a bad SDP).
+        Some(code) => ProviderError::Protocol(format!(
+            "RTSP {step} returned {code}: {}",
+            first_line(message)
+        )),
         None => {
             let m = message.to_ascii_lowercase();
             let network = [

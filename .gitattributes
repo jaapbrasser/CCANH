@@ -1,0 +1,2 @@
+# Protocol fixtures must keep their exact line endings on every platform.
+backend/tests/fixtures/** -text
