@@ -5,6 +5,7 @@ import {
   useCamera,
   useDeleteCamera,
   useRefreshCamera,
+  useSetStreamProfiles,
   useStatusHistory,
   type CameraDetail,
   type Capability,
@@ -13,6 +14,7 @@ import {
 import { ApiError, errorMessage } from "../../api/client";
 import { LivePlayer } from "../../components/LivePlayer";
 import { StatusBadge } from "../../components/StatusBadge";
+import { showToast } from "../../components/toasts";
 import { Alert, Button, Dialog } from "../../components/ui";
 import { errorCategoryLabel, relativeTime } from "../../utils/format";
 import { CameraFormDialog } from "./CameraFormDialog";
@@ -95,7 +97,7 @@ function LiveView({ camera }: { camera: CameraDetail }) {
             value={profile ?? ""}
             onChange={(e) => setProfile(e.target.value || undefined)}
           >
-            <option value="">Best quality (automatic)</option>
+            <option value="">Default for this camera</option>
             {playable.map((p) => (
               <option key={p.id || "default"} value={p.id}>
                 {p.name}
@@ -119,6 +121,71 @@ function LiveView({ camera }: { camera: CameraDetail }) {
         <LivePlayer cameraId={camera.id} profile={profile} purpose="detail" label={camera.name} />
       )}
     </section>
+  );
+}
+
+const AUTO = "__auto__";
+
+function profileLabel(camera: CameraDetail, id: string | null | undefined): string {
+  if (id == null) return "Automatic";
+  return camera.stream_profiles.find((p) => p.id === id)?.name ?? `${id || "camera default"} (not on camera)`;
+}
+
+/** Which profiles grid tiles and the detail view use (SPEC §7.4). */
+function ProfileChoices({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean }) {
+  const playable = camera.stream_profiles.filter((p) => p.codec == null || p.codec === "h264");
+  const [grid, setGrid] = useState(camera.grid_profile ?? AUTO);
+  const [detail, setDetail] = useState(camera.detail_profile ?? AUTO);
+  const save = useSetStreamProfiles(camera.id);
+  if (!isAdmin || playable.length === 0) {
+    return (
+      <p className="mt-3 text-sm text-slate-400">
+        Grid tiles: {profileLabel(camera, camera.grid_profile)} · Detail view:{" "}
+        {profileLabel(camera, camera.detail_profile)}
+      </p>
+    );
+  }
+  const select = (label: string, value: string, onChange: (v: string) => void) => (
+    <label className="flex flex-col gap-1 text-sm">
+      <span className="text-slate-300">{label}</span>
+      <select
+        className="rounded border border-slate-700 bg-slate-900 px-2 py-1"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value={AUTO}>Automatic (global default or by size)</option>
+        {playable.map((p) => (
+          <option key={p.id || "default"} value={p.id}>
+            {p.name}
+            {p.width && p.height ? ` (${p.width}×${p.height})` : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  return (
+    <form
+      aria-label="Profile choices"
+      className="mt-4 flex flex-col gap-3 border-t border-slate-800 pt-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate(
+          { grid_profile: grid === AUTO ? null : grid, detail_profile: detail === AUTO ? null : detail },
+          { onSuccess: () => showToast("success", "Profile choices saved. New viewers use them.") },
+        );
+      }}
+    >
+      {save.isError && <Alert>{errorMessage(save.error)}</Alert>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {select("Grid tiles", grid, setGrid)}
+        {select("Detail view", detail, setDetail)}
+      </div>
+      <div>
+        <Button type="submit" variant="secondary" disabled={save.isPending}>
+          Save profile choices
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -296,6 +363,14 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
             </table>
           ) : (
             <p className="text-sm text-slate-500">Not reported yet.</p>
+          )}
+          {camera.stream_profiles.length > 0 && (
+            // Re-key on server values so a save or live update re-initializes the form.
+            <ProfileChoices
+              key={`${camera.grid_profile}|${camera.detail_profile}`}
+              camera={camera}
+              isAdmin={isAdmin}
+            />
           )}
         </Section>
         <CapabilitySections capabilities={camera.capabilities} />

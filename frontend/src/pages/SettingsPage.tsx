@@ -127,7 +127,20 @@ function MonitoringForm({ current, defaults }: { current: MonitoringSettings; de
   );
 }
 
-type SKey = keyof StreamingSettings;
+type SKey = "grace_period_secs" | "stream_buffer_mb" | "global_buffer_mb";
+type NameKey = "default_grid_profile" | "default_detail_profile";
+const NAME_FIELDS: { key: NameKey; label: string; hint: string }[] = [
+  {
+    key: "default_grid_profile",
+    label: "Grid profile name",
+    hint: "Used for grid tiles on cameras that have a profile with this name. Empty: the smallest H.264 profile.",
+  },
+  {
+    key: "default_detail_profile",
+    label: "Detail profile name",
+    hint: "Used for the detail view on cameras that have it. Empty: the largest H.264 profile.",
+  },
+];
 const STREAM_FIELDS: { key: SKey; label: string; hint: string }[] = [
   { key: "grace_period_secs", label: "Grace period (seconds)", hint: "How long a camera stream stays connected after its last viewer leaves (0–300)." },
   { key: "stream_buffer_mb", label: "Buffer per stream (MB)", hint: "Memory for the latest keyframe group, so new viewers start instantly (1–64)." },
@@ -140,12 +153,20 @@ function StreamingForm({ current, defaults }: { current: StreamingSettings; defa
   const [form, setForm] = useState(
     () => Object.fromEntries(STREAM_FIELDS.map((f) => [f.key, String(current[f.key])])) as Record<SKey, string>,
   );
+  const [names, setNames] = useState<Record<NameKey, string>>(() => ({
+    default_grid_profile: current.default_grid_profile ?? "",
+    default_detail_profile: current.default_detail_profile ?? "",
+  }));
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    const patch: Partial<Record<SKey, number>> = {};
+    const patch: Partial<Record<SKey, number> & Record<NameKey, string>> = {};
     for (const f of STREAM_FIELDS) {
       const v = Number(form[f.key]);
       if (v !== current[f.key]) patch[f.key] = v;
+    }
+    for (const f of NAME_FIELDS) {
+      // "" clears the name on the server.
+      if (names[f.key].trim() !== (current[f.key] ?? "")) patch[f.key] = names[f.key].trim();
     }
     update.mutate(patch, { onSuccess: () => showToast("success", "Live video settings saved.") });
   };
@@ -161,6 +182,18 @@ function StreamingForm({ current, defaults }: { current: StreamingSettings; defa
             hint={`${f.hint}${defaults[f.key] !== Number(form[f.key]) ? ` Default: ${defaults[f.key]}.` : ""}`}
             value={form[f.key]}
             onChange={(e) => setForm({ ...form, [f.key]: e.target.value.replace(/\D/g, "") })}
+          />
+        ))}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {NAME_FIELDS.map((f) => (
+          <Field
+            key={f.key}
+            label={f.label}
+            maxLength={64}
+            hint={`${f.hint} Cameras can override this on their page.`}
+            value={names[f.key]}
+            onChange={(e) => setNames({ ...names, [f.key]: e.target.value })}
           />
         ))}
       </div>

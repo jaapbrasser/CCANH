@@ -62,6 +62,8 @@ function detail(s: CameraSummary): CameraDetail {
     stream_profiles: [
       { id: "main", name: "Main (1080p)", codec: "h264", width: 1920, height: 1080, fps: 30, bitrate_kbps: 4000 },
     ],
+    grid_profile: null,
+    detail_profile: null,
     identity_updated_at: NOW,
     created_at: NOW,
     updated_at: NOW,
@@ -160,6 +162,9 @@ describe("camera detail", () => {
     expect(within(audio).getByLabelText("Not supported")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Identity" })).toHaveTextContent("ACCC8E000011");
     expect(screen.getByRole("region", { name: "Stream profiles" })).toHaveTextContent("1920×1080");
+    expect(screen.getByRole("region", { name: "Stream profiles" })).toHaveTextContent(
+      "Grid tiles: Automatic · Detail view: Automatic",
+    );
     const history = screen.getByRole("region", { name: "Status history" });
     await waitFor(() => expect(history).toHaveTextContent("unknown → online"));
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
@@ -172,6 +177,30 @@ describe("camera detail", () => {
     const liveView = await screen.findByRole("region", { name: "Live view" });
     expect(within(liveView).getByLabelText("Live video: A1 Crane 1 – Hook")).toBeInTheDocument();
     expect(within(liveView).getByRole("status")).toHaveTextContent("Live video not supported");
+  });
+
+  it("lets admins choose grid and detail profiles; viewers see the choice", async () => {
+    signedInAs(ADMIN);
+    const profiles = [
+      { id: "main", name: "Main (1080p)", codec: "h264", width: 1920, height: 1080, fps: 30, bitrate_kbps: 4000 },
+      { id: "grid", name: "Grid (360p)", codec: "h264", width: 640, height: 360, fps: 15, bitrate_kbps: 400 },
+    ];
+    let body: unknown;
+    server.use(
+      http.get("/api/v1/cameras/:id", () => HttpResponse.json({ ...detail(HOOK), stream_profiles: profiles })),
+      http.put("/api/v1/cameras/:id/stream-profiles", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ ...detail(HOOK), stream_profiles: profiles, grid_profile: "grid" });
+      }),
+    );
+    renderApp(`/cameras/${HOOK.id}`);
+    const form = await screen.findByRole("form", { name: "Profile choices" });
+    await userEvent.selectOptions(within(form).getByLabelText("Grid tiles"), "grid");
+    await userEvent.click(within(form).getByRole("button", { name: "Save profile choices" }));
+    await waitFor(() => expect(body).toEqual({ grid_profile: "grid", detail_profile: null }));
+    await waitFor(() =>
+      expect(within(screen.getByRole("form", { name: "Profile choices" })).getByLabelText("Grid tiles")).toHaveValue("grid"),
+    );
   });
 
   it("explains when a camera has no H.264 profile", async () => {

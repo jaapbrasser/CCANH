@@ -227,6 +227,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cameras/{id}/stream-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Choose which stream profiles this camera uses for grid tiles and the
+         *     detail view.
+         * @description Required role: admin. Each value is a profile id from the camera's
+         *     `stream_profiles` that browsers can play (H.264), or `null` to use the
+         *     global default (runtime settings, `streaming`), else a pick by resolution.
+         *     Streams already running keep their profile; new viewers get the new one.
+         */
+        put: operations["set_camera_stream_profiles"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/credential-sets": {
         parameters: {
             query?: never;
@@ -648,8 +672,12 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             credential_set?: components["schemas"]["CredentialSetRef"] | null;
+            /** @description Profile id for the detail view on this camera; `null` uses the global default. */
+            detail_profile?: string | null;
             device_hostname?: string | null;
             device_name?: string | null;
+            /** @description Profile id for grid tiles on this camera; `null` uses the global default. */
+            grid_profile?: string | null;
             /** @description Whether credentials are configured. Credentials themselves are write-only. */
             has_credentials: boolean;
             /** Format: date-time */
@@ -1134,9 +1162,21 @@ export interface components {
             /** Format: int32 */
             width?: number | null;
         };
+        /**
+         * @description Per-camera stream profile choices (SPEC §7.4). Each is a profile id from
+         *     the camera's `stream_profiles` (`""` is the camera's default stream), or
+         *     `null` for the global default.
+         */
+        StreamProfileOverrides: {
+            detail_profile?: string | null;
+            grid_profile?: string | null;
+        };
         /** @enum {string} */
         StreamState: "starting" | "running" | "reconnecting" | "draining" | "failed" | "stopped";
+        /** @description Omitted fields are unchanged. For the profile names, `""` clears the name. */
         StreamingPatch: {
+            default_detail_profile?: string | null;
+            default_grid_profile?: string | null;
             /** Format: int32 */
             global_buffer_mb?: number | null;
             /** Format: int64 */
@@ -1146,6 +1186,10 @@ export interface components {
         };
         /** @description Live video (SPEC §7). */
         StreamingSettings: {
+            /** @description Profile name preferred for the detail view on cameras that have it (≤ 64 chars). */
+            default_detail_profile?: string | null;
+            /** @description Profile name preferred for grid tiles on cameras that have it (≤ 64 chars). */
+            default_grid_profile?: string | null;
             /**
              * Format: int32
              * @description GOP cache cap across all streams in MiB (16–4096, at least the per-stream cap).
@@ -1976,6 +2020,69 @@ export interface operations {
             };
             /** @description Not signed in */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such camera */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    set_camera_stream_profiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamProfileOverrides"];
+            };
+        };
+        responses: {
+            /** @description Updated camera */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraDetail"];
+                };
+            };
+            /** @description Not one of the camera's playable profiles */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

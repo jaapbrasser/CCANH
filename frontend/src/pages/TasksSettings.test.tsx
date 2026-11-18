@@ -16,7 +16,13 @@ const MONITORING = {
   identity_refresh_minutes: 15,
 };
 
-const STREAMING = { grace_period_secs: 15, stream_buffer_mb: 4, global_buffer_mb: 256 };
+const STREAMING = {
+  grace_period_secs: 15,
+  stream_buffer_mb: 4,
+  global_buffer_mb: 256,
+  default_grid_profile: null,
+  default_detail_profile: null,
+};
 
 function task(over: Record<string, unknown> = {}) {
   return {
@@ -105,8 +111,9 @@ describe("settings page", () => {
     const grace = within(form).getByLabelText("Grace period (seconds)");
     await userEvent.clear(grace);
     await userEvent.type(grace, "60");
+    await userEvent.type(within(form).getByLabelText("Grid profile name"), "grid");
     await userEvent.click(within(form).getByRole("button", { name: "Save live video settings" }));
-    await waitFor(() => expect(patch).toEqual({ grace_period_secs: 60 }));
+    await waitFor(() => expect(patch).toEqual({ grace_period_secs: 60, default_grid_profile: "grid" }));
   });
 });
 
