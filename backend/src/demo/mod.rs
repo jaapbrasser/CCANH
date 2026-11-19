@@ -54,6 +54,8 @@ pub enum DemoError {
     #[error(transparent)]
     Organization(#[from] crate::organization::OrgError),
     #[error(transparent)]
+    Dashboard(#[from] crate::dashboards::DashboardError),
+    #[error(transparent)]
     Database(#[from] sqlx::Error),
 }
 
@@ -181,7 +183,57 @@ async fn seed_organization(db: &SqlitePool) -> Result<usize, DemoError> {
             favorites::add(db, user.user.id, cam.id).await?;
         }
     }
+    seed_dashboards(db, &cams).await?;
     Ok(GROUPS.len())
+}
+
+/// Two sample dashboards per demo account (SPEC §12.1): (name, rows, cols,
+/// camera name prefixes in tile order).
+const DASHBOARDS: [(&str, u8, u8, &[&str]); 2] = [
+    ("Site A cranes", 3, 3, &["A1 Crane", "A2 Crane"]),
+    (
+        "Gates and docks",
+        2,
+        3,
+        &["A Yard – Gate", "B Perimeter – Entrance", "B Loading"],
+    ),
+];
+
+async fn seed_dashboards(
+    db: &SqlitePool,
+    cams: &[cameras::CameraSummary],
+) -> Result<(), DemoError> {
+    use crate::dashboards::{self, NewDashboard, Tile};
+    for account in ACCOUNTS {
+        let Some(user) = users::find_credentials(db, account.username).await? else {
+            continue;
+        };
+        for (name, rows, cols, prefixes) in DASHBOARDS {
+            let cells = usize::from(rows) * usize::from(cols);
+            let tiles = cams
+                .iter()
+                .filter(|c| prefixes.iter().any(|p| c.name.starts_with(p)))
+                .take(cells)
+                .enumerate()
+                .map(|(i, c)| Tile {
+                    position: u16::try_from(i).unwrap_or(0),
+                    camera_id: c.id,
+                })
+                .collect();
+            dashboards::create(
+                db,
+                user.user.id,
+                &NewDashboard {
+                    name: name.to_owned(),
+                    rows,
+                    cols,
+                    tiles,
+                },
+            )
+            .await?;
+        }
+    }
+    Ok(())
 }
 
 /// Seed demo users and cameras into an empty database. Does nothing to tables

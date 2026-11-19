@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id: Hyphenated\" FROM cameras",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c47a5b26faa5197dee36456692522dbc3bb186a7eeddbeda9100251ed6eae604"
+}

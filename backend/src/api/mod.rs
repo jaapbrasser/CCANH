@@ -4,6 +4,7 @@ mod audit;
 mod auth;
 mod cameras;
 mod credentials;
+mod dashboards;
 pub mod error;
 mod extract;
 pub mod health;
@@ -104,6 +105,12 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(cameras::status_history))
         .routes(routes!(cameras::set_stream_profiles))
         .routes(routes!(cameras::bulk))
+        .routes(routes!(dashboards::list, dashboards::create))
+        .routes(routes!(
+            dashboards::get,
+            dashboards::update,
+            dashboards::delete
+        ))
         .routes(routes!(
             organization::list_groups,
             organization::create_group
