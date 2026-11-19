@@ -323,6 +323,60 @@ export interface paths {
         patch: operations["update_credential_set"];
         trace?: never;
     };
+    "/api/v1/dashboards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in user's dashboards, oldest first.
+         * @description Required role: viewer.
+         */
+        get: operations["list_dashboards"];
+        put?: never;
+        /**
+         * Create a dashboard. The user's first dashboard becomes their default.
+         * @description Required role: viewer.
+         */
+        post: operations["create_dashboard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dashboards/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get one of the signed-in user's dashboards.
+         * @description Required role: viewer.
+         */
+        get: operations["get_dashboard"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a dashboard. If it was the default, the oldest remaining one
+         *     becomes the default.
+         * @description Required role: viewer.
+         */
+        delete: operations["delete_dashboard"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename, resize, rearrange or make default.
+         * @description Required role: viewer. `tiles` replaces all tiles; each camera at most
+         *     once, positions inside the grid.
+         */
+        patch: operations["update_dashboard"];
+        trace?: never;
+    };
     "/api/v1/favorites": {
         parameters: {
             query?: never;
@@ -1038,6 +1092,38 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        Dashboard: {
+            /** Format: int32 */
+            cols: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            /** @description The dashboard shown first. Each user has exactly one while they have any. */
+            is_default: boolean;
+            name: string;
+            /** Format: int32 */
+            rows: number;
+            /** @description Occupied tiles only, by position. Cameras deleted since are left out. */
+            tiles: components["schemas"]["Tile"][];
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /**
+         * @description Omitted fields are unchanged. Shrinking the grid without sending `tiles`
+         *     drops tiles that no longer fit.
+         */
+        DashboardPatch: {
+            /** Format: int32 */
+            cols?: number | null;
+            /** @description `true` makes this the default dashboard (the previous one stops being it). */
+            make_default?: boolean | null;
+            name?: string | null;
+            /** Format: int32 */
+            rows?: number | null;
+            /** @description Replaces all tiles. */
+            tiles?: components["schemas"]["Tile"][] | null;
+        };
         /** @description A documented demo account. These exist only in `demo.db`. */
         DemoAccount: {
             password: string;
@@ -1260,6 +1346,20 @@ export interface components {
             /** Format: password */
             password: string;
             username: string;
+        };
+        NewDashboard: {
+            /**
+             * Format: int32
+             * @description 1–8, default 2.
+             */
+            cols?: number;
+            name: string;
+            /**
+             * Format: int32
+             * @description 1–8, default 2.
+             */
+            rows?: number;
+            tiles?: components["schemas"]["Tile"][];
         };
         NewGroup: {
             name: string;
@@ -1566,6 +1666,13 @@ export interface components {
             ok: boolean;
             /** @description `true` when the step doesn't apply (e.g. no credentials to verify). */
             skipped: boolean;
+        };
+        /** @description One occupied tile. Positions count row by row from 0. */
+        Tile: {
+            /** Format: uuid */
+            camera_id: string;
+            /** Format: int32 */
+            position: number;
         };
         /**
          * @description Per-camera certificate validation (SPEC §4.5).
@@ -2656,6 +2763,211 @@ export interface operations {
             };
             /** @description Name taken */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_dashboards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's dashboards */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"][];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_dashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewDashboard"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            /** @description Invalid name, grid or tiles */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_dashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Dashboard ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dashboard */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such dashboard of yours */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_dashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Dashboard ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such dashboard of yours */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_dashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Dashboard ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardPatch"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            /** @description Invalid name, grid or tiles */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such dashboard of yours */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

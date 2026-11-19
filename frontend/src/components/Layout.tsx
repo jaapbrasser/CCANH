@@ -50,6 +50,9 @@ export function Layout() {
             <span className="text-lg font-semibold tracking-tight">Crane Camera Hub</span>
           </NavLink>
           <nav aria-label="Main" className="flex gap-1">
+            <NavLink to="/dashboards" className={linkClass}>
+              Dashboards
+            </NavLink>
             <NavLink to="/cameras" className={linkClass}>
               Cameras
             </NavLink>

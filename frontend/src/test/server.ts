@@ -60,6 +60,7 @@ export const server = setupServer(
   http.get("/api/v1/groups", () => HttpResponse.json([])),
   http.get("/api/v1/tags", () => HttpResponse.json([])),
   http.get("/api/v1/favorites", () => HttpResponse.json([])),
+  http.get("/api/v1/dashboards", () => HttpResponse.json([])),
   http.get("/api/v1/health", () =>
     HttpResponse.json({
       status: "ok",
