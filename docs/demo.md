@@ -30,7 +30,12 @@ or `mode = "demo"` in `config.toml`. The UI shows a **DEMO MODE** banner.
   - `A Yard – Overview` is slow (450–900 ms);
   - `A Yard – Rail Spur` and `B Perimeter – Fence West` are always offline;
   - `B Loading – Dock 3` flaps online/offline every 45 s;
-  - `B Storage – Aisle 4` rejects its credentials (auth failure).
+  - `B Storage – Aisle 4` rejects its credentials (auth failure);
+  - any demo camera rejects the password `wrong`, so the discovery credential
+    test and camera test connection can show a rejection.
+- Discovery finds a few unregistered devices at `192.0.2.41–46` and
+  `198.51.100.41–46`; `.42` and `.44` answer on HTTP only (to try Basic over
+  HTTP), the rest on HTTPS.
 - The SPEC §9 group tree (Site A → Building 1/2 → Crane 1–4, Yard; Site B →
   Loading Area, Storage Area, Perimeter), tags (Hook, Cabin, Gate, Outdoor,
   Critical) and a few favorites for each demo account.

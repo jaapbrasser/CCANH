@@ -18,12 +18,22 @@ The OpenAPI document is generated from code (`/api/openapi.json`, Swagger UI at
 - Live updates: one WebSocket at `/api/v1/ws` (ADR 0007).
 - Organization (ADR 0009): `GET /cameras` filters by `group_id` (includes
   subgroups), `tag_id` and `favorites=true` (the caller's own). Bulk changes go
-  through `POST /cameras/bulk` and return 202 with a `bulk_cameras` task.
+  through `POST /cameras/bulk` and return 202 with a `bulk_cameras` task; the
+  selection is `camera_ids` and/or `group_id` (+ `include_subgroups`) and/or
+  `tag_id`, and `update_settings` changes only the given connection and
+  security settings (skipped cameras are listed in the result).
+- Camera defaults: `POST /cameras` (and discovery registration) take omitted
+  `scheme`, `tls_mode` and `allow_basic_over_http` from the `camera_defaults`
+  setting (`PATCH|DELETE /settings/camera-defaults`, ADR 0011). `name` is
+  optional; `name_pending` says the address stands in until the camera's own
+  name arrives. HTTP cameras report `tls_mode: null`.
 - Discovery (`/discovery/*`, admin): `POST /discovery/preview` counts addresses
   and checks the caps; `POST /discovery/jobs` returns 202 with the job (its id
   is the task id, so cancel with `POST /tasks/{id}/cancel`); results stream on
-  the `discovery` topic; `POST /discovery/jobs/{id}/register` registers
-  approved results. Nothing is registered automatically.
+  the `discovery` topic; `POST /discovery/jobs/{id}/test-credentials` checks
+  credentials against up to 20 results (a `test_credentials` task, nothing
+  stored); `POST /discovery/jobs/{id}/register` registers approved results.
+  Nothing is registered automatically.
 - Dashboards (`/dashboards`, ADR 0005) belong to the caller; another user's
   dashboard id answers 404, for admins too.
 - Stream limits (settings `streaming.max_upstreams`, `detail_reserve`,

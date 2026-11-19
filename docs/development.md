@@ -128,12 +128,39 @@ See ADR 0010.
 
 `pwsh scripts/package-offline.ps1` (Windows, after `build.ps1` and
 `build-installer.ps1`) writes `dist\ccanh-offline-<version>.zip`: installer,
-portable exe, README, `TEST-PLAN.html` (83 site test cases; records results in
-the browser and exports CSV), `tools\Test-Ccanh.ps1`,
-`tools\Collect-Diagnostics.ps1` and SHA-256 checksums. CI builds it in the
-Windows job (artifact `ccanh-offline-windows-x64`), checks the exe imports only
-Windows DLLs, and runs the pre-flight check from the extracted zip. Sources are
-in `packaging/offline/`.
+portable exe, README, `TEST-PLAN.html` (site test cases, with a section for
+what changed in each version; records results in the browser per version and
+exports CSV), `tools\Test-Ccanh.ps1`, `tools\Collect-Diagnostics.ps1` and
+SHA-256 checksums. CI builds it in the Windows job (artifact
+`ccanh-offline-windows-x64`), checks the exe imports only Windows DLLs and
+carries the icon, and runs the pre-flight check from the extracted zip.
+Sources are in `packaging/offline/`.
+
+### Versioned releases and diff packages
+
+Releases are kept locally in versioned folders (`dist/` is git-ignored):
+
+```text
+dist/
+  0.1.0/ccanh-offline-0.1.0.zip (+ .sha256)
+  0.2.0/full/ccanh-offline-0.2.0.zip (+ .sha256)
+  0.2.0/diff/ccanh-offline-0.2.0-diff-from-0.1.0.zip (+ .sha256)
+```
+
+From 0.2.0 on, each release has a `full` package and a `diff` package with
+only the files that changed since the previous release (by SHA-256), so less
+has to be carried into the restricted network:
+
+```bash
+pwsh scripts/package-diff.ps1 -Old dist/0.1.0/ccanh-offline-0.1.0.zip -New dist/0.2.0/full/ccanh-offline-0.2.0.zip -OutDir dist/0.2.0/diff
+```
+
+The diff holds the changed files, `DIFF-MANIFEST.txt`, the old checksums and
+`Apply-Diff.ps1`, which checks the old folder, writes the new folder next to
+it and verifies it is identical to the full package (Windows PowerShell 5.1
+is enough). Since `crane.exe` changes in every release, the exe and installer
+are always in the diff; a portable-only site can copy just
+`files\portable\crane.exe`.
 
 ## Load test
 

@@ -17,6 +17,11 @@ Contents
   SHA256SUMS.txt              Checksums of every file in this package
   BUILD-INFO.txt              Version, commit and build date
 
+Upgrading from the previous version? A smaller diff package
+(ccanh-offline-<new>-diff-from-<old>.zip) holds only the changed files; its
+README-DIFF.txt explains how Apply-Diff.ps1 rebuilds this full package from
+the previous one.
+
 Quick start (PowerShell as administrator, in the package folder)
 ----------------------------------------------------------------
   1. Get-ChildItem . -Recurse | Unblock-File

@@ -13,8 +13,12 @@ AXIS RTSP via `retina`, grid/detail profile choices), Phase 6 (groups, tags,
 favorites, bulk operations, ADR 0009), Phase 7 (dashboards, ADR 0005;
 Playwright e2e), Phase 8 (discovery) and Phase 9 (retention service,
 connection limits, Windows service + Inno Setup installer, load test, ADRs
-0006/0010), all built on the SPEC §18 default answers. Next: review the §18
-answers with the owner; there's no Phase 10 in the spec. Don't build ahead of the current phase,
+0006/0010), all built on the SPEC §18 default answers, and Phase 10 (0.2.0:
+site feedback from the first deployment, GitHub milestone "Phase 10: site
+feedback", issues #14–#21: camera defaults with ADR 0011, optional names,
+discovery credential test, bulk settings, icons, tab titles; versioned dist
+with diff packages). Next: gather feedback from the 0.2.0 site test as
+issues; review the §18 answers with the owner. Don't build ahead of the current phase,
 and post a plan before starting one.
 
 ## Commands
@@ -56,6 +60,8 @@ pwsh scripts/smoke-test.ps1 -Exe target/release/crane
 pwsh scripts/rtsp-test-source.ps1         # local RTSP H.264 source (needs ffmpeg + mediamtx)
 pwsh scripts/build-installer.ps1          # Windows: dist\crane-setup-<v>.exe (Inno Setup 6)
 pwsh scripts/package-offline.ps1          # Windows: dist\ccanh-offline-<v>.zip (after the two above)
+pwsh scripts/package-diff.ps1 -Old <old zip> -New <new zip> -OutDir dist/<v>/diff   # changed files only
+pwsh scripts/gen-icons.ps1                # regenerate favicon/PNG/crane.ico from the SVG logo (ImageMagick)
 pwsh scripts/service-test.ps1 -Exe target/release/crane.exe   # Windows, admin
 cargo test --release -p crane --test perf -- --ignored --nocapture   # load test
 ```
@@ -106,8 +112,9 @@ frontend/e2e/          Playwright specs (run against the release binary)
 frontend/src/          App (routes), pages/, components/, auth/ (guards),
                        streaming/ (shared media sockets, MSE player),
                        api/ (client.ts, hooks, generated schema.d.ts), test/ (MSW)
-packaging/             Inno Setup script (crane.iss); offline/ = README, TEST-PLAN.html,
-                       tools/ (Test-Ccanh.ps1, Collect-Diagnostics.ps1) for the offline zip
+packaging/             Inno Setup script (crane.iss), crane.ico; offline/ = README,
+                       TEST-PLAN.html, tools/ (Test-Ccanh.ps1, Collect-Diagnostics.ps1),
+                       diff/ (Apply-Diff.ps1, README-DIFF.txt) for the offline zips
 scripts/               build, dev, gen-api-types, smoke-test, service/installer tests
 docs/                  SPEC.md, adr/, development.md, dependencies.md
 .github/workflows/ci.yml
@@ -185,6 +192,14 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
   gets must be absolute (`--install-service` makes them so).
 - Stream limits live in `streaming::policy::LimitsPolicy` (the `StreamPolicy`
   hook); `StreamManager::new` uses it, tests can pass `AdmitAll`.
+- New cameras take omitted scheme/TLS/Basic fields from the `camera_defaults`
+  setting (shipped: HTTP, Basic allowed; ADR 0011). HTTP cameras store
+  `tls_mode = 'strict'` (column is NOT NULL) but the API reports `null`.
+- A camera without a name stores its address with `name_auto = 1`; the first
+  successful identity check replaces it (`cameras::save_identity`).
+- Demo cameras reject the password `wrong`; demo discovery devices
+  192.0.2.42/.44 (and 198.51.100.42/.44) answer on HTTP only.
+- `backend/build.rs` embeds the icon only on Windows hosts (`winresource`).
 - AXIS RTSP tests use the in-process fake server in
   `providers/axis/rtsp_tests.rs` (`FakeCamera::start_with`); the AXIS contract
   suite needs it too, since `open_stream` really connects.
