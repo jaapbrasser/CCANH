@@ -9,3 +9,5 @@ node_modules/
 *.db-wal
 config.toml
 !docs/**/config.toml
+/frontend/playwright-report/
+/frontend/test-results/
