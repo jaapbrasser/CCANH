@@ -46,4 +46,7 @@ or `mode = "demo"` in `config.toml`. The UI shows a **DEMO MODE** banner.
   in three tabs and it shows one camera connection with three viewers. Offline
   cameras fail to stream; H.265-only models show why they can't play.
 
-Discovery simulation (Phase 8) is added to demo mode when that phase lands.
+- Discovery: scanning `192.0.2.0/24` or `198.51.100.0/24` finds the online
+  demo cameras (flagged as already registered) and 6 unregistered demo devices
+  in each range (`.41`–`.46`), with realistic timing. `.1` answers like a
+  router that isn't a camera. No socket is opened.

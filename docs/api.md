@@ -19,6 +19,11 @@ The OpenAPI document is generated from code (`/api/openapi.json`, Swagger UI at
 - Organization (ADR 0009): `GET /cameras` filters by `group_id` (includes
   subgroups), `tag_id` and `favorites=true` (the caller's own). Bulk changes go
   through `POST /cameras/bulk` and return 202 with a `bulk_cameras` task.
+- Discovery (`/discovery/*`, admin): `POST /discovery/preview` counts addresses
+  and checks the caps; `POST /discovery/jobs` returns 202 with the job (its id
+  is the task id, so cancel with `POST /tasks/{id}/cancel`); results stream on
+  the `discovery` topic; `POST /discovery/jobs/{id}/register` registers
+  approved results. Nothing is registered automatically.
 - Dashboards (`/dashboards`, ADR 0005) belong to the caller; another user's
   dashboard id answers 404, for admins too.
 - Live video: a media WebSocket per stream at

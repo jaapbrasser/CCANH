@@ -10,8 +10,9 @@ Phases 0–7 are complete: Foundation, Auth & users, Camera core + demo,
 streaming spike (ADR 0002), AXIS provider + credentials + polling + tasks +
 runtime settings, Phase 5 (stream manager, demo video, live view, Streams page,
 AXIS RTSP via `retina`, grid/detail profile choices), Phase 6 (groups, tags,
-favorites, bulk operations, ADR 0009) and Phase 7 (dashboards, ADR 0005;
-Playwright e2e). Next: Phase 8 (Discovery). Don't build ahead of the current phase,
+favorites, bulk operations, ADR 0009), Phase 7 (dashboards, ADR 0005;
+Playwright e2e) and Phase 8 (discovery). **The MVP (SPEC §17) is complete.**
+Next: Phase 9 (hardening and packaging), which needs the §18 answers first. Don't build ahead of the current phase,
 and post a plan before starting one.
 
 ## Commands
@@ -80,6 +81,8 @@ backend/
   src/tasks/           background task manager (persisted, cancellable, `tasks` topic)
   src/organization/    groups (tree, cycle checks), tags, favorites, memberships
   src/dashboards/      per-user dashboards (grid, tiles, default)
+  src/discovery/       range parsing, HostProber (AXIS: TCP check + one anonymous
+                       probe; demo: simulated), scan runner, duplicate rules
   src/streaming/       MediaSource, H.264 parsing, fMP4 muxer, demo clip replay,
                        RTSP source (retina), profile resolution,
                        StreamManager (shared upstream, GOP cache, grace, reconnect)
@@ -160,6 +163,8 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
   coordinates (never reparented), or rearranging remounts players (ADR 0005).
 - Playwright's Chromium may lack H.264; e2e asserts on `/api/v1/streams`, not
   on decoded video. Rebuild the binary before `npm run e2e` (UI is embedded).
+- Discovery never auto-registers. Duplicates are computed when results are
+  read (against current cameras), so registering one result updates the rest.
 - Fresh demo cameras answer 409 on the media socket until their profiles
   load; the stream registry retries refused sockets with backoff.
 - AXIS RTSP tests use the in-process fake server in
