@@ -101,14 +101,32 @@ describe("stream registry", () => {
     expect(log.at(-1)).toBe("state running");
   });
 
-  it("reports a lost connection as stopped and opens a fresh one next time", () => {
+  it("reconnects by itself when the connection drops mid-stream or the server restarts", () => {
+    vi.useFakeTimers();
     const r = registry();
     const conn = r.connection("cam1", "grid");
     const { l, log } = listener();
     conn.attach(l);
     FakeSocket.all[0]!.text({ type: "state", state: "running", message: null });
+    FakeSocket.all[0]!.onclose?.(); // network blip
+    expect(log.at(-1)).toBe("state reconnecting");
+    vi.advanceTimersByTime(RETRY_MS[0]!);
+    expect(FakeSocket.all).toHaveLength(2);
+    FakeSocket.all[1]!.text({ type: "state", state: "stopped", message: "server shutting down" });
+    FakeSocket.all[1]!.onclose?.(); // service restart
+    expect(log.at(-1)).toBe("state reconnecting");
+    expect(r.connection("cam1", "grid")).toBe(conn);
+  });
+
+  it("stays stopped when the server ended the stream on purpose", () => {
+    const r = registry();
+    const conn = r.connection("cam1", "grid");
+    const { l, log } = listener();
+    conn.attach(l);
+    FakeSocket.all[0]!.text({ type: "state", state: "stopped", message: "stopped by an administrator" });
     FakeSocket.all[0]!.onclose?.();
     expect(log.at(-1)).toBe("state stopped");
+    // The next request opens a fresh connection (e.g. after Try again).
     expect(r.connection("cam1", "grid")).not.toBe(conn);
     expect(FakeSocket.all).toHaveLength(2);
   });
