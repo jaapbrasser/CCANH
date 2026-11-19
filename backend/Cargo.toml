@@ -59,6 +59,7 @@ url = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Memory"] }
+windows-service = "0.8"
 
 [dev-dependencies]
 http-body-util = "0.1"
