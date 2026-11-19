@@ -8,6 +8,7 @@ node_modules/
 *.db-shm
 *.db-wal
 config.toml
+!.cargo/config.toml
 !docs/**/config.toml
 /frontend/playwright-report/
 /frontend/test-results/
