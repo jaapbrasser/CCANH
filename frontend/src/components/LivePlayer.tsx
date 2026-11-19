@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { attachPlayer, mseSupported } from "../streaming/player";
 import { streams, type StreamState } from "../streaming/registry";
+import { usePausedWhenHidden } from "../streaming/visibility";
 
 const OVERLAY: Partial<Record<StreamState | "unsupported", string>> = {
   connecting: "Connecting…",
@@ -17,14 +18,22 @@ export function LivePlayer({
   profile,
   purpose = "detail",
   label,
+  pauseWhenHidden = false,
+  fill = false,
 }: {
   cameraId: string;
   /** Stream profile; omit to let the server choose for `purpose`. */
   profile?: string;
   purpose?: "detail" | "grid";
   label: string;
+  /** Disconnect after a few seconds off-screen or in a hidden tab (dashboard tiles). */
+  pauseWhenHidden?: boolean;
+  /** Fill the parent instead of keeping a 16:9 box. */
+  fill?: boolean;
 }) {
   const video = useRef<HTMLVideoElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const paused = usePausedWhenHidden(box, pauseWhenHidden);
   const supported = mseSupported();
   const [state, setState] = useState<StreamState | "unsupported">(supported ? "connecting" : "unsupported");
   const [message, setMessage] = useState<string | null>(
@@ -34,7 +43,7 @@ export function LivePlayer({
 
   useEffect(() => {
     // Don't open a connection this browser can't play.
-    if (!video.current || !supported) return;
+    if (!video.current || !supported || paused) return;
     const conn = streams.connection(cameraId, profile, purpose);
     return attachPlayer(video.current, conn, {
       onState: (s, m) => {
@@ -42,18 +51,22 @@ export function LivePlayer({
         setMessage(m);
       },
     });
-  }, [cameraId, profile, purpose, attempt, supported]);
+  }, [cameraId, profile, purpose, attempt, supported, paused]);
 
-  const overlay = state === "running" || state === "draining" ? null : OVERLAY[state];
-  const canRetry = state === "failed" || state === "stopped";
+  const overlay = paused
+    ? "Paused while not visible"
+    : state === "running" || state === "draining"
+      ? null
+      : OVERLAY[state];
+  const canRetry = !paused && (state === "failed" || state === "stopped");
 
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded bg-black">
+    <div ref={box} className={`relative w-full overflow-hidden rounded bg-black ${fill ? "h-full" : "aspect-video"}`}>
       <video ref={video} aria-label={`Live video: ${label}`} className="h-full w-full object-contain" muted playsInline autoPlay />
       {overlay && (
         <div role="status" className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 p-4 text-center text-sm text-slate-200">
           <span className="font-medium">{overlay}</span>
-          {message && <span className="max-w-md text-xs text-slate-400">{message}</span>}
+          {message && !paused && <span className="max-w-md text-xs text-slate-400">{message}</span>}
           {canRetry && (
             <button
               type="button"
