@@ -57,6 +57,8 @@ One line per non-trivial dependency and why it's here. See ADR 0001 for the base
 | eslint, typescript-eslint, react-hooks / react-refresh plugins | Linting |
 | vitest, @testing-library/*, jsdom | Unit and component tests |
 | msw | API mocking in tests (SPEC §15.4) |
+| @dnd-kit/core | Drag and drop for dashboard tiles; pointer, touch and keyboard (ADR 0005) |
+| @playwright/test (dev) | End-to-end tests against the binary in demo mode (SPEC §15) |
 
 ## Dev tools (not dependencies)
 

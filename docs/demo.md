@@ -34,6 +34,8 @@ or `mode = "demo"` in `config.toml`. The UI shows a **DEMO MODE** banner.
 - The SPEC §9 group tree (Site A → Building 1/2 → Crane 1–4, Yard; Site B →
   Loading Area, Storage Area, Perimeter), tags (Hook, Cabin, Gate, Outdoor,
   Critical) and a few favorites for each demo account.
+- Two sample dashboards for each demo account: "Site A cranes" (3×3, the
+  default) and "Gates and docks" (2×3).
 - Cameras an admin adds in demo mode are simulated too: demo mode never opens a
   connection to a camera.
 - Live video: every online camera with an H.264 profile plays one of four
@@ -44,5 +46,4 @@ or `mode = "demo"` in `config.toml`. The UI shows a **DEMO MODE** banner.
   in three tabs and it shows one camera connection with three viewers. Offline
   cameras fail to stream; H.265-only models show why they can't play.
 
-Dashboards (Phase 7)
-and discovery simulation (Phase 8) are added to demo mode as those phases land.
+Discovery simulation (Phase 8) is added to demo mode when that phase lands.
