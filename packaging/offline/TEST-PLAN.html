@@ -57,7 +57,7 @@
 <body>
 <main>
 <h1>CCANH site test plan</h1>
-<p class="muted">Crane Camera Automated Navigation Hub: offline deployment and acceptance test on a restricted-network Windows 11 machine.
+<p class="muted">Crane Camera Automated Navigation Hub <b>0.2.0</b>: offline deployment and acceptance test on a restricted-network Windows 11 machine. Section 5b covers what changed since 0.1.0 (site feedback).
 Results are saved in this browser as you go; use <b>Export results (CSV)</b> to keep them, and <b>Print</b> for paper.</p>
 
 <div class="toolbar">
@@ -125,6 +125,10 @@ const PLAN = [
   { id: "PRE-04", title: "Record that the machine has no internet access",
     steps: ["<code>Test-NetConnection 1.1.1.1 -Port 443</code> and <code>Resolve-DnsName www.microsoft.com</code>"],
     expected: "Both fail (as expected on the restricted network). This documents that everything below works offline." },
+  { id: "PRE-06", title: "Upgrade from 0.1.0 with the diff package (instead of the full zip)",
+    steps: ["Copy <code>ccanh-offline-0.2.0-diff-from-0.1.0.zip</code> and its <code>.sha256</code>; check the hash; <code>Unblock-File</code>; extract.",
+            "<code>powershell -ExecutionPolicy Bypass -File .\\Apply-Diff.ps1 -Base C:\\path\\to\\ccanh-offline-0.1.0</code>"],
+    expected: "Reports the base folder checked, then 'OK: … identical to the full ccanh-offline-0.2.0 package'. The 0.1.0 folder is unchanged. Continue with the new folder. (Portable-only: copying <code>files\\portable\\crane.exe</code> over the old exe is enough.)" },
   { id: "PRE-05", title: "Zero-dependency proof: portable program runs",
     steps: ["<code>.\\portable\\crane.exe --version</code>", "<code>.\\portable\\crane.exe --help</code>"],
     expected: "Prints the version and options. No 'VCRUNTIME140.dll was not found' or similar error (the C runtime is built in)." },
@@ -189,11 +193,46 @@ const PLAN = [
   { id: "DEMO-06", title: "Stop demo mode", steps: ["Press Ctrl+C in the demo window."],
     expected: "Logs 'shutdown complete' within a few seconds. Restarting resets the demo data. Delete <code>C:\\ccanh-demo</code> when done." },
  ]},
+ { id: "NEW", title: "5b. New in 0.2.0 (site feedback, demo mode is enough)", cases: [
+  { id: "NEW-01", title: "Tab titles and icon (#20, #21)",
+    steps: ["Open Cameras, a camera, a dashboard and Settings.", "Look at the browser tab, a pinned/bookmarked tab, <code>crane.exe</code> in Explorer and the Start-menu shortcuts."],
+    expected: "Tabs read e.g. 'Dashboard Site A cranes - Crane Camera Automated Navigation Hub' ('[DEMO] …' in demo mode). The logo shows in the tab, on crane.exe, the installer and the shortcuts." },
+  { id: "NEW-02", crit: true, title: "Add a camera without a name; HTTP with Basic by default (#14, #18)",
+    steps: ["Cameras → Add camera. Leave Name empty, enter a host, don't change anything else. Add camera."],
+    expected: "The form starts on HTTP with 'Allow Basic authentication over HTTP' ticked and Certificate check greyed out as 'Not applicable (HTTP)'. The camera is saved; the list shows its address until it connects, then the camera's own name (device name, else model + serial). The camera page says the name will be filled in until then." },
+  { id: "NEW-03", title: "Names you type are kept; clearing a name hands it back to the camera (#14)",
+    steps: ["Edit a camera, type a name, save. Wait for a status check.", "Edit again, clear the name, save."],
+    expected: "The typed name stays after checks. With the name cleared, the address shows and is replaced by the camera's own name at the next identity check. Audit log shows camera.update by 'system' for the automatic name." },
+  { id: "NEW-04", title: "Certificate check on HTTP cameras (#17)",
+    steps: ["Edit an HTTP camera.", "Switch Protocol to HTTPS, then back to HTTP."],
+    expected: "On HTTP the certificate field is greyed out with 'Not applicable (HTTP)', and the camera page shows the same. On HTTPS it offers Strict / Pinned / Don't verify, starting from the default." },
+  { id: "NEW-05", crit: true, title: "Camera defaults can be tightened (#18)",
+    steps: ["Settings → New camera defaults: Protocol HTTPS, Certificate check Strict, untick Basic. Save.", "Open Add camera; then Reset the defaults."],
+    expected: "The add-camera form now starts on HTTPS / Strict / no Basic; existing cameras are unchanged. After Reset it starts on HTTP / Basic again. Changes are audited (settings.update)." },
+  { id: "NEW-06", crit: true, title: "Discovery: Basic over HTTP for HTTP devices (#17)",
+    steps: ["Discovery: scan the camera subnet (demo: <code>192.0.2.41-46</code>; .42 and .44 answer on HTTP only).", "Select an HTTPS and an HTTP device → Register selected."],
+    expected: "The dialog shows 'Allow Basic authentication over HTTP', ticked, 'Applies to 1 of 2 selected devices'. After registering, the HTTP camera has Basic allowed and no certificate mode; the HTTPS one is pinned (on site) or uses the default check." },
+  { id: "NEW-07", crit: true, title: "Discovery: test credentials before registering (#15)",
+    steps: ["In the register dialog choose 'Username and password', enter the camera account, click Test credentials.", "Repeat with a wrong password (demo: the password <code>wrong</code>)."],
+    expected: "A result per device: ✓ accepted, or ✕ 'Authentication failed'. Nothing is registered by testing; at most 20 devices are tested at once." },
+  { id: "NEW-08", title: "Discovery: create groups and tags while registering (#16)",
+    steps: ["In the register dialog type a new tag name and press Enter (or Create); same for a group."],
+    expected: "The new tag/group appears ticked; the registered cameras get it." },
+  { id: "NEW-09", crit: true, title: "Bulk-edit settings for selected cameras (#19)",
+    steps: ["Cameras: tick several cameras → Bulk action 'Edit settings…' → Apply.", "Tick 'Change credentials' → choose a credential set; leave the rest unticked → Apply."],
+    expected: "Only the credentials change on exactly those cameras (other settings untouched). Toast when finished (with the reason if any camera was skipped). Audit log: one camera.update per camera plus camera.bulk_update; no passwords or usernames in it." },
+  { id: "NEW-10", title: "Bulk-edit settings for a group or tag (#19)",
+    steps: ["Groups &amp; tags → 'Camera settings' on a group (includes subgroups) → change certificate check or Basic → Apply.", "Same from a tag."],
+    expected: "Every camera in the group and its subgroups (or with the tag) is updated; certificate changes skip HTTP cameras silently (they have none)." },
+  { id: "NEW-11", title: "Upgrade from 0.1.0 keeps everything",
+    steps: ["On a machine with 0.1.0 and data: install 0.2.0 (installer, or replace portable crane.exe) and start it."],
+    expected: "Accounts, cameras, dashboards kept; a pre-upgrade database backup appears in the data folder; HTTP cameras now show 'Not applicable (HTTP)' for the certificate check." },
+ ]},
  { id: "CAM", title: "6. Cameras", needs: "AXIS cameras on the network", cases: [
   { id: "CAM-01", title: "Shared credential set", steps: ["Credentials → New set: name 'Site default', a camera username and password (a Viewer account is enough for monitoring and video)."],
     expected: "Saved. The password is never shown again (only that credentials exist)." },
   { id: "CAM-02", crit: true, title: "Test connection before adding",
-    steps: ["Cameras → Add camera: name, camera IP, HTTPS (or HTTP), credentials 'Site default'.", "Click Test connection."],
+    steps: ["Cameras → Add camera: name (optional), camera IP, HTTPS (the default is HTTP; see Settings → New camera defaults), credentials 'Site default'.", "Click Test connection."],
     expected: "Steps pass: reachable and identified (model, firmware), credentials accepted, capabilities read. For HTTPS: a certificate fingerprint is shown with a <i>Pin</i> button." },
   { id: "CAM-03", crit: true, title: "Add camera (HTTPS pinned)",
     steps: ["Click Pin (TLS mode becomes pinned), then Add camera."],
@@ -375,7 +414,7 @@ const ENV_FIELDS = [
   ["network", "Camera subnet(s) (keep on site)"], ["browsers", "Other client PCs used"],
 ];
 
-const KEY = "ccanh-test-plan-v1";
+const KEY = "ccanh-test-plan-0.2.0"; // per version: 0.1.0 results stay separate
 let state = {};
 try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { state = {}; }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* private window: results not kept */ } updateCounts(); }
