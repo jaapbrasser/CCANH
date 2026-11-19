@@ -11,3 +11,4 @@ config.toml
 !docs/**/config.toml
 /frontend/playwright-report/
 /frontend/test-results/
+/dist/
