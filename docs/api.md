@@ -26,6 +26,10 @@ The OpenAPI document is generated from code (`/api/openapi.json`, Swagger UI at
   approved results. Nothing is registered automatically.
 - Dashboards (`/dashboards`, ADR 0005) belong to the caller; another user's
   dashboard id answers 404, for admins too.
+- Stream limits (settings `streaming.max_upstreams`, `detail_reserve`,
+  `max_inbound_mbps`; off by default): a refused stream's media socket opens,
+  sends `{"type":"state","state":"failed","message":…}` with the reason, and
+  closes.
 - Live video: a media WebSocket per stream at
   `/api/v1/streams/{camera_id}/ws?profile=|purpose=`, carrying fMP4 for MSE
   (ADR 0002). It isn't in the OpenAPI document beyond the upgrade route.

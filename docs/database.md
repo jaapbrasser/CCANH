@@ -23,7 +23,7 @@ migrations are applied. All tables are `STRICT`.
 | `dashboards` | Per-user dashboards (ADR 0005) | rows/cols 1–8; JSON `tiles` `[{position, camera_id}]`; one `is_default` per user (partial unique index); cascades with the user |
 | `discovery_jobs` | One row per scan (id = its `discovery` task) | Ranges as entered, address count, live counters; cascades with the task |
 | `discovery_results` | Devices a scan identified | Unique `(job_id, ip)`; identity, unverified TLS fingerprint, `registered_camera_id`; duplicates are computed on read |
-| `settings` | Runtime setting overrides | One JSON row per group (`monitoring`, `streaming`, `discovery`); defaults come from config (ADR 0008) |
+| `settings` | Runtime setting overrides | One JSON row per group (`monitoring`, `streaming`, `discovery`, `retention`); defaults come from config (ADR 0008) |
 | `tasks` | Background tasks | Status, progress, categorized error, JSON result; interrupted tasks marked failed at startup; purged after 30 days |
 
 Queries are compile-time checked with `sqlx::query!` against `.sqlx/`

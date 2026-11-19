@@ -11,8 +11,10 @@ streaming spike (ADR 0002), AXIS provider + credentials + polling + tasks +
 runtime settings, Phase 5 (stream manager, demo video, live view, Streams page,
 AXIS RTSP via `retina`, grid/detail profile choices), Phase 6 (groups, tags,
 favorites, bulk operations, ADR 0009), Phase 7 (dashboards, ADR 0005;
-Playwright e2e) and Phase 8 (discovery). **The MVP (SPEC §17) is complete.**
-Next: Phase 9 (hardening and packaging), which needs the §18 answers first. Don't build ahead of the current phase,
+Playwright e2e), Phase 8 (discovery) and Phase 9 (retention service,
+connection limits, Windows service + Inno Setup installer, load test, ADRs
+0006/0010), all built on the SPEC §18 default answers. Next: review the §18
+answers with the owner; there's no Phase 10 in the spec. Don't build ahead of the current phase,
 and post a plan before starting one.
 
 ## Commands
@@ -52,6 +54,9 @@ pwsh scripts/sqlx-prepare.ps1             # regenerate .sqlx/ after query/migrat
 pwsh scripts/build.ps1                    # release binary with embedded UI
 pwsh scripts/smoke-test.ps1 -Exe target/release/crane
 pwsh scripts/rtsp-test-source.ps1         # local RTSP H.264 source (needs ffmpeg + mediamtx)
+pwsh scripts/build-installer.ps1          # Windows: dist\crane-setup-<v>.exe (Inno Setup 6)
+pwsh scripts/service-test.ps1 -Exe target/release/crane.exe   # Windows, admin
+cargo test --release -p crane --test perf -- --ignored --nocapture   # load test
 ```
 
 ## Layout (as it exists)
@@ -77,6 +82,7 @@ backend/
   src/events/          typed broadcast event bus
   src/demo/            demo seeding and demo.db reset
   src/supervisor.rs    restart background services with backoff; health
+  src/retention.rs     daily cleanup of history, tasks/scans and (opt-in) audit
   src/settings/        admin-editable runtime settings (watch channel, DB overrides)
   src/tasks/           background task manager (persisted, cancellable, `tasks` topic)
   src/organization/    groups (tree, cycle checks), tags, favorites, memberships
@@ -99,7 +105,8 @@ frontend/e2e/          Playwright specs (run against the release binary)
 frontend/src/          App (routes), pages/, components/, auth/ (guards),
                        streaming/ (shared media sockets, MSE player),
                        api/ (client.ts, hooks, generated schema.d.ts), test/ (MSW)
-scripts/               build, dev, gen-api-types, smoke-test
+packaging/             Inno Setup script (crane.iss)
+scripts/               build, dev, gen-api-types, smoke-test, service/installer tests
 docs/                  SPEC.md, adr/, development.md, dependencies.md
 .github/workflows/ci.yml
 ```
@@ -167,6 +174,11 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
   read (against current cameras), so registering one result updates the rest.
 - Fresh demo cameras answer 409 on the media socket until their profiles
   load; the stream registry retries refused sockets with backoff.
+- Service mode code is `#[cfg(windows)]` in `main.rs`; it only compiles on
+  Windows (CI). The service runs as LocalSystem from `System32`, so paths it
+  gets must be absolute (`--install-service` makes them so).
+- Stream limits live in `streaming::policy::LimitsPolicy` (the `StreamPolicy`
+  hook); `StreamManager::new` uses it, tests can pass `AdmitAll`.
 - AXIS RTSP tests use the in-process fake server in
   `providers/axis/rtsp_tests.rs` (`FakeCamera::start_with`); the AXIS contract
   suite needs it too, since `open_stream` really connects.

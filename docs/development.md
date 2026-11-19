@@ -109,6 +109,27 @@ npm run e2e
 binary after frontend changes, since the UI is embedded. CI runs them in the
 `e2e` job and uploads the report on failure.
 
+## Windows service and installer
+
+```bash
+crane --install-service --data-dir C:\ProgramData\CraneCamera   # as administrator
+sc start CraneCameraHub
+crane --uninstall-service
+```
+
+Options given with `--install-service` become the service's options. The
+service runs as LocalSystem; logs are in `<data dir>\logs`. To build the
+installer (Inno Setup 6 needed): `pwsh scripts/build.ps1`, then
+`pwsh scripts/build-installer.ps1`, which writes `dist\crane-setup-<version>.exe`.
+`scripts/service-test.ps1` and `scripts/installer-test.ps1` are what CI runs.
+See ADR 0010.
+
+## Load test
+
+`cargo test --release -p crane --test perf -- --ignored --nocapture` runs the
+target-scale test (250 cameras, 25 users, 50 streams); results and caveats in
+docs/performance.md.
+
 ## Database queries (SQLx offline mode)
 
 Queries use `sqlx::query!` macros, checked at compile time against `.sqlx/`.
