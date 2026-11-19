@@ -26,6 +26,18 @@ for ($i = 0; $i -lt 60 -and -not $healthy; $i++) {
 if (-not $healthy) { throw 'the installed service never answered /api/v1/health' }
 Write-Host 'installed service is healthy'
 
+$data = Join-Path $env:ProgramData 'CraneCamera'
+$open = (Get-Acl $data).Access | Where-Object { $_.IdentityReference -match 'Users|Everyone' }
+if ($open) { throw "data folder is readable by $(($open | ForEach-Object { $_.IdentityReference }) -join ', ')" }
+Write-Host 'data folder restricted to SYSTEM and Administrators'
+if (-not ((sc.exe qfailure CraneCameraHub) -join ' ' -match 'RESTART')) { throw 'no restart-on-failure actions' }
+Write-Host 'crash recovery configured'
+
+# The on-site check tool, under the built-in Windows PowerShell 5.1.
+$tool = Join-Path (Split-Path $PSScriptRoot -Parent) 'packaging/offline/tools/Test-Ccanh.ps1'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tool
+if ($LASTEXITCODE -ne 0) { throw 'Test-Ccanh.ps1 reported failures on a fresh install' }
+
 $p = Start-Process (Join-Path $dir 'unins000.exe') -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
 if ($p.ExitCode -ne 0) { throw "uninstall failed ($($p.ExitCode))" }
 for ($i = 0; $i -lt 20 -and (Get-Service CraneCameraHub -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 500 }
