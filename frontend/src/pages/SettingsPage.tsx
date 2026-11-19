@@ -17,6 +17,7 @@ import {
 } from "../api/settings";
 import { showToast } from "../components/toasts";
 import { Alert, Button, Field, PageHeader } from "../components/ui";
+import { usePageTitle } from "../components/pageTitle";
 
 type Key = keyof MonitoringSettings;
 
@@ -32,6 +33,7 @@ const FIELDS: { key: Key; label: string; unit: string; hint: string }[] = [
 ];
 
 export function SettingsPage() {
+  usePageTitle("Settings");
   const settings = useSettings();
   const current = settings.data?.current.monitoring;
   const stats = settings.data?.monitor;

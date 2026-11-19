@@ -3,6 +3,7 @@ import { errorMessage } from "../api/client";
 import { isTerminal, useCancelTask, useTasks, type Task } from "../api/tasks";
 import { Alert, Button, PageHeader, Pagination } from "../components/ui";
 import { errorCategoryLabel, relativeTime } from "../utils/format";
+import { usePageTitle } from "../components/pageTitle";
 
 const KIND_LABELS: Record<string, string> = { test_connection: "Connection test" };
 
@@ -27,6 +28,7 @@ function outcome(task: Task): string {
 }
 
 export function ActivityPage() {
+  usePageTitle("Activity");
   const [page, setPage] = useState(1);
   const tasks = useTasks({ page, page_size: 25 });
   const cancel = useCancelTask();

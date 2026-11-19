@@ -8,8 +8,10 @@ import {
   type CredentialSet,
 } from "../api/credentials";
 import { Alert, Button, Dialog, Field, PageHeader } from "../components/ui";
+import { usePageTitle } from "../components/pageTitle";
 
 export function CredentialSetsPage() {
+  usePageTitle("Credential sets");
   const sets = useCredentialSets();
   const remove = useDeleteCredentialSet();
   const [editing, setEditing] = useState<CredentialSet | "new" | null>(null);

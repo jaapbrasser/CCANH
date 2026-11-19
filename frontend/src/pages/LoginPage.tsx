@@ -6,8 +6,10 @@ import { errorMessage } from "../api/client";
 import { safeNext } from "../auth/session";
 import { DemoBanner } from "../components/Layout";
 import { Alert, Button, Field } from "../components/ui";
+import { usePageTitle } from "../components/pageTitle";
 
 export function LoginPage() {
+  usePageTitle("Sign in");
   const [params] = useSearchParams();
   const next = safeNext(params.get("next"));
   const navigate = useNavigate();

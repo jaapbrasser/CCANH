@@ -17,6 +17,7 @@ import { Alert, Button, Dialog, Field } from "../../components/ui";
 import { CameraPicker } from "./CameraPicker";
 import { DashboardGrid } from "./DashboardGrid";
 import { ExpandedCamera } from "./ExpandedCamera";
+import { usePageTitle } from "../../components/pageTitle";
 
 const selectClass = "rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm";
 
@@ -29,6 +30,7 @@ export function DashboardsPage() {
   const create = useCreateDashboard();
   const list = dashboards.data ?? [];
   const current = list.find((d) => d.id === id) ?? list.find((d) => d.is_default) ?? list[0];
+  usePageTitle(current ? "Dashboard" : "Dashboards", current?.name);
 
   if (dashboards.isPending) return <p className="text-sm text-slate-400">Loading dashboards…</p>;
   if (dashboards.isError) return <Alert>{errorMessage(dashboards.error)}</Alert>;

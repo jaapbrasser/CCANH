@@ -18,6 +18,7 @@ import { MultiPick } from "../components/organization";
 import { showToast } from "../components/toasts";
 import { Alert, Button, Dialog, Field, PageHeader } from "../components/ui";
 import { relativeTime } from "../utils/format";
+import { usePageTitle } from "../components/pageTitle";
 
 const REASON: Record<string, string> = {
   serial_number: "serial number",
@@ -28,6 +29,7 @@ const REASON: Record<string, string> = {
 
 /** Admin page: scan ranges for AXIS devices and register the ones you approve (SPEC §5). */
 export function DiscoveryPage() {
+  usePageTitle("Discovery");
   const jobs = useDiscoveryJobs();
   const [selected, setSelected] = useState<string | null>(null);
   const jobId = selected ?? jobs.data?.[0]?.id ?? null;
