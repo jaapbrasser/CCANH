@@ -653,6 +653,30 @@ export interface paths {
         patch: operations["update_monitoring_settings"];
         trace?: never;
     };
+    "/api/v1/settings/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Reset retention settings to the startup defaults.
+         * @description Required role: admin.
+         */
+        delete: operations["reset_retention_settings"];
+        options?: never;
+        head?: never;
+        /**
+         * Change how long history is kept (status history, tasks and scans, audit log).
+         * @description Required role: admin. Applies at the next daily cleanup. Audited.
+         */
+        patch: operations["update_retention_settings"];
+        trace?: never;
+    };
     "/api/v1/settings/streaming": {
         parameters: {
             query?: never;
@@ -1662,6 +1686,32 @@ export interface components {
             /** Format: password */
             new_password: string;
         };
+        RetentionPatch: {
+            /** Format: int32 */
+            audit_days?: number | null;
+            /** Format: int32 */
+            status_history_days?: number | null;
+            /** Format: int32 */
+            tasks_days?: number | null;
+        };
+        /** @description History retention (SPEC §11.3). */
+        RetentionSettings: {
+            /**
+             * Format: int32
+             * @description Days of audit log; 0 keeps it forever, otherwise 90–3650.
+             */
+            audit_days: number;
+            /**
+             * Format: int32
+             * @description Days of camera status history (1–3650).
+             */
+            status_history_days: number;
+            /**
+             * Format: int32
+             * @description Days of finished tasks, discovery scans included (1–3650).
+             */
+            tasks_days: number;
+        };
         /**
          * @description User role. Authorization is written so per-group camera access can be layered
          *     on later (SPEC §14.1, §18 Q4).
@@ -1671,6 +1721,7 @@ export interface components {
         RuntimeSettings: {
             discovery: components["schemas"]["DiscoverySettings"];
             monitoring: components["schemas"]["MonitoringSettings"];
+            retention: components["schemas"]["RetentionSettings"];
             streaming: components["schemas"]["StreamingSettings"];
         };
         /** @enum {string} */
@@ -1811,9 +1862,15 @@ export interface components {
             default_detail_profile?: string | null;
             default_grid_profile?: string | null;
             /** Format: int32 */
+            detail_reserve?: number | null;
+            /** Format: int32 */
             global_buffer_mb?: number | null;
             /** Format: int64 */
             grace_period_secs?: number | null;
+            /** Format: int32 */
+            max_inbound_mbps?: number | null;
+            /** Format: int32 */
+            max_upstreams?: number | null;
             /** Format: int32 */
             stream_buffer_mb?: number | null;
         };
@@ -1825,6 +1882,11 @@ export interface components {
             default_grid_profile?: string | null;
             /**
              * Format: int32
+             * @description Connections kept free for detail views when limited (0–100).
+             */
+            detail_reserve?: number;
+            /**
+             * Format: int32
              * @description GOP cache cap across all streams in MiB (16–4096, at least the per-stream cap).
              */
             global_buffer_mb: number;
@@ -1833,6 +1895,16 @@ export interface components {
              * @description Seconds an unwatched stream stays connected before closing (0–300).
              */
             grace_period_secs: number;
+            /**
+             * Format: int32
+             * @description Refuse new connections while inbound video exceeds this (Mbit/s); 0 = no limit (0–100000).
+             */
+            max_inbound_mbps?: number;
+            /**
+             * Format: int32
+             * @description Most camera connections at once; 0 = no limit (0–1000).
+             */
+            max_upstreams?: number;
             /**
              * Format: int32
              * @description GOP cache cap per stream in MiB (1–64).
@@ -4067,6 +4139,95 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MonitoringSettings"];
+                };
+            };
+            /** @description A value is out of range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reset_retention_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default retention settings, now in effect */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionSettings"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_retention_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetentionPatch"];
+            };
+        };
+        responses: {
+            /** @description New retention settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionSettings"];
                 };
             };
             /** @description A value is out of range */
