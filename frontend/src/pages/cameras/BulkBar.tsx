@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { errorMessage } from "../../api/client";
-import { useBulkCameras, type BulkAction, type Group, type Tag } from "../../api/organization";
+import { useBulkCameras, useBulkFavorites, type BulkAction, type Group, type Tag } from "../../api/organization";
 import { BulkSettingsDialog } from "../../components/BulkSettingsDialog";
 import { GroupSelect } from "../../components/organization";
 import { showToast } from "../../components/toasts";
 import { Alert, Button, Dialog } from "../../components/ui";
 
 type Choice =
+  | "add_favorites"
+  | "remove_favorites"
   | "edit_settings"
   | "add_tags"
   | "remove_tags"
@@ -17,6 +19,8 @@ type Choice =
   | "delete";
 
 const LABELS: Record<Choice, string> = {
+  add_favorites: "Add to favorites",
+  remove_favorites: "Remove from favorites",
   edit_settings: "Edit settings…",
   add_tags: "Add tag",
   remove_tags: "Remove tag",
@@ -29,20 +33,40 @@ const LABELS: Record<Choice, string> = {
 
 const selectClass = "rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100";
 
-/** Actions for the selected cameras. Runs as a background task. */
+/** Favorites are the user's own; everything else needs the admin role. */
+const VIEWER_CHOICES: Choice[] = ["add_favorites", "remove_favorites"];
+const ADMIN_CHOICES: Choice[] = [
+  "edit_settings",
+  "add_favorites",
+  "remove_favorites",
+  "add_tags",
+  "remove_tags",
+  "add_groups",
+  "remove_groups",
+  "monitoring_on",
+  "monitoring_off",
+  "delete",
+];
+
+/** Actions for the selected cameras. Admin actions run as a background task. */
 export function BulkBar({
   cameraIds,
+  admin,
   groups,
   tags,
   onDone,
 }: {
   cameraIds: string[];
+  /** Offer the admin actions too, not just favorites. */
+  admin: boolean;
   groups: Group[];
   tags: Tag[];
   onDone: () => void;
 }) {
   const bulk = useBulkCameras();
-  const [choice, setChoice] = useState<Choice>("edit_settings");
+  const favorites = useBulkFavorites();
+  const choices = admin ? ADMIN_CHOICES : VIEWER_CHOICES;
+  const [choice, setChoice] = useState<Choice>(choices[0]!);
   const [editing, setEditing] = useState(false);
   const [target, setTarget] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -65,11 +89,29 @@ export function BulkBar({
       case "delete":
         return { type: "delete" };
       case "edit_settings":
+      case "add_favorites":
+      case "remove_favorites":
         return null;
     }
   };
 
   const run = () => {
+    if (choice === "add_favorites" || choice === "remove_favorites") {
+      const favorite = choice === "add_favorites";
+      favorites.mutate(
+        { cameraIds, favorite },
+        {
+          onSuccess: (count) => {
+            showToast(
+              "success",
+              `${count} camera${count === 1 ? "" : "s"} ${favorite ? "added to" : "removed from"} your favorites.`,
+            );
+            onDone();
+          },
+        },
+      );
+      return;
+    }
     const a = action();
     if (!a) return;
     bulk.mutate(
@@ -101,7 +143,7 @@ export function BulkBar({
           setTarget("");
         }}
       >
-        {(Object.keys(LABELS) as Choice[]).map((c) => (
+        {choices.map((c) => (
           <option key={c} value={c}>
             {LABELS[c]}
           </option>
@@ -122,7 +164,7 @@ export function BulkBar({
       )}
       <Button
         variant={choice === "delete" ? "danger" : "primary"}
-        disabled={bulk.isPending || ((needsTag || needsGroup) && !target)}
+        disabled={bulk.isPending || favorites.isPending || ((needsTag || needsGroup) && !target)}
         onClick={() =>
           choice === "delete" ? setConfirming(true) : choice === "edit_settings" ? setEditing(true) : run()
         }
@@ -133,6 +175,7 @@ export function BulkBar({
         Clear selection
       </Button>
       {bulk.isError && !confirming && <Alert>{errorMessage(bulk.error)}</Alert>}
+      {favorites.isError && <Alert>{errorMessage(favorites.error)}</Alert>}
 
       {editing && (
         <BulkSettingsDialog

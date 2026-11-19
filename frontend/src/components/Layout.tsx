@@ -1,9 +1,10 @@
-import { NavLink, Outlet, useNavigate } from "react-router";
-import { useLogout, useMe } from "../api/auth";
+import { NavLink, Outlet } from "react-router";
+import { useMe } from "../api/auth";
 import { useHealth } from "../api/health";
 import { useLiveState, useLiveUpdates } from "../api/live";
 import { HealthBadge } from "./HealthBadge";
 import { Toaster } from "./Toaster";
+import { UserMenu } from "./UserMenu";
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `rounded px-3 py-1.5 text-sm ${isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:text-white"}`;
@@ -35,9 +36,6 @@ export function DemoBanner() {
 
 export function Layout() {
   const { data: me } = useMe();
-  const logout = useLogout();
-  const navigate = useNavigate();
-  const isAdmin = me?.role === "admin";
   useLiveUpdates(Boolean(me), me?.id, me?.role === "admin");
 
   return (
@@ -56,56 +54,34 @@ export function Layout() {
             <NavLink to="/cameras" className={linkClass}>
               Cameras
             </NavLink>
-            <NavLink to="/favorites" className={linkClass}>
-              Favorites
-            </NavLink>
-            <NavLink to="/activity" className={linkClass}>
-              Activity
-            </NavLink>
-            {isAdmin && (
-              <>
-                <NavLink to="/credentials" className={linkClass}>
-                  Credentials
-                </NavLink>
-                <NavLink to="/users" className={linkClass}>
-                  Users
-                </NavLink>
-                <NavLink to="/discovery" className={linkClass}>
-                  Discovery
-                </NavLink>
-                <NavLink to="/organization" className={linkClass}>
-                  Groups &amp; tags
-                </NavLink>
-                <NavLink to="/streams" className={linkClass}>
-                  Streams
-                </NavLink>
-                <NavLink to="/audit" className={linkClass}>
-                  Audit log
-                </NavLink>
-                <NavLink to="/settings" className={linkClass}>
-                  Settings
-                </NavLink>
-                <a href="/api/docs/" className="rounded px-3 py-1.5 text-sm text-slate-400 hover:text-white">
-                  API docs
-                </a>
-              </>
-            )}
           </nav>
         </div>
         <div className="flex items-center gap-4">
           <LiveIndicator />
           <HealthBadge />
-          <NavLink to="/account" className={linkClass}>
-            {me?.username}
-            <span className="ml-2 text-xs uppercase text-slate-500">{me?.role}</span>
-          </NavLink>
-          <button
-            type="button"
-            className="text-sm text-slate-400 hover:text-white"
-            onClick={() => logout.mutate(undefined, { onSettled: () => navigate("/login") })}
+          <UserMenu />
+          <NavLink
+            to="/settings"
+            aria-label="Settings"
+            title="Settings"
+            className={({ isActive }) =>
+              `rounded p-1.5 ${isActive ? "bg-slate-800 text-white" : "text-slate-400 hover:text-white"}`
+            }
           >
-            Sign out
-          </button>
+            <svg
+              aria-hidden
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+            </svg>
+          </NavLink>
         </div>
       </header>
       <main className="mx-auto w-full max-w-7xl flex-1 p-6">

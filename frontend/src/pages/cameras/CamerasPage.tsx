@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useMe } from "../../api/auth";
 import { useCameras, type CameraListQuery, type CameraState } from "../../api/cameras";
 import { errorMessage } from "../../api/client";
@@ -28,9 +28,10 @@ const COLUMNS: { key: Sort | null; label: string }[] = [
 
 const filterClass = "rounded border border-slate-700 bg-slate-900 px-3 py-2";
 
-/** The camera list; `favoritesOnly` makes it the Favorites view. */
-export function CamerasPage({ favoritesOnly = false }: { favoritesOnly?: boolean }) {
-  usePageTitle(favoritesOnly ? "Favorites" : "Cameras");
+/** The camera list. `?favorites=1` starts with only the user's favorites. */
+export function CamerasPage() {
+  usePageTitle("Cameras");
+  const [params] = useSearchParams();
   const { data: me } = useMe();
   const isAdmin = me?.role === "admin";
   const navigate = useNavigate();
@@ -41,7 +42,7 @@ export function CamerasPage({ favoritesOnly = false }: { favoritesOnly?: boolean
   const [status, setStatus] = useState<"" | CameraState>("");
   const [group, setGroup] = useState("");
   const [tag, setTag] = useState("");
-  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [onlyFavorites, setOnlyFavorites] = useState(() => params.get("favorites") === "1");
   const [sort, setSort] = useState<Sort>("name");
   const [order, setOrder] = useState<"asc" | "desc">("asc");
   const [adding, setAdding] = useState(false);
@@ -54,7 +55,7 @@ export function CamerasPage({ favoritesOnly = false }: { favoritesOnly?: boolean
     status: status || undefined,
     group_id: group || undefined,
     tag_id: tag || undefined,
-    favorites: favoritesOnly || onlyFavorites || undefined,
+    favorites: onlyFavorites || undefined,
     sort,
     order,
   });
@@ -80,14 +81,18 @@ export function CamerasPage({ favoritesOnly = false }: { favoritesOnly?: boolean
   return (
     <div>
       <PageHeader
-        title={favoritesOnly ? "Favorites" : "Cameras"}
-        actions={isAdmin && !favoritesOnly && <Button onClick={() => setAdding(true)}>Add camera</Button>}
+        title="Cameras"
+        actions={
+          isAdmin && (
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => navigate("/cameras/discovery")}>
+                Discover cameras
+              </Button>
+              <Button onClick={() => setAdding(true)}>Add camera</Button>
+            </div>
+          )
+        }
       />
-      {favoritesOnly && (
-        <p className="mb-4 text-sm text-slate-400">
-          Your favorite cameras. Mark more with the ☆ in the camera list. Only you see your favorites.
-        </p>
-      )}
 
       <div className="mb-4 flex flex-wrap gap-3 text-sm">
         <input
@@ -124,16 +129,20 @@ export function CamerasPage({ favoritesOnly = false }: { favoritesOnly?: boolean
             </option>
           ))}
         </select>
-        {!favoritesOnly && (
-          <label className="flex items-center gap-2 text-slate-300">
-            <input type="checkbox" checked={onlyFavorites} onChange={(e) => filtered(setOnlyFavorites)(e.target.checked)} />
-            Favorites only
-          </label>
-        )}
+        <label className="flex items-center gap-2 text-slate-300">
+          <input type="checkbox" checked={onlyFavorites} onChange={(e) => filtered(setOnlyFavorites)(e.target.checked)} />
+          Favorites only
+        </label>
       </div>
 
-      {isAdmin && selection.length > 0 && (
-        <BulkBar cameraIds={selection} groups={groups.data ?? []} tags={tags.data ?? []} onDone={() => setSelected([])} />
+      {selection.length > 0 && (
+        <BulkBar
+          cameraIds={selection}
+          admin={isAdmin}
+          groups={groups.data ?? []}
+          tags={tags.data ?? []}
+          onDone={() => setSelected([])}
+        />
       )}
 
       {cameras.isError && <Alert>{errorMessage(cameras.error)}</Alert>}
@@ -142,16 +151,14 @@ export function CamerasPage({ favoritesOnly = false }: { favoritesOnly?: boolean
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-900 text-slate-400">
             <tr>
-              {isAdmin && (
-                <th className="w-8 px-3 py-2">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all cameras on this page"
-                    checked={allSelected}
-                    onChange={(e) => setSelected(e.target.checked ? items.map((c) => c.id) : [])}
-                  />
-                </th>
-              )}
+              <th className="w-8 px-3 py-2">
+                <input
+                  type="checkbox"
+                  aria-label="Select all cameras on this page"
+                  checked={allSelected}
+                  onChange={(e) => setSelected(e.target.checked ? items.map((c) => c.id) : [])}
+                />
+              </th>
               <th className="w-8 px-2 py-2">
                 <span className="sr-only">Favorite</span>
               </th>
@@ -180,18 +187,16 @@ export function CamerasPage({ favoritesOnly = false }: { favoritesOnly?: boolean
                 className="cursor-pointer border-t border-slate-800 hover:bg-slate-900/60"
                 onClick={() => navigate(`/cameras/${cam.id}`)}
               >
-                {isAdmin && (
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${cam.name}`}
-                      checked={selection.includes(cam.id)}
-                      onChange={(e) =>
-                        setSelected(e.target.checked ? [...selection, cam.id] : selection.filter((s) => s !== cam.id))
-                      }
-                    />
-                  </td>
-                )}
+                <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${cam.name}`}
+                    checked={selection.includes(cam.id)}
+                    onChange={(e) =>
+                      setSelected(e.target.checked ? [...selection, cam.id] : selection.filter((s) => s !== cam.id))
+                    }
+                  />
+                </td>
                 <td className="px-2 py-2">
                   <FavoriteButton cameraId={cam.id} name={cam.name} />
                 </td>
@@ -220,8 +225,8 @@ export function CamerasPage({ favoritesOnly = false }: { favoritesOnly?: boolean
             ))}
             {cameras.data?.items.length === 0 && (
               <tr>
-                <td colSpan={COLUMNS.length + (isAdmin ? 2 : 1)} className="px-4 py-8 text-center text-slate-500">
-                  {favoritesOnly ? "No favorites yet." : "No cameras match."}
+                <td colSpan={COLUMNS.length + 2} className="px-4 py-8 text-center text-slate-500">
+                  {onlyFavorites ? "No favorites match. Mark cameras with the ☆ or select them and choose Add to favorites." : "No cameras match."}
                 </td>
               </tr>
             )}

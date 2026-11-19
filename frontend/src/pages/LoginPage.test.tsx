@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { renderApp } from "../test/render";
@@ -29,7 +29,8 @@ describe("login", () => {
 
     await screen.findByRole("heading", { name: "Users" });
     expect(posted).toEqual({ username: "admin", password: "correct horse battery" });
-    expect(screen.getByTestId("location")).toHaveTextContent(/^\/users$/);
+    // The old address forwards to its place in the settings area.
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/settings\/users$/);
   });
 
   it("shows the server's error and clears the password on failure", async () => {
@@ -82,17 +83,40 @@ describe("authorization in the UI", () => {
     signedInAs(VIEWER);
     renderApp("/users");
     await screen.findByRole("heading", { name: "Admins only" });
-    const nav = screen.getByRole("navigation", { name: "Main" });
-    expect(nav).not.toHaveTextContent("Users");
-    expect(nav).not.toHaveTextContent("Audit log");
+    const main = screen.getByRole("navigation", { name: "Main" });
+    expect(main).toHaveTextContent("Dashboards");
+    expect(main).not.toHaveTextContent("Discovery");
+    expect(main).not.toHaveTextContent("Favorites");
+    // Viewers get the cog, with only the pages they may open.
+    const settings = screen.getByRole("navigation", { name: "Settings" });
+    expect(within(settings).getAllByRole("link").map((l) => l.textContent)).toEqual(["Activity"]);
   });
 
-  it("shows admin navigation to admins", async () => {
+  it("puts the admin pages in the settings sidebar", async () => {
     signedInAs(ADMIN);
     renderApp("/");
-    const nav = await screen.findByRole("navigation", { name: "Main" });
-    await waitFor(() => expect(nav).toHaveTextContent("Users"));
-    expect(nav).toHaveTextContent("Audit log");
+    await userEvent.click(await screen.findByRole("link", { name: "Settings" }));
+    const settings = await screen.findByRole("navigation", { name: "Settings" });
+    expect(within(settings).getAllByRole("link").map((l) => l.textContent)).toEqual([
+      "General",
+      "Activity",
+      "Credentials",
+      "Users",
+      "Groups & tags",
+      "Streams",
+      "Audit log",
+      "API docs ↗",
+    ]);
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/settings\/general$/);
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    await userEvent.click(within(settings).getByRole("link", { name: "Audit log" }));
+    expect(await screen.findByRole("heading", { name: "Audit log" })).toBeInTheDocument();
+  });
+
+  it("sends viewers' /settings to Activity", async () => {
+    signedInAs(VIEWER);
+    renderApp("/settings");
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent(/^\/settings\/activity$/));
   });
 
   it("returns to the login page when the session expires mid-use", async () => {
@@ -116,7 +140,12 @@ describe("authorization in the UI", () => {
       }),
     );
     renderApp("/");
-    await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    expect(screen.queryByRole("menuitem", { name: "Sign out" })).not.toBeInTheDocument();
+    // Hovering the name opens the menu; clicking toggles it too.
+    await userEvent.hover(await screen.findByRole("button", { name: /^viewer/ }));
+    const menu = await screen.findByRole("menu", { name: "Account menu" });
+    expect(within(menu).getByRole("menuitem", { name: "Account" })).toHaveAttribute("href", "/account");
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Sign out" }));
     await screen.findByRole("heading", { name: "Sign in" });
   });
 });

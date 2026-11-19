@@ -146,6 +146,30 @@ export function useToggleFavorite() {
   });
 }
 
+/**
+ * Add or remove many favorites for the signed-in user (bulk bar). Each camera
+ * is one idempotent request, a few at a time; a page holds at most 50.
+ */
+export function useBulkFavorites() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ cameraIds, favorite }: { cameraIds: string[]; favorite: boolean }) => {
+      const one = (id: string) =>
+        favorite
+          ? unwrap(api.PUT("/api/v1/favorites/{camera_id}", { params: { path: { camera_id: id } } }))
+          : unwrap(api.DELETE("/api/v1/favorites/{camera_id}", { params: { path: { camera_id: id } } }));
+      for (let i = 0; i < cameraIds.length; i += 6) {
+        await Promise.all(cameraIds.slice(i, i + 6).map(one));
+      }
+      return cameraIds.length;
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: orgKeys.favorites });
+      qc.invalidateQueries({ queryKey: cameraKeys.lists() });
+    },
+  });
+}
+
 export type BulkSettings = components["schemas"]["BulkSettings"];
 export type BulkResult = components["schemas"]["BulkResult"];
 /** Which cameras a bulk operation applies to: ids, a group and/or a tag (a union). */
