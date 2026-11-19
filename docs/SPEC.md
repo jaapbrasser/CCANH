@@ -266,7 +266,7 @@ Keep `docs/vapix.md` up to date. For each endpoint used, record: purpose, method
 ### 4.5 Camera authentication and transport
 
 - Credentials are configured per camera, and a **named credential set** can be reused across many cameras.
-- Support HTTP Digest and Basic as the camera requires. Detect the scheme from the `WWW-Authenticate` challenge and never assume. Prefer Digest when offered. Allow Basic only over HTTPS unless an admin explicitly enables it per camera.
+- Support HTTP Digest and Basic as the camera requires. Detect the scheme from the `WWW-Authenticate` challenge and never assume. Prefer Digest when offered. Basic over plain HTTP is a per-camera setting; new cameras get it from the admin-editable camera defaults, shipped on for ease of use on a closed network (ADR 0011).
 - Use HTTPS when the camera supports it. Certificate validation is configurable **per camera**: `strict` (default), `pinned` (trust a specific certificate fingerprint recorded at registration) or `insecure-skip-verify`. The last must be explicit, shown in the UI with a warning, and logged at registration.
 - RTSP credentials follow the same rules. Never put credentials in a URL that could be logged.
 

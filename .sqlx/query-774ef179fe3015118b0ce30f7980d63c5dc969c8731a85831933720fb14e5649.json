@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT c.id AS \"id: Hyphenated\", c.name, c.host, c.port, c.scheme AS \"scheme: Scheme\",\n                  c.manufacturer, c.model, c.firmware_version,\n                  c.monitoring_enabled AS \"monitoring_enabled: bool\",\n                  c.tls_mode AS \"tls_mode: TlsMode\", c.tls_pinned_sha256,\n                  c.credential_set_id AS \"credential_set_id: Hyphenated\", cs.name AS credential_set_name,\n                  c.allow_basic_over_http AS \"allow_basic_over_http: bool\",\n                  c.serial_number, c.mac_address, c.device_name, c.device_hostname,\n                  c.capabilities, c.stream_profiles, c.network,\n                  c.grid_profile, c.detail_profile,\n                  c.identity_updated_at AS \"identity_updated_at: OffsetDateTime\",\n                  c.created_at AS \"created_at: OffsetDateTime\",\n                  c.updated_at AS \"updated_at: OffsetDateTime\",\n                  s.state AS \"state: CameraState\",\n                  s.last_success_at AS \"last_success_at: OffsetDateTime\",\n                  s.last_failure_at AS \"last_failure_at: OffsetDateTime\",\n                  s.last_change_at AS \"last_change_at: OffsetDateTime\",\n                  s.last_checked_at AS \"last_checked_at: OffsetDateTime\",\n                  s.response_time_ms, s.consecutive_failures,\n                  s.error_category AS \"error_category: ErrorCategory\", s.error_message,\n                  s.identity_error_category AS \"identity_error_category: ErrorCategory\",\n                  s.identity_error_message\n             FROM cameras c JOIN camera_status s ON s.camera_id = c.id\n             LEFT JOIN credential_sets cs ON cs.id = c.credential_set_id\n            WHERE c.id = ?1",
+  "query": "SELECT c.id AS \"id: Hyphenated\", c.name, c.host, c.port, c.scheme AS \"scheme: Scheme\",\n                  c.manufacturer, c.model, c.firmware_version,\n                  c.monitoring_enabled AS \"monitoring_enabled: bool\",\n                  c.tls_mode AS \"tls_mode: TlsMode\", c.tls_pinned_sha256,\n                  c.name_auto AS \"name_auto: bool\",\n                  c.credential_set_id AS \"credential_set_id: Hyphenated\", cs.name AS credential_set_name,\n                  c.allow_basic_over_http AS \"allow_basic_over_http: bool\",\n                  c.serial_number, c.mac_address, c.device_name, c.device_hostname,\n                  c.capabilities, c.stream_profiles, c.network,\n                  c.grid_profile, c.detail_profile,\n                  c.identity_updated_at AS \"identity_updated_at: OffsetDateTime\",\n                  c.created_at AS \"created_at: OffsetDateTime\",\n                  c.updated_at AS \"updated_at: OffsetDateTime\",\n                  s.state AS \"state: CameraState\",\n                  s.last_success_at AS \"last_success_at: OffsetDateTime\",\n                  s.last_failure_at AS \"last_failure_at: OffsetDateTime\",\n                  s.last_change_at AS \"last_change_at: OffsetDateTime\",\n                  s.last_checked_at AS \"last_checked_at: OffsetDateTime\",\n                  s.response_time_ms, s.consecutive_failures,\n                  s.error_category AS \"error_category: ErrorCategory\", s.error_message,\n                  s.identity_error_category AS \"identity_error_category: ErrorCategory\",\n                  s.identity_error_message\n             FROM cameras c JOIN camera_status s ON s.camera_id = c.id\n             LEFT JOIN credential_sets cs ON cs.id = c.credential_set_id\n            WHERE c.id = ?1",
   "describe": {
     "columns": [
       {
@@ -125,8 +125,19 @@
         }
       },
       {
-        "name": "credential_set_id: Hyphenated",
+        "name": "name_auto: bool",
         "ordinal": 11,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "name_auto"
+          }
+        }
+      },
+      {
+        "name": "credential_set_id: Hyphenated",
+        "ordinal": 12,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -137,7 +148,7 @@
       },
       {
         "name": "credential_set_name",
-        "ordinal": 12,
+        "ordinal": 13,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -148,7 +159,7 @@
       },
       {
         "name": "allow_basic_over_http: bool",
-        "ordinal": 13,
+        "ordinal": 14,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -159,7 +170,7 @@
       },
       {
         "name": "serial_number",
-        "ordinal": 14,
+        "ordinal": 15,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -170,7 +181,7 @@
       },
       {
         "name": "mac_address",
-        "ordinal": 15,
+        "ordinal": 16,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -181,7 +192,7 @@
       },
       {
         "name": "device_name",
-        "ordinal": 16,
+        "ordinal": 17,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -192,7 +203,7 @@
       },
       {
         "name": "device_hostname",
-        "ordinal": 17,
+        "ordinal": 18,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -203,7 +214,7 @@
       },
       {
         "name": "capabilities",
-        "ordinal": 18,
+        "ordinal": 19,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -214,7 +225,7 @@
       },
       {
         "name": "stream_profiles",
-        "ordinal": 19,
+        "ordinal": 20,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -225,7 +236,7 @@
       },
       {
         "name": "network",
-        "ordinal": 20,
+        "ordinal": 21,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -236,7 +247,7 @@
       },
       {
         "name": "grid_profile",
-        "ordinal": 21,
+        "ordinal": 22,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -247,7 +258,7 @@
       },
       {
         "name": "detail_profile",
-        "ordinal": 22,
+        "ordinal": 23,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -258,7 +269,7 @@
       },
       {
         "name": "identity_updated_at: OffsetDateTime",
-        "ordinal": 23,
+        "ordinal": 24,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -269,7 +280,7 @@
       },
       {
         "name": "created_at: OffsetDateTime",
-        "ordinal": 24,
+        "ordinal": 25,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -280,7 +291,7 @@
       },
       {
         "name": "updated_at: OffsetDateTime",
-        "ordinal": 25,
+        "ordinal": 26,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -291,7 +302,7 @@
       },
       {
         "name": "state: CameraState",
-        "ordinal": 26,
+        "ordinal": 27,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -302,7 +313,7 @@
       },
       {
         "name": "last_success_at: OffsetDateTime",
-        "ordinal": 27,
+        "ordinal": 28,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -313,7 +324,7 @@
       },
       {
         "name": "last_failure_at: OffsetDateTime",
-        "ordinal": 28,
+        "ordinal": 29,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -324,7 +335,7 @@
       },
       {
         "name": "last_change_at: OffsetDateTime",
-        "ordinal": 29,
+        "ordinal": 30,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -335,7 +346,7 @@
       },
       {
         "name": "last_checked_at: OffsetDateTime",
-        "ordinal": 30,
+        "ordinal": 31,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -346,7 +357,7 @@
       },
       {
         "name": "response_time_ms",
-        "ordinal": 31,
+        "ordinal": 32,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -357,7 +368,7 @@
       },
       {
         "name": "consecutive_failures",
-        "ordinal": 32,
+        "ordinal": 33,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -368,7 +379,7 @@
       },
       {
         "name": "error_category: ErrorCategory",
-        "ordinal": 33,
+        "ordinal": 34,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -379,7 +390,7 @@
       },
       {
         "name": "error_message",
-        "ordinal": 34,
+        "ordinal": 35,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -390,7 +401,7 @@
       },
       {
         "name": "identity_error_category: ErrorCategory",
-        "ordinal": 35,
+        "ordinal": 36,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -401,7 +412,7 @@
       },
       {
         "name": "identity_error_message",
-        "ordinal": 36,
+        "ordinal": 37,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -426,6 +437,7 @@
       false,
       false,
       true,
+      false,
       true,
       true,
       false,
@@ -454,5 +466,5 @@
       true
     ]
   },
-  "hash": "4ae618a428884fbfc0217890b38c1600df3836e8bd8213ad8af96ccebfa83b99"
+  "hash": "774ef179fe3015118b0ce30f7980d63c5dc969c8731a85831933720fb14e5649"
 }

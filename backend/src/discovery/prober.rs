@@ -144,6 +144,11 @@ pub const DEMO_EXTRA_HOSTS: [&str; 12] = [
     "198.51.100.46",
 ];
 
+/// Extra demo devices that only answer on plain HTTP, like older cameras on
+/// site that use Basic authentication over HTTP (issue #17).
+pub const DEMO_HTTP_HOSTS: [&str; 4] =
+    ["192.0.2.42", "192.0.2.44", "198.51.100.42", "198.51.100.44"];
+
 /// A web server in the demo ranges that isn't a camera (shows "unidentified").
 const DEMO_OTHER_WEB_SERVERS: [&str; 2] = ["192.0.2.1", "198.51.100.1"];
 
@@ -171,15 +176,16 @@ impl HostProber for DemoProber {
         if !is_camera {
             return ProbeOutcome::Unidentified;
         }
-        let target = ProviderTarget::simple(host, 443, true);
+        let https = !DEMO_HTTP_HOSTS.contains(&host.as_str());
+        let (port, scheme) = if https {
+            (443, Scheme::Https)
+        } else {
+            (80, Scheme::Http)
+        };
+        let target = ProviderTarget::simple(host, port, https);
         // Offline demo cameras don't answer, like real ones.
         let provider = DemoProvider::for_target(&target);
-        match tokio::time::timeout(
-            opts.http_timeout,
-            identify(&target, &provider, Scheme::Https),
-        )
-        .await
-        {
+        match tokio::time::timeout(opts.http_timeout, identify(&target, &provider, scheme)).await {
             Ok(ProbeOutcome::Found(f)) => ProbeOutcome::Found(f),
             Ok(_) => ProbeOutcome::NoService,
             Err(_) => ProbeOutcome::Unidentified,

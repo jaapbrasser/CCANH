@@ -52,6 +52,7 @@ pub const DOCS_PATH: &str = "/api/docs";
         ws::WsClientMessage,
         ws::WsServerMessage,
         credentials::TestConnectionResult,
+        discovery::CredentialTestResult,
     )),
     modifiers(&SessionCookie),
     security(("session_cookie" = [])),
@@ -111,6 +112,7 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(discovery::list, discovery::start))
         .routes(routes!(discovery::get))
         .routes(routes!(discovery::register))
+        .routes(routes!(discovery::test_credentials))
         .routes(routes!(
             dashboards::get,
             dashboards::update,
@@ -157,6 +159,10 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(
             settings::update_retention,
             settings::reset_retention
+        ))
+        .routes(routes!(
+            settings::update_camera_defaults,
+            settings::reset_camera_defaults
         ))
         .routes(routes!(ws::ws))
 }

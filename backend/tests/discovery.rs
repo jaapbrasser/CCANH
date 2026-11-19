@@ -237,6 +237,26 @@ async fn registering_approved_results() {
         "Discovered"
     );
     assert_eq!(out["registered"][0]["camera"]["host"], "192.0.2.41");
+    // .41 answered on HTTPS (simulated devices show no certificate to pin, so
+    // the default certificate check applies), .42 only on HTTP: it gets the
+    // camera default for Basic over HTTP (on, ADR 0011) and no certificate mode.
+    let detail = |cam: &Value| {
+        let id = cam["camera"]["id"].as_str().unwrap().to_owned();
+        let app = &app;
+        let admin = &admin;
+        async move {
+            app.send(req(Method::GET, &format!("/api/v1/cameras/{id}")).cookie(admin))
+                .await
+                .json()
+        }
+    };
+    let c41 = detail(&out["registered"][0]).await;
+    assert_eq!(c41["tls_mode"], "insecure_skip_verify");
+    assert_eq!(c41["allow_basic_over_http"], false);
+    let c42 = detail(&out["registered"][1]).await;
+    assert_eq!(c42["scheme"], "http");
+    assert_eq!(c42["tls_mode"], Value::Null);
+    assert_eq!(c42["allow_basic_over_http"], true);
     assert_eq!(out["skipped"][0]["result_id"], dup.as_str());
     assert!(out["skipped"][0]["reason"]
         .as_str()
@@ -274,4 +294,73 @@ async fn registering_approved_results() {
         .send(req(Method::GET, &format!("/api/v1/discovery/jobs/{id}")).cookie(&viewer))
         .await;
     assert_eq!(denied.status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn testing_credentials_before_registering() {
+    let (app, admin) = demo_app().await;
+    let started = start(&app, &admin, json!({ "ranges": ["192.0.2.41-42"] })).await;
+    let id = started.json()["id"].as_str().unwrap().to_owned();
+    app.wait_task(&admin, &id).await;
+    let ids: Vec<String> = job(&app, &admin, &id).await["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(ids.len(), 2);
+
+    let test = |password: &'static str| {
+        let body = json!({
+            "result_ids": ids,
+            "credentials": { "type": "inline", "username": "root", "password": password },
+        });
+        let (app, admin, id) = (&app, &admin, &id);
+        async move {
+            let r = app
+                .send(
+                    req(
+                        Method::POST,
+                        &format!("/api/v1/discovery/jobs/{id}/test-credentials"),
+                    )
+                    .cookie(admin)
+                    .json(body),
+                )
+                .await;
+            assert_eq!(r.status, StatusCode::ACCEPTED, "{}", r.text());
+            assert!(!r.text().contains(password), "secrets are never echoed");
+            let task_id = r.json()["id"].as_str().unwrap().to_owned();
+            app.wait_task(admin, &task_id).await
+        }
+    };
+
+    let good = test("right-password").await;
+    assert_eq!(good["status"], "succeeded", "{good}");
+    let results = good["result"]["results"].as_array().unwrap();
+    assert_eq!(results.len(), 2);
+    assert!(results.iter().all(|r| r["ok"] == true), "{good}");
+
+    // Demo cameras reject the password "wrong" (docs/demo.md).
+    let bad = test("wrong").await;
+    let results = bad["result"]["results"].as_array().unwrap();
+    assert!(results
+        .iter()
+        .all(|r| r["ok"] == false && r["error_category"] == "auth_failed"));
+
+    let too_many = app
+        .send(
+            req(
+                Method::POST,
+                &format!("/api/v1/discovery/jobs/{id}/test-credentials"),
+            )
+            .cookie(&admin)
+            .json(json!({ "result_ids": [], "credentials": { "type": "none" } })),
+        )
+        .await;
+    assert_eq!(too_many.status, StatusCode::BAD_REQUEST);
+    // Nothing was registered.
+    let cams = app
+        .send(req(Method::GET, "/api/v1/cameras?q=192.0.2.4").cookie(&admin))
+        .await;
+    assert_eq!(cams.json()["total"], 0);
 }

@@ -10,7 +10,10 @@ use time::OffsetDateTime;
 use tokio::sync::watch;
 use utoipa::ToSchema;
 
-use crate::config::{DiscoveryConfig, MonitoringConfig, RetentionConfig, StreamingConfig};
+use crate::cameras::{Scheme, TlsMode};
+use crate::config::{
+    CameraDefaultsConfig, DiscoveryConfig, MonitoringConfig, RetentionConfig, StreamingConfig,
+};
 
 /// Camera status monitoring (SPEC §10.2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -355,12 +358,65 @@ impl RetentionSettings {
     }
 }
 
+/// What new cameras get unless the admin chooses otherwise (issue #18, ADR
+/// 0011). Pre-fills the add-camera form and discovery registration, and
+/// applies to API calls that omit the field. Changing these never touches
+/// existing cameras.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct CameraDefaults {
+    pub scheme: Scheme,
+    /// Allow Basic authentication over plain HTTP (sends the password readable).
+    pub allow_basic_over_http: bool,
+    /// Certificate check for HTTPS cameras: `strict` or `insecure_skip_verify`
+    /// (`pinned` needs a per-camera fingerprint, so it can't be a default).
+    pub tls_mode: TlsMode,
+}
+
+impl From<&CameraDefaultsConfig> for CameraDefaults {
+    fn from(c: &CameraDefaultsConfig) -> Self {
+        Self {
+            scheme: c.scheme,
+            allow_basic_over_http: c.allow_basic_over_http,
+            tls_mode: c.tls_mode,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+pub struct CameraDefaultsPatch {
+    pub scheme: Option<Scheme>,
+    pub allow_basic_over_http: Option<bool>,
+    pub tls_mode: Option<TlsMode>,
+}
+
+impl CameraDefaults {
+    pub fn patched(&self, p: &CameraDefaultsPatch) -> Self {
+        Self {
+            scheme: p.scheme.unwrap_or(self.scheme),
+            allow_basic_over_http: p
+                .allow_basic_over_http
+                .unwrap_or(self.allow_basic_over_http),
+            tls_mode: p.tls_mode.unwrap_or(self.tls_mode),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.tls_mode == TlsMode::Pinned {
+            return Err(
+                "tls_mode can't default to \"pinned\": a pin is a per-camera fingerprint".into(),
+            );
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 pub struct RuntimeSettings {
     pub monitoring: MonitoringSettings,
     pub streaming: StreamingSettings,
     pub discovery: DiscoverySettings,
     pub retention: RetentionSettings,
+    pub camera_defaults: CameraDefaults,
 }
 
 impl RuntimeSettings {
@@ -370,6 +426,7 @@ impl RuntimeSettings {
             streaming: StreamingSettings::from(&c.streaming),
             discovery: DiscoverySettings::from(&c.discovery),
             retention: RetentionSettings::from(&c.retention),
+            camera_defaults: CameraDefaults::from(&c.camera_defaults),
         }
     }
 }
@@ -378,6 +435,7 @@ const MONITORING_KEY: &str = "monitoring";
 const STREAMING_KEY: &str = "streaming";
 const DISCOVERY_KEY: &str = "discovery";
 const RETENTION_KEY: &str = "retention";
+const CAMERA_DEFAULTS_KEY: &str = "camera_defaults";
 
 /// Shared handle: current values plus the defaults they override.
 #[derive(Debug, Clone)]
@@ -459,11 +517,23 @@ impl SettingsHandle {
             }
             None => self.defaults.retention.clone(),
         };
+        let camera_defaults = match Self::stored(db, CAMERA_DEFAULTS_KEY)
+            .await?
+            .map(|v| serde_json::from_str::<CameraDefaults>(&v))
+        {
+            Some(Ok(s)) if s.validate().is_ok() => s,
+            Some(_) => {
+                tracing::warn!("ignoring invalid stored camera defaults; using defaults");
+                self.defaults.camera_defaults.clone()
+            }
+            None => self.defaults.camera_defaults.clone(),
+        };
         self.tx.send_replace(RuntimeSettings {
             monitoring,
             streaming,
             discovery,
             retention,
+            camera_defaults,
         });
         Ok(())
     }
@@ -588,6 +658,36 @@ impl SettingsHandle {
         Ok(defaults)
     }
 
+    /// Validate, persist and publish new camera defaults.
+    pub async fn update_camera_defaults(
+        &self,
+        db: &SqlitePool,
+        patch: &CameraDefaultsPatch,
+        by: &str,
+    ) -> Result<(CameraDefaults, CameraDefaults), SettingsError> {
+        let before = self.current().camera_defaults;
+        let after = before.patched(patch);
+        after.validate().map_err(SettingsError::Invalid)?;
+        let json =
+            serde_json::to_string(&after).map_err(|e| SettingsError::Invalid(e.to_string()))?;
+        Self::persist(db, CAMERA_DEFAULTS_KEY, &json, by).await?;
+        self.tx.send_modify(|s| s.camera_defaults = after.clone());
+        Ok((before, after))
+    }
+
+    pub async fn reset_camera_defaults(
+        &self,
+        db: &SqlitePool,
+    ) -> Result<CameraDefaults, SettingsError> {
+        sqlx::query!("DELETE FROM settings WHERE key = ?1", CAMERA_DEFAULTS_KEY)
+            .execute(db)
+            .await?;
+        let defaults = self.defaults.camera_defaults.clone();
+        self.tx
+            .send_modify(|s| s.camera_defaults = defaults.clone());
+        Ok(defaults)
+    }
+
     /// Remove overrides and go back to the startup defaults.
     pub async fn reset_monitoring(
         &self,
@@ -616,6 +716,44 @@ mod tests {
 
     fn defaults() -> RuntimeSettings {
         RuntimeSettings::from_config(&crate::config::Config::default())
+    }
+
+    #[tokio::test]
+    async fn camera_defaults_favour_ease_of_use_and_can_be_tightened() {
+        let shipped = defaults().camera_defaults;
+        assert_eq!(shipped.scheme, Scheme::Http);
+        assert!(shipped.allow_basic_over_http);
+        assert_eq!(shipped.tls_mode, TlsMode::InsecureSkipVerify);
+
+        let db = crate::storage::connect_in_memory().await.unwrap();
+        let handle = SettingsHandle::new(defaults());
+        let pinned = CameraDefaultsPatch {
+            tls_mode: Some(TlsMode::Pinned),
+            ..Default::default()
+        };
+        assert!(handle
+            .update_camera_defaults(&db, &pinned, "a")
+            .await
+            .is_err());
+
+        let strict = CameraDefaultsPatch {
+            scheme: Some(Scheme::Https),
+            allow_basic_over_http: Some(false),
+            tls_mode: Some(TlsMode::Strict),
+        };
+        handle
+            .update_camera_defaults(&db, &strict, "a")
+            .await
+            .unwrap();
+        // Overrides survive a restart.
+        let reloaded = SettingsHandle::new(defaults());
+        reloaded.load(&db).await.unwrap();
+        let current = reloaded.current().camera_defaults;
+        assert_eq!(current.scheme, Scheme::Https);
+        assert!(!current.allow_basic_over_http);
+        assert_eq!(current.tls_mode, TlsMode::Strict);
+
+        assert_eq!(reloaded.reset_camera_defaults(&db).await.unwrap(), shipped);
     }
 
     #[tokio::test]

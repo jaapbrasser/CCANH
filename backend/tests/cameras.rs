@@ -38,9 +38,12 @@ async fn admin_registers_and_manages_cameras() {
     assert_eq!(created.status, StatusCode::CREATED, "{}", created.text());
     let body = created.json();
     let id = body["id"].as_str().unwrap().to_owned();
-    assert_eq!(body["port"], 443);
-    assert_eq!(body["scheme"], "https");
-    assert_eq!(body["tls_mode"], "strict");
+    // Omitted fields come from the camera defaults (HTTP, Basic allowed: ADR 0011).
+    assert_eq!(body["port"], 80);
+    assert_eq!(body["scheme"], "http");
+    assert_eq!(body["tls_mode"], serde_json::Value::Null);
+    assert_eq!(body["allow_basic_over_http"], true);
+    assert_eq!(body["name_pending"], false);
     assert_eq!(body["status"]["state"], "unknown");
     assert!(matches!(events.try_recv(), Ok(Event::CameraChanged { .. })));
 
@@ -54,6 +57,21 @@ async fn admin_registers_and_manages_cameras() {
         )
         .await;
     assert_eq!(dup.status, StatusCode::CONFLICT);
+
+    // The name is optional: the address stands in until the camera names itself.
+    let unnamed = app
+        .send(
+            req(Method::POST, "/api/v1/cameras")
+                .cookie(&admin)
+                .json(json!({ "host": "192.0.2.51", "monitoring_enabled": false })),
+        )
+        .await;
+    assert_eq!(unnamed.status, StatusCode::CREATED, "{}", unnamed.text());
+    assert_eq!(unnamed.json()["name"], "192.0.2.51");
+    assert_eq!(unnamed.json()["name_pending"], true);
+    let unnamed_id = unnamed.json()["id"].as_str().unwrap().to_owned();
+    app.send(req(Method::DELETE, &format!("/api/v1/cameras/{unnamed_id}")).cookie(&admin))
+        .await;
 
     let bad = app
         .send(
@@ -72,7 +90,8 @@ async fn admin_registers_and_manages_cameras() {
             req(Method::POST, "/api/v1/cameras")
                 .cookie(&admin)
                 .json(json!({
-                    "name": "Pinned", "host": "cam.local", "tls_mode": "pinned"
+                    "name": "Pinned", "host": "cam.local", "scheme": "https",
+                    "tls_mode": "pinned"
                 })),
         )
         .await;
@@ -111,7 +130,16 @@ async fn admin_registers_and_manages_cameras() {
         .iter()
         .map(|e| e["action"].as_str().unwrap().to_owned())
         .collect();
-    assert_eq!(actions, ["camera.delete", "camera.update", "camera.create"]);
+    assert_eq!(
+        actions,
+        [
+            "camera.delete",
+            "camera.update",
+            "camera.delete",
+            "camera.create",
+            "camera.create"
+        ]
+    );
 }
 
 #[tokio::test]

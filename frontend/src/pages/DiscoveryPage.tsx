@@ -9,11 +9,15 @@ import {
   useDiscoveryPreview,
   useRegisterDiscovered,
   useStartDiscovery,
+  useTestDiscoveredCredentials,
+  type CredentialTestResult,
   type DiscoveredDevice,
   type DiscoveryJobDetail,
 } from "../api/discovery";
-import { groupTree, useGroups, useTags } from "../api/organization";
-import { isTerminal, useCancelTask } from "../api/tasks";
+import { groupTree, useCreateGroup, useCreateTag, useGroups, useTags } from "../api/organization";
+import { SHIPPED_CAMERA_DEFAULTS, useSettings } from "../api/settings";
+import { isTerminal, useCancelTask, useTask } from "../api/tasks";
+import { errorCategoryLabel } from "../utils/format";
 import { MultiPick } from "../components/organization";
 import { showToast } from "../components/toasts";
 import { Alert, Button, Dialog, Field, PageHeader } from "../components/ui";
@@ -286,6 +290,9 @@ function ipKey(ip: string): number {
 
 type CredMode = "none" | "set" | "inline";
 
+/** Most devices one credential test checks (server: `MAX_CREDENTIAL_TESTS`). */
+const MAX_TESTS = 20;
+
 function RegisterDialog({
   job,
   resultIds,
@@ -301,6 +308,10 @@ function RegisterDialog({
   const sets = useCredentialSets();
   const groups = useGroups();
   const tags = useTags();
+  const createTag = useCreateTag();
+  const createGroup = useCreateGroup();
+  const settings = useSettings();
+  const defaults = settings.data?.current.camera_defaults ?? SHIPPED_CAMERA_DEFAULTS;
   const [mode, setMode] = useState<CredMode>("none");
   const [setId, setSetId] = useState("");
   const [username, setUsername] = useState("");
@@ -308,10 +319,30 @@ function RegisterDialog({
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [monitoring, setMonitoring] = useState(true);
+  const [basicChoice, setBasicChoice] = useState<boolean | null>(null);
+  const allowBasic = basicChoice ?? defaults.allow_basic_over_http;
   const n = resultIds.length;
+  const selected = job.results.filter((r) => resultIds.includes(r.id));
+  const httpCount = selected.filter((r) => r.scheme === "http").length;
 
-  const credentials = (): CredentialInput | null =>
+  const test = useTestDiscoveredCredentials(job.id);
+  const [testId, setTestId] = useState<string | null>(null);
+  const testTask = useTask(testId);
+  const testing = Boolean(testId) && !isTerminal(testTask.data?.status);
+  const testResult =
+    testTask.data?.status === "succeeded" ? (testTask.data.result as unknown as CredentialTestResult | null) : null;
+
+  const credentials = (): CredentialInput =>
     mode === "set" ? { type: "set", id: setId } : mode === "inline" ? { type: "inline", username, password } : { type: "none" };
+  const credentialsComplete = mode === "none" || (mode === "set" ? Boolean(setId) : Boolean(username && password));
+
+  const runTest = () => {
+    setTestId(null);
+    test.mutate(
+      { result_ids: resultIds.slice(0, MAX_TESTS), credentials: credentials(), allow_basic_over_http: allowBasic },
+      { onSuccess: (t) => setTestId(t.id) },
+    );
+  };
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -322,6 +353,7 @@ function RegisterDialog({
         group_ids: groupIds,
         tag_ids: tagIds,
         monitoring_enabled: monitoring,
+        allow_basic_over_http: allowBasic,
       },
       {
         onSuccess: (out) => {
@@ -338,7 +370,8 @@ function RegisterDialog({
       <form onSubmit={onSubmit} className="flex max-h-[75vh] flex-col gap-4 overflow-y-auto pr-1 text-sm">
         {register.isError && <Alert>{errorMessage(register.error)}</Alert>}
         <p className="text-slate-400">
-          HTTPS devices are pinned to the certificate seen during the scan. Names come from the device or its model.
+          HTTPS devices are pinned to the certificate seen during the scan. Names come from the device; one that
+          reports none shows its address until it does.
         </p>
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-slate-300">Credentials</legend>
@@ -350,7 +383,15 @@ function RegisterDialog({
             ] as const
           ).map(([m, label]) => (
             <label key={m} className="flex items-center gap-2">
-              <input type="radio" name="cred" checked={mode === m} onChange={() => setMode(m)} />
+              <input
+                type="radio"
+                name="cred"
+                checked={mode === m}
+                onChange={() => {
+                  setMode(m);
+                  setTestId(null);
+                }}
+              />
               {label}
             </label>
           ))}
@@ -383,6 +424,39 @@ function RegisterDialog({
               />
             </div>
           )}
+          {httpCount > 0 && (
+            <label className="flex items-start gap-2 text-slate-300">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={allowBasic}
+                onChange={(e) => {
+                  setBasicChoice(e.target.checked);
+                  setTestId(null);
+                }}
+              />
+              <span>
+                Allow Basic authentication over HTTP
+                <span className="block text-xs text-slate-500">
+                  Applies to {httpCount} of {n} selected device{n === 1 ? "" : "s"} (the ones found on HTTP). The
+                  password then crosses the network readable.
+                </span>
+              </span>
+            </label>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" disabled={!credentialsComplete || testing || test.isPending} onClick={runTest}>
+              {testing ? "Testing…" : "Test credentials"}
+            </Button>
+            <span className="text-xs text-slate-500">
+              {n > MAX_TESTS
+                ? `Tests the first ${MAX_TESTS} selected devices.`
+                : "One sign-in attempt per device; nothing is saved."}
+            </span>
+          </div>
+          {test.isError && <Alert>{errorMessage(test.error)}</Alert>}
+          {testTask.data?.status === "failed" && <Alert>{testTask.data.error_message ?? "The test failed."}</Alert>}
+          {testResult && <CredentialResults result={testResult} />}
         </fieldset>
         <div className="grid gap-3 sm:grid-cols-2">
           <MultiPick
@@ -390,14 +464,18 @@ function RegisterDialog({
             options={groupTree(groups.data ?? []).map((g) => ({ id: g.id, label: g.name, depth: g.depth }))}
             selected={groupIds}
             onChange={setGroupIds}
-            empty="No groups yet."
+            empty="No groups yet: create one below."
+            createLabel="New group name"
+            onCreate={async (name) => (await createGroup.mutateAsync({ name })).id}
           />
           <MultiPick
             legend="Tags"
             options={(tags.data ?? []).map((t) => ({ id: t.id, label: t.name }))}
             selected={tagIds}
             onChange={setTagIds}
-            empty="No tags yet."
+            empty="No tags yet: create one below."
+            createLabel="New tag name"
+            onCreate={async (name) => (await createTag.mutateAsync(name)).id}
           />
         </div>
         <label className="flex items-center gap-2 text-slate-300">
@@ -414,5 +492,32 @@ function RegisterDialog({
         </div>
       </form>
     </Dialog>
+  );
+}
+
+function CredentialResults({ result }: { result: CredentialTestResult }) {
+  const passed = result.results.filter((r) => r.ok).length;
+  return (
+    <div role="region" aria-label="Credential test result" className="rounded border border-slate-700 p-3">
+      <p className={`mb-2 font-medium ${passed === result.results.length ? "text-emerald-300" : "text-amber-300"}`}>
+        Credentials accepted by {passed} of {result.results.length} device{result.results.length === 1 ? "" : "s"}
+      </p>
+      <ul className="flex flex-col gap-1">
+        {result.results.map((r) => (
+          <li key={r.result_id} className="flex gap-2">
+            <span aria-hidden className={r.ok ? "text-emerald-400" : "text-red-400"}>
+              {r.ok ? "✓" : "✕"}
+            </span>
+            <span className="font-mono">{r.ip}</span>
+            {!r.ok && (
+              <span className="text-slate-400">
+                {errorCategoryLabel(r.error_category)}
+                {r.message && <span className="block text-xs text-slate-500">{r.message}</span>}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

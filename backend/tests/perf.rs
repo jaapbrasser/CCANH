@@ -131,6 +131,7 @@ async fn target_scale() {
     crane::demo::seed(&db, &*store).await.unwrap();
     for i in 1..=EXTRA_CAMERAS {
         let s = CameraSettings {
+            name_auto: false,
             name: format!("Load {i:03}"),
             // RFC 5737 TEST-NET-3: never routed; the demo provider simulates them.
             host: format!("203.0.113.{i}"),

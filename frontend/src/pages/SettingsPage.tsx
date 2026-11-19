@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { errorMessage } from "../api/client";
 import {
+  useResetCameraDefaults,
+  useUpdateCameraDefaults,
+  type CameraDefaults,
   useResetRetention,
   useUpdateRetention,
   type RetentionSettings,
@@ -89,6 +92,18 @@ export function SettingsPage() {
           key={JSON.stringify(settings.data.current.discovery)}
           current={settings.data.current.discovery}
           defaults={settings.data.defaults.discovery}
+        />
+      )}
+
+      <h2 className="mb-1 mt-10 text-lg font-semibold">New camera defaults</h2>
+      <p className="mb-4 text-sm text-slate-400">
+        What a new camera gets unless you choose otherwise when adding or registering it. Changing these doesn't
+        affect cameras you already have.
+      </p>
+      {settings.data && (
+        <CameraDefaultsForm
+          key={JSON.stringify(settings.data.current.camera_defaults)}
+          current={settings.data.current.camera_defaults}
         />
       )}
 
@@ -361,6 +376,72 @@ function RetentionForm({ current, defaults }: { current: RetentionSettings; defa
           variant="secondary"
           disabled={reset.isPending}
           onClick={() => reset.mutate(undefined, { onSuccess: () => showToast("success", "Retention settings reset.") })}
+        >
+          Reset
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function CameraDefaultsForm({ current }: { current: CameraDefaults }) {
+  const update = useUpdateCameraDefaults();
+  const reset = useResetCameraDefaults();
+  const [form, setForm] = useState(current);
+  const select = "rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100";
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    update.mutate(form, { onSuccess: () => showToast("success", "Camera defaults saved.") });
+  };
+  return (
+    <form onSubmit={onSubmit} aria-label="Camera defaults" className="flex flex-col gap-4">
+      {(update.isError || reset.isError) && <Alert>{errorMessage(update.error ?? reset.error)}</Alert>}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm text-slate-300">
+          Protocol
+          <select
+            className={select}
+            value={form.scheme}
+            onChange={(e) => setForm({ ...form, scheme: e.target.value as CameraDefaults["scheme"] })}
+          >
+            <option value="http">HTTP</option>
+            <option value="https">HTTPS</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-slate-300">
+          Certificate check (HTTPS cameras)
+          <select
+            className={select}
+            value={form.tls_mode}
+            onChange={(e) => setForm({ ...form, tls_mode: e.target.value as CameraDefaults["tls_mode"] })}
+          >
+            <option value="insecure_skip_verify">Don't verify (insecure)</option>
+            <option value="strict">Strict</option>
+          </select>
+        </label>
+      </div>
+      <label className="flex items-start gap-2 text-sm text-slate-300">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={form.allow_basic_over_http}
+          onChange={(e) => setForm({ ...form, allow_basic_over_http: e.target.checked })}
+        />
+        <span>
+          Allow Basic authentication over HTTP
+          <span className="block text-xs text-slate-500">
+            Needed for cameras that only offer Basic. The password then crosses the network readable.
+          </span>
+        </span>
+      </label>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={update.isPending}>
+          Save camera defaults
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={reset.isPending}
+          onClick={() => reset.mutate(undefined, { onSuccess: () => showToast("success", "Camera defaults reset.") })}
         >
           Reset
         </Button>

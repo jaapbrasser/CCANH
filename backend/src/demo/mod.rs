@@ -252,6 +252,7 @@ pub async fn seed(db: &SqlitePool, store: &dyn CredentialStore) -> Result<SeedSu
         for cam in FLEET {
             let settings = CameraSettings {
                 name: cam.name.to_owned(),
+                name_auto: false,
                 host: cam.host.to_owned(),
                 port: 443,
                 scheme: Scheme::Https,

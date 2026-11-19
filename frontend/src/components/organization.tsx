@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { groupTree, useFavorites, useToggleFavorite, type Group } from "../api/organization";
 
 const selectClass = "rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100";
@@ -78,13 +78,37 @@ export function MultiPick({
   selected,
   onChange,
   empty,
+  onCreate,
+  createLabel,
 }: {
   legend: string;
   options: { id: string; label: ReactNode; depth?: number }[];
   selected: string[];
   onChange: (ids: string[]) => void;
   empty: string;
+  /** Lets the user add an item inline; resolves to its id, which is then selected. */
+  onCreate?: (name: string) => Promise<string>;
+  /** Accessible label of the inline "new item" field, e.g. "New tag name". */
+  createLabel?: string;
 }) {
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const create = async () => {
+    const name = draft.trim();
+    if (!onCreate || !name || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const id = await onCreate(name);
+      onChange([...selected, id]);
+      setDraft("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't create it.");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <fieldset className="flex flex-col gap-1">
       <legend className="mb-1 text-sm text-slate-300">{legend}</legend>
@@ -108,6 +132,33 @@ export function MultiPick({
           ))}
         </div>
       )}
+      {onCreate && (
+        <div className="mt-1 flex gap-1">
+          <input
+            aria-label={createLabel ?? `New ${legend.toLowerCase()}`}
+            placeholder={createLabel ?? `New ${legend.toLowerCase()}`}
+            className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              // Inside another form: Enter creates the item instead of submitting.
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void create();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="rounded border border-slate-700 px-2 py-1 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+            disabled={!draft.trim() || busy}
+            onClick={() => void create()}
+          >
+            Create
+          </button>
+        </div>
+      )}
+      {error && <p className="text-xs text-red-300">{error}</p>}
     </fieldset>
   );
 }

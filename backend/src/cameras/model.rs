@@ -124,8 +124,12 @@ pub struct CredentialSetRef {
 pub struct CameraDetail {
     #[serde(flatten)]
     pub summary: CameraSummary,
-    pub tls_mode: TlsMode,
+    /// Certificate check; `null` for HTTP cameras, where it doesn't apply.
+    pub tls_mode: Option<TlsMode>,
     pub tls_pinned_sha256: Option<String>,
+    /// The name is a placeholder (the address) that will be replaced by the
+    /// camera's own name on the next successful identity check.
+    pub name_pending: bool,
     /// Whether credentials are configured. Credentials themselves are write-only.
     pub has_credentials: bool,
     /// The shared credential set in use, if any (`null` for per-camera credentials).
@@ -193,15 +197,20 @@ pub enum CredentialInput {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct NewCamera {
-    pub name: String,
+    /// Optional: leave it out (or blank) and the camera's own name is filled
+    /// in on the first successful connection; until then the address is shown.
+    #[serde(default)]
+    pub name: Option<String>,
     /// IP address or hostname, without scheme, port or path.
     pub host: String,
     /// Defaults to 443 for HTTPS, 80 for HTTP.
     pub port: Option<u16>,
+    /// Omit to use the camera defaults setting.
     #[serde(default)]
-    pub scheme: Scheme,
+    pub scheme: Option<Scheme>,
+    /// HTTPS only; omit to use the camera defaults setting. Ignored for HTTP.
     #[serde(default)]
-    pub tls_mode: TlsMode,
+    pub tls_mode: Option<TlsMode>,
     /// SHA-256 certificate fingerprint (hex, colons optional). Required for `pinned`.
     pub tls_pinned_sha256: Option<String>,
     #[serde(default = "default_true")]
@@ -209,9 +218,9 @@ pub struct NewCamera {
     #[serde(default)]
     pub credentials: Option<CredentialInput>,
     /// Allow Basic authentication over plain HTTP, which sends the password
-    /// unencrypted. Off by default (SPEC §4.5).
+    /// unencrypted. Omit to use the camera defaults setting (SPEC §4.5, ADR 0011).
     #[serde(default)]
-    pub allow_basic_over_http: bool,
+    pub allow_basic_over_http: Option<bool>,
     /// Groups to put the camera in.
     #[serde(default)]
     pub group_ids: Vec<Uuid>,
@@ -228,6 +237,7 @@ fn default_true() -> bool {
 /// together with a non-pinned `tls_mode` to clear a pin.
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct CameraPatch {
+    /// A blank name means "fill it in from the camera" (see `NewCamera::name`).
     pub name: Option<String>,
     pub host: Option<String>,
     pub port: Option<u16>,
@@ -259,6 +269,37 @@ pub enum ValidationError {
 }
 
 pub const MAX_NAME_LEN: usize = 100;
+
+/// The name for a camera nobody named: its device name, else model and serial
+/// number, else its hostname (issue #14). `None` when it reported none of them.
+pub fn auto_name(device: &crate::providers::DeviceInfo) -> Option<String> {
+    fn clean(v: &Option<String>) -> Option<&str> {
+        v.as_deref().map(str::trim).filter(|v| !v.is_empty())
+    }
+    let name = clean(&device.device_name)
+        .map(str::to_owned)
+        .or_else(
+            || match (clean(&device.model), clean(&device.serial_number)) {
+                (Some(m), Some(s)) => Some(format!("{m} {s}")),
+                (Some(m), None) => Some(m.to_owned()),
+                (None, Some(s)) => Some(s.to_owned()),
+                (None, None) => None,
+            },
+        )
+        .or_else(|| clean(&device.hostname).map(str::to_owned))?;
+    Some(name.chars().take(MAX_NAME_LEN).collect())
+}
+
+/// What lists show for a camera that has no name yet.
+pub fn address_label(host: &str, port: u16, scheme: Scheme) -> String {
+    if port == scheme.default_port() {
+        host.to_owned()
+    } else if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
 
 pub fn validate_name(name: &str) -> Result<String, ValidationError> {
     let name = name.trim();
@@ -339,6 +380,38 @@ mod tests {
         ] {
             assert_eq!(validate_host(bad), Err(ValidationError::Host), "{bad}");
         }
+    }
+
+    #[test]
+    fn auto_names_prefer_the_device_name() {
+        use crate::providers::DeviceInfo;
+        let mut d = DeviceInfo {
+            device_name: Some(" Hook cam ".into()),
+            model: Some("M3088-V".into()),
+            serial_number: Some("B8A44F000001".into()),
+            hostname: Some("axis-b8a44f000001".into()),
+            ..Default::default()
+        };
+        assert_eq!(auto_name(&d).as_deref(), Some("Hook cam"));
+        d.device_name = Some("  ".into());
+        assert_eq!(auto_name(&d).as_deref(), Some("M3088-V B8A44F000001"));
+        d.model = None;
+        d.serial_number = None;
+        assert_eq!(auto_name(&d).as_deref(), Some("axis-b8a44f000001"));
+        assert_eq!(auto_name(&DeviceInfo::default()), None);
+    }
+
+    #[test]
+    fn address_labels() {
+        assert_eq!(address_label("192.0.2.1", 80, Scheme::Http), "192.0.2.1");
+        assert_eq!(
+            address_label("192.0.2.1", 8080, Scheme::Http),
+            "192.0.2.1:8080"
+        );
+        assert_eq!(
+            address_label("2001:db8::1", 8443, Scheme::Https),
+            "[2001:db8::1]:8443"
+        );
     }
 
     #[test]
