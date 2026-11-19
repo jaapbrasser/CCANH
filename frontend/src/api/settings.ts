@@ -6,6 +6,8 @@ export type MonitoringSettings = components["schemas"]["MonitoringSettings"];
 export type MonitoringPatch = components["schemas"]["MonitoringPatch"];
 export type StreamingSettings = components["schemas"]["StreamingSettings"];
 export type StreamingPatch = components["schemas"]["StreamingPatch"];
+export type DiscoverySettings = components["schemas"]["DiscoverySettings"];
+export type DiscoveryPatch = components["schemas"]["DiscoveryPatch"];
 
 const key = ["settings"] as const;
 
@@ -46,6 +48,22 @@ export function useResetStreaming() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => unwrap(api.DELETE("/api/v1/settings/streaming")),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
+}
+
+export function useUpdateDiscovery() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DiscoveryPatch) => unwrap(api.PATCH("/api/v1/settings/discovery", { body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
+}
+
+export function useResetDiscovery() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE("/api/v1/settings/discovery")),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
 }

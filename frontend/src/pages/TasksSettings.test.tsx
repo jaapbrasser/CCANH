@@ -24,6 +24,8 @@ const STREAMING = {
   default_detail_profile: null,
 };
 
+const DISCOVERY = { max_addresses: 4096, concurrency: 32, connect_timeout_ms: 1000, http_timeout_ms: 3000 };
+
 function task(over: Record<string, unknown> = {}) {
   return {
     id: "00000000-0000-7000-8000-0000000000f2",
@@ -46,8 +48,8 @@ describe("settings page", () => {
     server.use(
       http.get("/api/v1/settings", () =>
         HttpResponse.json({
-          current: { monitoring: MONITORING, streaming: STREAMING },
-          defaults: { monitoring: MONITORING, streaming: STREAMING },
+          current: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY },
+          defaults: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY },
           monitor: {
             checks_total: 120,
             failures_total: 7,
