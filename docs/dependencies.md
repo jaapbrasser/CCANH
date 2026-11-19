@@ -33,6 +33,7 @@ One line per non-trivial dependency and why it's here. See ADR 0001 for the base
 | async-trait | `dyn CameraProvider` with async methods (SPEC §4.3) |
 | bytes | Cheaply cloned media buffers shared by all viewers of a stream (ADR 0002) |
 | windows-service (Windows only) | Windows service mode: control dispatcher, status, install/uninstall (ADR 0010) |
+| winresource (Windows build only) | Embeds the icon and version information in crane.exe (`backend/build.rs`, issue #20) |
 | retina | RTSP client for AXIS live video: Digest auth, RTP over TCP, H.264 depacketizing and MP4 sample entries; pure Rust (ADR 0002) |
 | url | RTSP URLs for retina, with query values encoded |
 | reqwest (`rustls-no-provider`, `json`) | VAPIX HTTP client; TLS via our rustls config (ring), no aws-lc |
