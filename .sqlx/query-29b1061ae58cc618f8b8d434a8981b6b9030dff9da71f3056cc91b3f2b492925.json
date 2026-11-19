@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dashboards SET is_default = 1\n          WHERE id = (SELECT id FROM dashboards WHERE user_id = ?1 ORDER BY created_at, id LIMIT 1)\n            AND NOT EXISTS (SELECT 1 FROM dashboards WHERE user_id = ?1 AND is_default = 1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "29b1061ae58cc618f8b8d434a8981b6b9030dff9da71f3056cc91b3f2b492925"
+}

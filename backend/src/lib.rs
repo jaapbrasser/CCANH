@@ -7,6 +7,7 @@ pub mod auth;
 pub mod cameras;
 pub mod config;
 pub mod credentials;
+pub mod dashboards;
 pub mod demo;
 pub mod events;
 pub mod monitoring;

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dashboards SET is_default = 0 WHERE user_id = ?1 AND id != ?2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "0ffb312d90022fecde584aef9d0a8b0cad7133e88a308f058c0dd6f62d06d180"
+}
