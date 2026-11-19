@@ -204,7 +204,7 @@ pub async fn status_history(
 }
 
 fn warn_if_insecure(camera: &CameraDetail, admin: &AdminUser) {
-    if camera.tls_mode == TlsMode::InsecureSkipVerify {
+    if camera.tls_mode == Some(TlsMode::InsecureSkipVerify) {
         tracing::warn!(
             camera_id = %camera.summary.id,
             host = %camera.summary.host,
@@ -257,7 +257,8 @@ pub async fn create(
     let group_ids = std::mem::take(&mut body.group_ids);
     let tag_ids = std::mem::take(&mut body.tag_ids);
     let (settings, credentials) =
-        CameraSettings::from_new(body).map_err(|e| camera_error(e.into()))?;
+        CameraSettings::from_new(body, &state.settings.current().camera_defaults)
+            .map_err(|e| camera_error(e.into()))?;
     groups::ensure_exist(&state.db, &group_ids)
         .await
         .map_err(super::organization::org_error)?;
@@ -336,7 +337,8 @@ pub async fn update(
             .await
             .map_err(super::organization::org_error)?;
     }
-    let (before, _) = cameras::update(&state.db, &*state.credentials, id, body)
+    let defaults = state.settings.current().camera_defaults;
+    let (before, _) = cameras::update(&state.db, &*state.credentials, id, body, &defaults)
         .await
         .map_err(camera_error)?;
     if let Some(g) = &group_ids {
@@ -692,7 +694,10 @@ pub async fn bulk(
                             monitoring_enabled: Some(*enabled),
                             ..Default::default()
                         };
-                        match cameras::update(&state.db, &*state.credentials, *id, patch).await {
+                        let defaults = state.settings.current().camera_defaults;
+                        match cameras::update(&state.db, &*state.credentials, *id, patch, &defaults)
+                            .await
+                        {
                             Ok(_) | Err(CameraError::NotFound) => {}
                             Err(e) => return Err(fail(camera_error(e))),
                         }

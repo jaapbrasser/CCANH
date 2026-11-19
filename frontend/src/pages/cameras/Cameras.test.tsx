@@ -48,6 +48,7 @@ function detail(s: CameraSummary): CameraDetail {
     ...s,
     tls_mode: "strict",
     tls_pinned_sha256: null,
+    name_pending: false,
     has_credentials: true,
     credential_set: { id: "00000000-0000-7000-8000-0000000000c1", name: "Site A" },
     allow_basic_over_http: false,
@@ -296,6 +297,12 @@ describe("adding a camera", () => {
     let body: Record<string, unknown> = {};
     server.use(
       listHandler(),
+      // Only the camera defaults matter to the form.
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({
+          current: { camera_defaults: { scheme: "http", allow_basic_over_http: true, tls_mode: "insecure_skip_verify" } },
+        }),
+      ),
       http.post("/api/v1/cameras", async ({ request }) => {
         body = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json(detail(HOOK), { status: 201 });
@@ -307,22 +314,59 @@ describe("adding a camera", () => {
     );
     renderApp("/cameras");
     await userEvent.click(await screen.findByRole("button", { name: "Add camera" }));
-    const dialog = screen.getByRole("dialog", { name: "Add camera" });
-    await userEvent.type(within(dialog).getByLabelText("Name"), "Gate cam");
-    await userEvent.type(within(dialog).getByLabelText("Host"), "192.0.2.77");
-    await userEvent.selectOptions(within(dialog).getByLabelText("Certificate check"), "insecure_skip_verify");
-    expect(within(dialog).getByRole("alert")).toHaveTextContent("won't be checked");
+    const dialog = await screen.findByRole("dialog", { name: "Add camera" });
+    // The camera defaults pre-fill the form: HTTP with Basic allowed, no certificate check.
+    await userEvent.type(await within(dialog).findByLabelText("Host"), "192.0.2.77");
+    expect(within(dialog).getByLabelText("Protocol")).toHaveValue("http");
+    expect(within(dialog).getByLabelText("Certificate check")).toBeDisabled();
+    expect(within(dialog).getByText("Not applicable (HTTP)")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Allow Basic authentication over HTTP/)).toBeChecked();
+    // The name is optional.
     await userEvent.click(within(dialog).getByRole("button", { name: "Add camera" }));
     await screen.findByRole("heading", { name: "A1 Crane 1 – Hook" });
     expect(body).toMatchObject({
-      name: "Gate cam",
+      name: "",
       host: "192.0.2.77",
       port: null,
-      scheme: "https",
-      tls_mode: "insecure_skip_verify",
-      tls_pinned_sha256: null,
+      scheme: "http",
+      tls_mode: null,
+      allow_basic_over_http: true,
       monitoring_enabled: true,
     });
+  });
+
+  it("offers the certificate check for HTTPS cameras", async () => {
+    signedInAs(ADMIN);
+    let body: Record<string, unknown> = {};
+    server.use(
+      listHandler(),
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({
+          current: { camera_defaults: { scheme: "http", allow_basic_over_http: true, tls_mode: "insecure_skip_verify" } },
+        }),
+      ),
+      http.post("/api/v1/cameras", async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(detail(HOOK), { status: 201 });
+      }),
+      http.get("/api/v1/cameras/:id", () => HttpResponse.json(detail(HOOK))),
+      http.get("/api/v1/cameras/:id/status-history", () =>
+        HttpResponse.json({ items: [], total: 0, page: 1, page_size: 20 }),
+      ),
+    );
+    renderApp("/cameras");
+    await userEvent.click(await screen.findByRole("button", { name: "Add camera" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add camera" });
+    await userEvent.type(await within(dialog).findByLabelText("Name"), "Gate cam");
+    await userEvent.type(within(dialog).getByLabelText("Host"), "192.0.2.77");
+    await userEvent.selectOptions(within(dialog).getByLabelText("Protocol"), "https");
+    // Starts from the default certificate check, which warns.
+    expect(within(dialog).getByLabelText("Certificate check")).toHaveValue("insecure_skip_verify");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("won't be checked");
+    await userEvent.selectOptions(within(dialog).getByLabelText("Certificate check"), "strict");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add camera" }));
+    await screen.findByRole("heading", { name: "A1 Crane 1 – Hook" });
+    expect(body).toMatchObject({ name: "Gate cam", scheme: "https", tls_mode: "strict", tls_pinned_sha256: null });
   });
 });
 

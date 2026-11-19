@@ -258,7 +258,22 @@ async fn fetch_identity(
         Ok(Err(e)) => return Err(e.into()),
         Err(_) => return Err(bounded("stream info").into()),
     };
-    cameras::save_identity(db, id, &device, caps.as_ref(), profiles.as_deref()).await?;
+    let named = cameras::save_identity(db, id, &device, caps.as_ref(), profiles.as_deref()).await?;
+    if let Some(name) = named {
+        // The admin left the name blank; the camera's own name now fills it (#14).
+        tracing::info!(camera_id = %id, %name, "camera named from its device information");
+        crate::audit::record(
+            db,
+            crate::audit::Event::new(
+                crate::audit::action::CAMERA_UPDATE,
+                crate::audit::Outcome::Success,
+            )
+            .actor(None, "system")
+            .target("camera", id)
+            .details(serde_json::json!({ "name": name, "source": "device" })),
+        )
+        .await?;
+    }
     Ok(())
 }
 

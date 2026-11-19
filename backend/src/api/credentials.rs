@@ -365,6 +365,33 @@ async fn run_test(
     result
 }
 
+/// Decrypt the credentials a test should use, without storing anything. A
+/// set must be a shared one (private sets belong to their camera).
+pub(crate) async fn resolve_for_test(
+    state: &AppState,
+    input: CredentialInput,
+) -> Result<Option<Credentials>, ApiError> {
+    match input {
+        CredentialInput::None => Ok(None),
+        CredentialInput::Inline { username, password } => {
+            Ok(Some(Credentials { username, password }))
+        }
+        CredentialInput::Set { id } => {
+            if !creds::is_shared(&state.db, id).await? {
+                return Err(ApiError::BadRequest(
+                    "The selected credential set does not exist.".into(),
+                ));
+            }
+            let secret = creds::secret(&state.db, id)
+                .await?
+                .ok_or(ApiError::NotFound)?;
+            Ok(Some(state.credentials.open(&secret).map_err(|e| {
+                ApiError::Internal(format!("credential store: {e}"))
+            })?))
+        }
+    }
+}
+
 /// Start a connection test for camera settings, without saving anything.
 ///
 /// Required role: admin. Runs as a background task (kind `test_connection`):
@@ -408,26 +435,7 @@ pub async fn test_connection(
     };
 
     let credentials = match body.credentials {
-        Some(CredentialInput::None) => None,
-        Some(CredentialInput::Inline { username, password }) => {
-            Some(Credentials { username, password })
-        }
-        Some(CredentialInput::Set { id }) => {
-            if !creds::is_shared(&state.db, id).await? {
-                return Err(ApiError::BadRequest(
-                    "The selected credential set does not exist.".into(),
-                ));
-            }
-            let secret = creds::secret(&state.db, id)
-                .await?
-                .ok_or(ApiError::NotFound)?;
-            Some(
-                state
-                    .credentials
-                    .open(&secret)
-                    .map_err(|e| ApiError::Internal(format!("credential store: {e}")))?,
-            )
-        }
+        Some(input) => resolve_for_test(&state, input).await?,
         None => match body.camera_id {
             Some(cid) => {
                 let target = cameras::target(&state.db, cid)

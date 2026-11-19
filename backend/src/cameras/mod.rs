@@ -14,6 +14,7 @@ use crate::providers::axis::tls::TlsPolicy;
 use crate::providers::{
     CameraCapabilities, DeviceInfo, ErrorCategory, ProviderError, ProviderTarget, StreamProfile,
 };
+use crate::settings::CameraDefaults;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CameraError {
@@ -265,6 +266,7 @@ pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx
                   c.manufacturer, c.model, c.firmware_version,
                   c.monitoring_enabled AS "monitoring_enabled: bool",
                   c.tls_mode AS "tls_mode: TlsMode", c.tls_pinned_sha256,
+                  c.name_auto AS "name_auto: bool",
                   c.credential_set_id AS "credential_set_id: Hyphenated", cs.name AS credential_set_name,
                   c.allow_basic_over_http AS "allow_basic_over_http: bool",
                   c.serial_number, c.mac_address, c.device_name, c.device_hostname,
@@ -313,8 +315,9 @@ pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx
             identity_error_category: r.identity_error_category,
             identity_error_message: r.identity_error_message,
         }),
-        tls_mode: r.tls_mode,
+        tls_mode: (r.scheme == Scheme::Https).then_some(r.tls_mode),
         tls_pinned_sha256: r.tls_pinned_sha256,
+        name_pending: r.name_auto,
         has_credentials: r.credential_set_id.is_some(),
         credential_set: r
             .credential_set_id
@@ -374,6 +377,8 @@ pub async fn set_stream_overrides(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CameraSettings {
     pub name: String,
+    /// `name` is a placeholder to replace with the camera's own name (issue #14).
+    pub name_auto: bool,
     pub host: String,
     pub port: u16,
     pub scheme: Scheme,
@@ -390,18 +395,25 @@ pub enum CredentialChange {
 }
 
 impl CameraSettings {
-    /// Validate a new camera, splitting off its credential input.
-    pub fn from_new(n: NewCamera) -> Result<(Self, Option<CredentialInput>), ValidationError> {
-        let scheme = n.scheme;
+    /// Validate a new camera, splitting off its credential input. Fields the
+    /// request leaves out come from the camera defaults setting (issue #18).
+    pub fn from_new(
+        n: NewCamera,
+        defaults: &CameraDefaults,
+    ) -> Result<(Self, Option<CredentialInput>), ValidationError> {
+        let scheme = n.scheme.unwrap_or(defaults.scheme);
         let settings = Self::validated(Self {
-            name: n.name,
+            name: n.name.unwrap_or_default(),
+            name_auto: false,
             host: n.host,
             port: n.port.unwrap_or_else(|| scheme.default_port()),
             scheme,
-            tls_mode: n.tls_mode,
+            tls_mode: n.tls_mode.unwrap_or(defaults.tls_mode),
             tls_pinned_sha256: n.tls_pinned_sha256,
             monitoring_enabled: n.monitoring_enabled,
-            allow_basic_over_http: n.allow_basic_over_http,
+            allow_basic_over_http: n
+                .allow_basic_over_http
+                .unwrap_or(defaults.allow_basic_over_http),
         })?;
         Ok((settings, n.credentials))
     }
@@ -411,20 +423,30 @@ impl CameraSettings {
         tls_policy(self.tls_mode, self.tls_pinned_sha256.as_deref())
     }
 
-    /// Apply a patch to the current settings.
+    /// Apply a patch to the current settings. A camera switched from HTTP to
+    /// HTTPS without a certificate mode gets the default one.
     pub fn patched(
         current: &CameraDetail,
         p: CameraPatch,
+        defaults: &CameraDefaults,
     ) -> Result<(Self, CredentialChange), ValidationError> {
         let s = &current.summary;
-        let tls_mode = p.tls_mode.unwrap_or(current.tls_mode);
+        let current_tls = current.tls_mode.unwrap_or(defaults.tls_mode);
+        let tls_mode = p.tls_mode.unwrap_or(current_tls);
         let pin = match (p.tls_pinned_sha256, tls_mode) {
             (Some(pin), _) => Some(pin),
             (None, TlsMode::Pinned) => current.tls_pinned_sha256.clone(),
             (None, _) => None,
         };
+        // Keep a placeholder name a placeholder unless the admin names it.
+        let (name, name_auto) = match p.name {
+            Some(name) => (name, false),
+            None if current.name_pending => (String::new(), false),
+            None => (s.name.clone(), false),
+        };
         let settings = Self::validated(Self {
-            name: p.name.unwrap_or_else(|| s.name.clone()),
+            name,
+            name_auto,
             host: p.host.unwrap_or_else(|| s.host.clone()),
             port: p.port.unwrap_or(s.port),
             scheme: p.scheme.unwrap_or(s.scheme),
@@ -442,9 +464,21 @@ impl CameraSettings {
     }
 
     fn validated(mut s: Self) -> Result<Self, ValidationError> {
-        s.name = validate_name(&s.name)?;
         s.host = validate_host(&s.host)?;
         s.port = validate_port(s.port)?;
+        if s.name.trim().is_empty() {
+            // No name: show the address until the camera reports its own.
+            s.name = address_label(&s.host, s.port, s.scheme);
+            s.name_auto = true;
+        } else {
+            s.name = validate_name(&s.name)?;
+        }
+        if s.scheme == Scheme::Http {
+            // No certificate check over HTTP (issue #17). The column is NOT NULL,
+            // so store the neutral value; the API reports `null`.
+            s.tls_mode = TlsMode::Strict;
+            s.tls_pinned_sha256 = None;
+        }
         s.tls_pinned_sha256 = match (s.tls_mode, s.tls_pinned_sha256.as_deref()) {
             (TlsMode::Pinned, None) => return Err(ValidationError::PinMissing),
             (TlsMode::Pinned, Some(fp)) => Some(normalize_fingerprint(fp)?),
@@ -518,8 +552,8 @@ pub async fn create(
     let inserted = sqlx::query!(
         "INSERT INTO cameras (id, name, host, port, scheme, tls_mode, tls_pinned_sha256,
                               monitoring_enabled, credential_set_id, allow_basic_over_http,
-                              created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)",
+                              created_at, updated_at, name_auto)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, ?12)",
         hid,
         s.name,
         s.host,
@@ -530,7 +564,8 @@ pub async fn create(
         s.monitoring_enabled,
         set_hid,
         s.allow_basic_over_http,
-        now
+        now,
+        s.name_auto
     )
     .execute(&mut *tx)
     .await;
@@ -553,9 +588,10 @@ pub async fn update(
     store: &dyn CredentialStore,
     id: Uuid,
     patch: CameraPatch,
+    defaults: &CameraDefaults,
 ) -> Result<(CameraDetail, CameraDetail), CameraError> {
     let before = get(db, id).await?.ok_or(CameraError::NotFound)?;
-    let (s, change) = CameraSettings::patched(&before, patch)?;
+    let (s, change) = CameraSettings::patched(&before, patch, defaults)?;
     let reset = s.targets_differ(&before);
     let hid = id.hyphenated();
     let now = OffsetDateTime::now_utc();
@@ -579,7 +615,7 @@ pub async fn update(
         "UPDATE cameras
             SET name = ?2, host = ?3, port = ?4, scheme = ?5, tls_mode = ?6,
                 tls_pinned_sha256 = ?7, monitoring_enabled = ?8, credential_set_id = ?9,
-                allow_basic_over_http = ?10, updated_at = ?11
+                allow_basic_over_http = ?10, updated_at = ?11, name_auto = ?12
           WHERE id = ?1",
         hid,
         s.name,
@@ -591,7 +627,8 @@ pub async fn update(
         s.monitoring_enabled,
         new_set_hid,
         s.allow_basic_over_http,
-        now
+        now,
+        s.name_auto
     )
     .execute(&mut *tx)
     .await;
@@ -849,14 +886,15 @@ pub async fn write_status(
 }
 
 /// Store identity, capabilities and stream profiles fetched from the provider.
-/// `None` for capabilities/profiles keeps what's stored.
+/// `None` for capabilities/profiles keeps what's stored. A camera nobody named
+/// gets its own name (issue #14); returns that name when it does.
 pub async fn save_identity(
     db: &SqlitePool,
     id: Uuid,
     device: &DeviceInfo,
     capabilities: Option<&CameraCapabilities>,
     profiles: Option<&[StreamProfile]>,
-) -> Result<(), sqlx::Error> {
+) -> Result<Option<String>, sqlx::Error> {
     let hid = id.hyphenated();
     let now = OffsetDateTime::now_utc();
     let network = device
@@ -888,7 +926,19 @@ pub async fn save_identity(
     )
     .execute(db)
     .await?;
-    Ok(())
+    let Some(name) = auto_name(device) else {
+        return Ok(None);
+    };
+    let renamed = sqlx::query!(
+        "UPDATE cameras SET name = ?2, name_auto = 0, updated_at = ?3
+          WHERE id = ?1 AND name_auto = 1",
+        hid,
+        name,
+        now
+    )
+    .execute(db)
+    .await?;
+    Ok((renamed.rows_affected() == 1).then_some(name))
 }
 
 pub async fn history(
@@ -931,22 +981,177 @@ mod tests {
     use super::*;
     use crate::storage;
 
+    fn defaults() -> CameraDefaults {
+        CameraDefaults::from(&crate::config::CameraDefaultsConfig::default())
+    }
+
     fn new(name: &str, host: &str) -> CameraSettings {
-        CameraSettings::from_new(NewCamera {
-            name: name.into(),
+        CameraSettings::from_new(
+            NewCamera {
+                name: Some(name.into()),
+                host: host.into(),
+                port: None,
+                scheme: Some(Scheme::Https),
+                tls_mode: Some(TlsMode::Strict),
+                tls_pinned_sha256: None,
+                monitoring_enabled: true,
+                credentials: None,
+                allow_basic_over_http: Some(false),
+                group_ids: vec![],
+                tag_ids: vec![],
+            },
+            &defaults(),
+        )
+        .unwrap()
+        .0
+    }
+
+    fn bare(host: &str) -> NewCamera {
+        NewCamera {
+            name: None,
             host: host.into(),
             port: None,
-            scheme: Scheme::Https,
-            tls_mode: TlsMode::Strict,
+            scheme: None,
+            tls_mode: None,
             tls_pinned_sha256: None,
             monitoring_enabled: true,
             credentials: None,
-            allow_basic_over_http: false,
+            allow_basic_over_http: None,
             group_ids: vec![],
             tag_ids: vec![],
-        })
-        .unwrap()
-        .0
+        }
+    }
+
+    #[test]
+    fn omitted_fields_come_from_the_camera_defaults() {
+        let (s, _) = CameraSettings::from_new(bare("192.0.2.9"), &defaults()).unwrap();
+        assert_eq!(s.scheme, Scheme::Http);
+        assert_eq!(s.port, 80);
+        assert!(s.allow_basic_over_http);
+        // Certificate settings don't apply over HTTP.
+        assert_eq!(s.tls_mode, TlsMode::Strict);
+        assert_eq!(s.tls_pinned_sha256, None);
+
+        let strict = CameraDefaults {
+            scheme: Scheme::Https,
+            allow_basic_over_http: false,
+            tls_mode: TlsMode::Strict,
+        };
+        let (s, _) = CameraSettings::from_new(bare("192.0.2.9"), &strict).unwrap();
+        assert_eq!(
+            (s.scheme, s.port, s.allow_basic_over_http),
+            (Scheme::Https, 443, false)
+        );
+        // Explicit values win over the defaults.
+        let mut n = bare("192.0.2.9");
+        n.scheme = Some(Scheme::Https);
+        n.tls_mode = Some(TlsMode::Strict);
+        let (s, _) = CameraSettings::from_new(n, &defaults()).unwrap();
+        assert_eq!(s.tls_mode, TlsMode::Strict);
+    }
+
+    #[tokio::test]
+    async fn unnamed_cameras_show_their_address_until_identified() {
+        let db = db().await;
+        let mut n = bare("192.0.2.10");
+        n.port = Some(8080);
+        let (s, _) = CameraSettings::from_new(n, &defaults()).unwrap();
+        assert!(s.name_auto);
+        let cam = create(&db, &*store(), &s, None).await.unwrap();
+        assert_eq!(cam.summary.name, "192.0.2.10:8080");
+        assert!(cam.name_pending);
+        assert_eq!(
+            cam.tls_mode, None,
+            "HTTP cameras report no certificate mode"
+        );
+
+        let id = cam.summary.id;
+        let device = DeviceInfo {
+            device_name: Some("Hook cam".into()),
+            ..Default::default()
+        };
+        let named = save_identity(&db, id, &device, None, None).await.unwrap();
+        assert_eq!(named.as_deref(), Some("Hook cam"));
+        let cam = get(&db, id).await.unwrap().unwrap();
+        assert_eq!(cam.summary.name, "Hook cam");
+        assert!(!cam.name_pending);
+
+        // Set once: a later change on the camera doesn't rename it.
+        let renamed = DeviceInfo {
+            device_name: Some("Other".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            save_identity(&db, id, &renamed, None, None).await.unwrap(),
+            None
+        );
+        assert_eq!(
+            get(&db, id).await.unwrap().unwrap().summary.name,
+            "Hook cam"
+        );
+    }
+
+    #[tokio::test]
+    async fn admin_names_are_never_replaced_and_blank_means_auto() {
+        let db = db().await;
+        let cam = create(&db, &*store(), &new("Crane 1", "192.0.2.11"), None)
+            .await
+            .unwrap();
+        let id = cam.summary.id;
+        let device = DeviceInfo {
+            device_name: Some("Hook cam".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            save_identity(&db, id, &device, None, None).await.unwrap(),
+            None
+        );
+        assert_eq!(get(&db, id).await.unwrap().unwrap().summary.name, "Crane 1");
+
+        // Clearing the name hands it back to the camera.
+        let patch = CameraPatch {
+            name: Some(String::new()),
+            ..Default::default()
+        };
+        let (_, after) = update(&db, &*store(), id, patch, &defaults())
+            .await
+            .unwrap();
+        assert_eq!(after.summary.name, "192.0.2.11");
+        assert!(after.name_pending);
+    }
+
+    #[tokio::test]
+    async fn switching_to_http_clears_certificate_settings() {
+        let db = db().await;
+        let mut n = bare("192.0.2.12");
+        n.scheme = Some(Scheme::Https);
+        n.tls_mode = Some(TlsMode::Pinned);
+        n.tls_pinned_sha256 = Some("ab".repeat(32));
+        let (s, _) = CameraSettings::from_new(n, &defaults()).unwrap();
+        let cam = create(&db, &*store(), &s, None).await.unwrap();
+        assert_eq!(cam.tls_mode, Some(TlsMode::Pinned));
+
+        let to_http = CameraPatch {
+            scheme: Some(Scheme::Http),
+            port: Some(80),
+            ..Default::default()
+        };
+        let (_, after) = update(&db, &*store(), cam.summary.id, to_http, &defaults())
+            .await
+            .unwrap();
+        assert_eq!(after.tls_mode, None);
+        assert_eq!(after.tls_pinned_sha256, None);
+
+        // Back to HTTPS without a mode: the default certificate check applies.
+        let to_https = CameraPatch {
+            scheme: Some(Scheme::Https),
+            port: Some(443),
+            ..Default::default()
+        };
+        let (_, after) = update(&db, &*store(), cam.summary.id, to_https, &defaults())
+            .await
+            .unwrap();
+        assert_eq!(after.tls_mode, Some(TlsMode::InsecureSkipVerify));
     }
 
     fn store() -> Box<dyn CredentialStore> {
@@ -976,23 +1181,23 @@ mod tests {
     #[tokio::test]
     async fn pinned_requires_valid_fingerprint() {
         let base = |pin: Option<String>| NewCamera {
-            name: "c".into(),
+            name: Some("c".into()),
             host: "cam.local".into(),
             port: None,
-            scheme: Scheme::Https,
-            tls_mode: TlsMode::Pinned,
+            scheme: Some(Scheme::Https),
+            tls_mode: Some(TlsMode::Pinned),
             tls_pinned_sha256: pin,
             monitoring_enabled: true,
             credentials: None,
-            allow_basic_over_http: false,
+            allow_basic_over_http: Some(false),
             group_ids: vec![],
             tag_ids: vec![],
         };
         assert_eq!(
-            CameraSettings::from_new(base(None)).err(),
+            CameraSettings::from_new(base(None), &defaults()).err(),
             Some(ValidationError::PinMissing)
         );
-        let (ok, _) = CameraSettings::from_new(base(Some("ab".repeat(32)))).unwrap();
+        let (ok, _) = CameraSettings::from_new(base(Some("ab".repeat(32))), &defaults()).unwrap();
         assert!(ok.tls_pinned_sha256.clone().unwrap().starts_with("AB:"));
         assert!(matches!(ok.tls_policy(), TlsPolicy::Pinned(fp) if fp.starts_with("AB:")));
     }
@@ -1052,6 +1257,7 @@ mod tests {
                 name: Some("renamed".into()),
                 ..Default::default()
             },
+            &defaults(),
         )
         .await
         .unwrap();
@@ -1069,6 +1275,7 @@ mod tests {
                 host: Some("192.0.2.99".into()),
                 ..Default::default()
             },
+            &defaults(),
         )
         .await
         .unwrap();
@@ -1169,6 +1376,7 @@ mod tests {
                 credentials: Some(CredentialInput::Set { id: shared.id }),
                 ..Default::default()
             },
+            &defaults(),
         )
         .await
         .unwrap();
@@ -1194,6 +1402,7 @@ mod tests {
                 credentials: Some(CredentialInput::Set { id: Uuid::now_v7() }),
                 ..Default::default()
             },
+            &defaults(),
         )
         .await;
         assert!(matches!(bad, Err(CameraError::UnknownCredentialSet)));
@@ -1207,6 +1416,7 @@ mod tests {
                 credentials: Some(CredentialInput::None),
                 ..Default::default()
             },
+            &defaults(),
         )
         .await
         .unwrap();

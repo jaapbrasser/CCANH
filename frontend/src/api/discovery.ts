@@ -92,3 +92,14 @@ export function applyProgress(
     jobs?.map((j) => (j.id === jobId ? { ...j, ...counters } : j)),
   );
 }
+
+export type CredentialTestResult = components["schemas"]["CredentialTestResult"];
+export type TestDiscoveredCredentials = components["schemas"]["TestDiscoveredCredentials"];
+
+/** Start a credential test against discovered devices; follow the returned task. */
+export function useTestDiscoveredCredentials(jobId: string) {
+  return useMutation({
+    mutationFn: (body: TestDiscoveredCredentials) =>
+      unwrap(api.POST("/api/v1/discovery/jobs/{id}/test-credentials", { params: { path: { id: jobId } }, body })),
+  });
+}

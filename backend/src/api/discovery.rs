@@ -240,6 +240,10 @@ pub struct RegisterDiscovered {
     pub tag_ids: Vec<Uuid>,
     #[serde(default = "default_true")]
     pub monitoring_enabled: bool,
+    /// Allow Basic authentication over plain HTTP for the results found on
+    /// HTTP (ignored for HTTPS ones). Omit to use the camera defaults setting.
+    #[serde(default)]
+    pub allow_basic_over_http: Option<bool>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -315,6 +319,10 @@ pub async fn register(
         return Err(ApiError::NotFound);
     }
     let results = discovery::by_id(discovery::classified_results(&state.db, id).await?);
+    let defaults = state.settings.current().camera_defaults;
+    let allow_basic = body
+        .allow_basic_over_http
+        .unwrap_or(defaults.allow_basic_over_http);
 
     let mut out = RegisterOutcome {
         registered: Vec::new(),
@@ -342,31 +350,33 @@ pub async fn register(
             out.skipped.push(skip(reason));
             continue;
         }
-        let name = d
-            .device_name
-            .clone()
-            .filter(|n| !n.trim().is_empty())
-            .unwrap_or_else(|| format!("{} {}", d.model.as_deref().unwrap_or("AXIS camera"), d.ip));
+        // The camera's own name, or none: then it shows its address until the
+        // first identity check fills the name in (issue #14).
+        let name = cameras::auto_name(&crate::providers::DeviceInfo {
+            device_name: d.device_name.clone(),
+            model: d.model.clone(),
+            serial_number: d.serial_number.clone(),
+            hostname: d.hostname.clone(),
+            ..Default::default()
+        });
         let https = d.scheme == Scheme::Https;
         let pin = https.then(|| d.tls_fingerprint_sha256.clone()).flatten();
         let new = NewCamera {
-            name: name.chars().take(cameras::MAX_NAME_LEN).collect(),
+            name,
             host: d.ip.clone(),
             port: Some(d.port),
-            scheme: d.scheme,
-            tls_mode: if pin.is_some() {
-                TlsMode::Pinned
-            } else {
-                TlsMode::Strict
-            },
+            scheme: Some(d.scheme),
+            // Pin the certificate seen during the scan, now that the admin has
+            // approved the device; otherwise the default certificate check.
+            tls_mode: pin.is_some().then_some(TlsMode::Pinned),
             tls_pinned_sha256: pin,
             monitoring_enabled: body.monitoring_enabled,
             credentials: copy_credentials(&body.credentials),
-            allow_basic_over_http: false,
+            allow_basic_over_http: Some(!https && allow_basic),
             group_ids: Vec::new(),
             tag_ids: Vec::new(),
         };
-        let (settings, credentials) = match CameraSettings::from_new(new) {
+        let (settings, credentials) = match CameraSettings::from_new(new, &defaults) {
             Ok(v) => v,
             Err(e) => {
                 out.skipped.push(skip(e.to_string()));
@@ -422,4 +432,168 @@ pub async fn register(
         });
     }
     Ok(Json(out))
+}
+
+/// Most devices one credential test checks (the first ones selected).
+pub const MAX_CREDENTIAL_TESTS: usize = 20;
+/// Devices tested at once, so a test never floods the network or camera accounts.
+const CREDENTIAL_TEST_CONCURRENCY: usize = 4;
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct TestDiscoveredCredentials {
+    /// Results to test (1–20).
+    pub result_ids: Vec<Uuid>,
+    /// The credentials registration would use (none, a shared set, or inline).
+    pub credentials: CredentialInput,
+    /// Same meaning as in registration; omit to use the camera defaults setting.
+    #[serde(default)]
+    pub allow_basic_over_http: Option<bool>,
+}
+
+/// The outcome for one device.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CredentialTestOutcome {
+    pub result_id: Uuid,
+    pub ip: String,
+    /// The camera accepted the credentials (an authenticated request succeeded).
+    pub ok: bool,
+    pub error_category: Option<crate::providers::ErrorCategory>,
+    /// Short reason when not ok; never contains secrets.
+    pub message: Option<String>,
+}
+
+/// `result` of a `test_credentials` task.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CredentialTestResult {
+    pub results: Vec<CredentialTestOutcome>,
+}
+
+type CredentialTarget = (
+    Uuid,
+    String,
+    std::sync::Arc<dyn crate::providers::CameraProvider>,
+);
+
+async fn test_one((result_id, ip, provider): CredentialTarget) -> CredentialTestOutcome {
+    // Stream profiles need at least a Viewer account: one authenticated request.
+    let (ok, error_category, message) = match provider.get_stream_info().await {
+        Ok(_) => (true, None, None),
+        Err(e) => (false, Some(e.category()), Some(e.to_string())),
+    };
+    CredentialTestOutcome {
+        result_id,
+        ip,
+        ok,
+        error_category,
+        message,
+    }
+}
+
+/// Check credentials against discovered devices before registering them.
+///
+/// Required role: admin. Runs as a background task (kind `test_credentials`):
+/// returns 202 with the task; its `result` is a `CredentialTestResult`. Each
+/// device gets one authenticated request with the same TLS and Basic-auth
+/// settings registration would use; failed authentication is never retried.
+/// Nothing is stored.
+#[utoipa::path(
+    post,
+    path = "/discovery/jobs/{id}/test-credentials",
+    operation_id = "test_discovered_credentials",
+    tag = "discovery",
+    params(("id" = Uuid, Path, description = "Discovery job id")),
+    request_body = TestDiscoveredCredentials,
+    responses(
+        (status = 202, description = "Test started", body = crate::tasks::Task),
+        (status = 400, description = "Invalid selection or credentials", body = Problem),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 403, description = "Not an admin", body = Problem),
+        (status = 404, description = "No such job", body = Problem),
+    )
+)]
+pub async fn test_credentials(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    PathParam(id): PathParam<Uuid>,
+    JsonBody(body): JsonBody<TestDiscoveredCredentials>,
+) -> Result<(StatusCode, Json<crate::tasks::Task>), ApiError> {
+    if body.result_ids.is_empty() || body.result_ids.len() > MAX_CREDENTIAL_TESTS {
+        return Err(ApiError::BadRequest(format!(
+            "select between 1 and {MAX_CREDENTIAL_TESTS} results to test"
+        )));
+    }
+    if discovery::get_job(&state.db, id).await?.is_none() {
+        return Err(ApiError::NotFound);
+    }
+    let results = discovery::by_id(discovery::classified_results(&state.db, id).await?);
+    let defaults = state.settings.current().camera_defaults;
+    let allow_basic = body
+        .allow_basic_over_http
+        .unwrap_or(defaults.allow_basic_over_http);
+    let credentials = super::credentials::resolve_for_test(&state, body.credentials).await?;
+    let factory = state.providers();
+
+    let mut targets = Vec::new();
+    for rid in &body.result_ids {
+        let d = results
+            .get(rid)
+            .ok_or_else(|| ApiError::BadRequest("not a result of this scan".into()))?;
+        let https = d.scheme == Scheme::Https;
+        // As registration would: pin the scanned certificate, else the default check.
+        let tls = match (https, d.tls_fingerprint_sha256.as_deref()) {
+            (true, Some(fp)) => cameras::tls_policy(TlsMode::Pinned, Some(fp)),
+            _ => cameras::tls_policy(defaults.tls_mode, None),
+        };
+        let target = crate::providers::ProviderTarget {
+            host: d.ip.clone(),
+            port: d.port,
+            https,
+            tls,
+            credentials: credentials.clone(),
+            allow_basic_over_http: !https && allow_basic,
+        };
+        let entry: CredentialTarget = (*rid, d.ip.clone(), factory.create(&target));
+        targets.push(entry);
+    }
+
+    let creator = Creator {
+        id: admin.id,
+        username: admin.username.clone(),
+    };
+    let total = u32::try_from(targets.len()).unwrap_or(u32::MAX);
+    // Boxed up front: keeps the spawned future's type concrete (a generic
+    // closure over `dyn` trips rustc's higher-ranked Send check).
+    let tests: Vec<futures_util::future::BoxFuture<'static, CredentialTestOutcome>> = targets
+        .into_iter()
+        .map(|t| Box::pin(test_one(t)) as futures_util::future::BoxFuture<'static, _>)
+        .collect();
+    let task = state
+        .tasks
+        .spawn(
+            "test_credentials",
+            None,
+            Some(creator),
+            move |ctx| async move {
+                use futures_util::StreamExt;
+                ctx.progress(0, Some(total), "Testing credentials").await;
+                let mut tests =
+                    futures_util::stream::iter(tests).buffer_unordered(CREDENTIAL_TEST_CONCURRENCY);
+                let mut out = Vec::new();
+                loop {
+                    let next = tokio::select! {
+                        () = ctx.cancel.cancelled() => break,
+                        n = tests.next() => n,
+                    };
+                    let Some(outcome) = next else { break };
+                    out.push(outcome);
+                    let done = u32::try_from(out.len()).unwrap_or(u32::MAX);
+                    ctx.progress(done, Some(total), "Testing credentials").await;
+                }
+                out.sort_by(|a, b| a.ip.cmp(&b.ip));
+                serde_json::to_value(CredentialTestResult { results: out })
+                    .map_err(|e| crate::tasks::TaskFailure::internal(e.to_string()))
+            },
+        )
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
 }

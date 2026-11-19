@@ -270,6 +270,29 @@ impl Default for RetentionConfig {
     }
 }
 
+/// Settings new cameras get unless the admin chooses otherwise (issue #18).
+/// The shipped defaults favour ease of use on a closed local network (ADR
+/// 0011): plain HTTP with Basic authentication allowed. Becomes
+/// admin-editable at runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CameraDefaultsConfig {
+    pub scheme: crate::cameras::Scheme,
+    pub allow_basic_over_http: bool,
+    /// Certificate check for cameras added with HTTPS.
+    pub tls_mode: crate::cameras::TlsMode,
+}
+
+impl Default for CameraDefaultsConfig {
+    fn default() -> Self {
+        Self {
+            scheme: crate::cameras::Scheme::Http,
+            allow_basic_over_http: true,
+            tls_mode: crate::cameras::TlsMode::InsecureSkipVerify,
+        }
+    }
+}
+
 /// Fully merged configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -283,6 +306,7 @@ pub struct Config {
     pub streaming: StreamingConfig,
     pub discovery: DiscoveryConfig,
     pub retention: RetentionConfig,
+    pub camera_defaults: CameraDefaultsConfig,
     pub logging: LoggingConfig,
     /// Demo mode only: keep `demo.db` between runs instead of reseeding.
     pub demo_keep_state: bool,
@@ -299,6 +323,7 @@ impl Default for Config {
             streaming: StreamingConfig::default(),
             discovery: DiscoveryConfig::default(),
             retention: RetentionConfig::default(),
+            camera_defaults: CameraDefaultsConfig::default(),
             logging: LoggingConfig::default(),
             demo_keep_state: false,
         }

@@ -15,6 +15,7 @@ import {
   type TestConnectionResult,
 } from "../../api/credentials";
 import type { components } from "../../api/schema";
+import { SHIPPED_CAMERA_DEFAULTS, useSettings, type CameraDefaults } from "../../api/settings";
 import { isTerminal, useCancelTask, useTask } from "../../api/tasks";
 import { Alert, Button, Dialog, Field } from "../../components/ui";
 import { errorCategoryLabel } from "../../utils/format";
@@ -40,16 +41,18 @@ interface FormState {
   tag_ids: string[];
 }
 
-function initial(camera?: CameraDetail): FormState {
+function initial(defaults: CameraDefaults, camera?: CameraDetail): FormState {
   return {
-    name: camera?.name ?? "",
+    // A placeholder name (the address) is shown as blank: "use the camera's name".
+    name: camera && !camera.name_pending ? camera.name : "",
     host: camera?.host ?? "",
     port: camera ? String(camera.port) : "",
-    scheme: camera?.scheme ?? "https",
-    tls_mode: camera?.tls_mode ?? "strict",
+    scheme: camera?.scheme ?? defaults.scheme,
+    // HTTP cameras have no certificate mode; switching to HTTPS starts from the default.
+    tls_mode: camera?.tls_mode ?? defaults.tls_mode,
     tls_pinned_sha256: camera?.tls_pinned_sha256 ?? "",
     monitoring_enabled: camera?.monitoring_enabled ?? true,
-    allow_basic_over_http: camera?.allow_basic_over_http ?? false,
+    allow_basic_over_http: camera?.allow_basic_over_http ?? defaults.allow_basic_over_http,
     credMode: camera ? "keep" : "none",
     setId: camera?.credential_set?.id ?? "",
     username: "",
@@ -85,9 +88,14 @@ function connectionFields(f: FormState) {
 }
 
 function toBody(f: FormState): NewCamera {
+  const conn = connectionFields(f);
   return {
+    // Blank: the server shows the address until the camera reports its own name.
     name: f.name.trim(),
-    ...connectionFields(f),
+    ...conn,
+    // Certificate settings don't apply over HTTP.
+    tls_mode: f.scheme === "https" ? conn.tls_mode : null,
+    tls_pinned_sha256: f.scheme === "https" ? conn.tls_pinned_sha256 : null,
     monitoring_enabled: f.monitoring_enabled,
     credentials: credentialInput(f) ?? null,
     group_ids: f.group_ids,
@@ -165,7 +173,31 @@ export function CameraFormDialog({
   onClose: () => void;
   onSaved: (c: CameraDetail) => void;
 }) {
-  const [form, setForm] = useState(() => initial(camera));
+  // New cameras start from the admin's camera defaults (Settings).
+  const settings = useSettings();
+  if (!camera && settings.isPending) {
+    return (
+      <Dialog title="Add camera" onClose={onClose}>
+        <p className="text-slate-400">Loading…</p>
+      </Dialog>
+    );
+  }
+  const defaults = settings.data?.current.camera_defaults ?? SHIPPED_CAMERA_DEFAULTS;
+  return <CameraForm camera={camera} defaults={defaults} onClose={onClose} onSaved={onSaved} />;
+}
+
+function CameraForm({
+  camera,
+  defaults,
+  onClose,
+  onSaved,
+}: {
+  camera?: CameraDetail;
+  defaults: CameraDefaults;
+  onClose: () => void;
+  onSaved: (c: CameraDetail) => void;
+}) {
+  const [form, setForm] = useState(() => initial(defaults, camera));
   const groups = useGroups();
   const tags = useTags();
   const create = useCreateCamera();
@@ -213,7 +245,14 @@ export function CameraFormDialog({
     <Dialog title={camera ? `Edit ${camera.name}` : "Add camera"} onClose={onClose}>
       <form onSubmit={onSubmit} className="flex max-h-[75vh] flex-col gap-4 overflow-y-auto pr-1">
         {mutation.isError && <Alert>{errorMessage(mutation.error)}</Alert>}
-        <Field label="Name" required autoFocus value={form.name} onChange={(e) => set("name", e.target.value)} />
+        <Field
+          label="Name"
+          autoFocus
+          placeholder="Optional: the camera's own name is used"
+          hint="Leave blank to fill it in from the camera when it connects; its address is shown until then."
+          value={form.name}
+          onChange={(e) => set("name", e.target.value)}
+        />
         <div className="grid grid-cols-[1fr_7rem] gap-3">
           <Field
             label="Host"
@@ -238,18 +277,24 @@ export function CameraFormDialog({
               <option value="http">HTTP</option>
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-sm text-slate-300">
+          <label className={`flex flex-col gap-1 text-sm ${https ? "text-slate-300" : "text-slate-500"}`}>
             Certificate check
-            <select
-              className={select}
-              value={form.tls_mode}
-              disabled={!https}
-              onChange={(e) => set("tls_mode", e.target.value as TlsMode)}
-            >
-              <option value="strict">Strict (default)</option>
-              <option value="pinned">Pinned fingerprint</option>
-              <option value="insecure_skip_verify">Don't verify (insecure)</option>
-            </select>
+            {https ? (
+              <select
+                className={select}
+                value={form.tls_mode}
+                onChange={(e) => set("tls_mode", e.target.value as TlsMode)}
+              >
+                <option value="strict">Strict</option>
+                <option value="pinned">Pinned fingerprint</option>
+                <option value="insecure_skip_verify">Don't verify (insecure)</option>
+              </select>
+            ) : (
+              // HTTP has no certificate: show that plainly instead of a stale mode.
+              <select className={`${select} cursor-not-allowed opacity-50`} value="" disabled>
+                <option value="">Not applicable (HTTP)</option>
+              </select>
+            )}
           </label>
         </div>
         {form.tls_mode === "pinned" && https && (

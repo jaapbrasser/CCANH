@@ -273,6 +273,9 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
           <FavoriteButton cameraId={camera.id} name={camera.name} />
           <h1 className="text-2xl font-semibold">{camera.name}</h1>
           <StatusBadge status={s} />
+          {camera.name_pending && (
+            <span className="text-xs text-slate-500">Name will be filled in from the camera when it connects</span>
+          )}
         </div>
         {isAdmin && (
           <div className="flex gap-2">
@@ -342,7 +345,9 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
               ["Address", <span key="a" className="font-mono">{`${camera.scheme}://${camera.host}:${camera.port}`}</span>],
               [
                 "Certificate check",
-                camera.tls_mode === "insecure_skip_verify" ? (
+                camera.tls_mode == null ? (
+                  <span key="t" className="text-slate-500">Not applicable (HTTP)</span>
+                ) : camera.tls_mode === "insecure_skip_verify" ? (
                   <span key="t" className="text-amber-300">Not verified (insecure)</span>
                 ) : camera.tls_mode === "pinned" ? (
                   <span key="t">Pinned · <span className="font-mono text-xs">{camera.tls_pinned_sha256}</span></span>

@@ -85,3 +85,30 @@ export function useResetRetention() {
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
 }
+
+export type CameraDefaults = components["schemas"]["CameraDefaults"];
+export type CameraDefaultsPatch = components["schemas"]["CameraDefaultsPatch"];
+
+/** What a new camera gets when the server's defaults can't be read yet (ADR 0011). */
+export const SHIPPED_CAMERA_DEFAULTS: CameraDefaults = {
+  scheme: "http",
+  allow_basic_over_http: true,
+  tls_mode: "insecure_skip_verify",
+};
+
+export function useUpdateCameraDefaults() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CameraDefaultsPatch) =>
+      unwrap(api.PATCH("/api/v1/settings/camera-defaults", { body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
+}
+
+export function useResetCameraDefaults() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE("/api/v1/settings/camera-defaults")),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
+}

@@ -5,6 +5,7 @@ import { renderApp } from "../test/render";
 import { ADMIN, live, problem, server, signedInAs } from "../test/server";
 
 const NOW = new Date().toISOString();
+const CAMERA_DEFAULTS = { scheme: "http", allow_basic_over_http: true, tls_mode: "insecure_skip_verify" };
 const MONITORING = {
   interval_secs: 10,
   jitter_percent: 20,
@@ -52,8 +53,8 @@ describe("settings page", () => {
     server.use(
       http.get("/api/v1/settings", () =>
         HttpResponse.json({
-          current: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION },
-          defaults: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION },
+          current: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION, camera_defaults: CAMERA_DEFAULTS },
+          defaults: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION, camera_defaults: CAMERA_DEFAULTS },
           monitor: {
             checks_total: 120,
             failures_total: 7,
@@ -130,8 +131,8 @@ describe("retention settings", () => {
     server.use(
       http.get("/api/v1/settings", () =>
         HttpResponse.json({
-          current: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION },
-          defaults: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION },
+          current: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION, camera_defaults: CAMERA_DEFAULTS },
+          defaults: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION, camera_defaults: CAMERA_DEFAULTS },
           monitor: {
             checks_total: 0,
             failures_total: 0,
@@ -155,6 +156,45 @@ describe("retention settings", () => {
     await userEvent.type(audit, "365");
     await userEvent.click(within(form).getByRole("button", { name: "Save retention settings" }));
     await waitFor(() => expect(patch).toEqual({ audit_days: 365 }));
+  });
+});
+
+describe("camera defaults", () => {
+  it("can be tightened", async () => {
+    signedInAs(ADMIN);
+    let patch: unknown;
+    const all = { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION, camera_defaults: CAMERA_DEFAULTS };
+    server.use(
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({
+          current: all,
+          defaults: all,
+          monitor: {
+            checks_total: 0,
+            failures_total: 0,
+            retries_total: 0,
+            identity_checks_total: 0,
+            checks_in_flight: 0,
+            cameras_monitored: 0,
+            last_tick_unix: 0,
+          },
+        }),
+      ),
+      http.patch("/api/v1/settings/camera-defaults", async ({ request }) => {
+        patch = await request.json();
+        return HttpResponse.json(patch as Record<string, unknown>);
+      }),
+    );
+    renderApp("/settings");
+    const form = await screen.findByRole("form", { name: "Camera defaults" });
+    expect(within(form).getByLabelText("Protocol")).toHaveValue("http");
+    await userEvent.selectOptions(within(form).getByLabelText("Protocol"), "https");
+    await userEvent.selectOptions(within(form).getByLabelText("Certificate check (HTTPS cameras)"), "strict");
+    await userEvent.click(within(form).getByLabelText(/Allow Basic authentication over HTTP/));
+    await userEvent.click(within(form).getByRole("button", { name: "Save camera defaults" }));
+    await waitFor(() =>
+      expect(patch).toEqual({ scheme: "https", allow_basic_over_http: false, tls_mode: "strict" }),
+    );
   });
 });
 

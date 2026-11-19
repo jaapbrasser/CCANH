@@ -120,8 +120,9 @@ describe("camera form credentials and test connection", () => {
     renderApp("/cameras");
     await userEvent.click(await screen.findByRole("button", { name: "Add camera" }));
     const dialog = screen.getByRole("dialog", { name: "Add camera" });
-    await userEvent.type(within(dialog).getByLabelText("Name"), "Gate");
+    await userEvent.type(await within(dialog).findByLabelText("Name"), "Gate");
     await userEvent.type(within(dialog).getByLabelText("Host"), "192.0.2.80");
+    await userEvent.selectOptions(within(dialog).getByLabelText("Protocol"), "https");
     await userEvent.selectOptions(within(dialog).getByLabelText("Authentication"), "set");
     await userEvent.selectOptions(within(dialog).getByLabelText("Credential set"), SET.id);
     await userEvent.click(within(dialog).getByRole("button", { name: "Test connection" }));
@@ -157,11 +158,13 @@ describe("camera form credentials and test connection", () => {
     renderApp("/cameras");
     await userEvent.click(await screen.findByRole("button", { name: "Add camera" }));
     const dialog = screen.getByRole("dialog", { name: "Add camera" });
+    // HTTP with Basic allowed is the shipped default (ADR 0011).
+    await userEvent.type(await within(dialog).findByLabelText("Name"), "Old cam");
+    expect(within(dialog).getByLabelText(/Allow Basic/)).toBeChecked();
+    await userEvent.selectOptions(within(dialog).getByLabelText("Protocol"), "https");
     expect(within(dialog).queryByLabelText(/Allow Basic/)).not.toBeInTheDocument();
-    await userEvent.type(within(dialog).getByLabelText("Name"), "Old cam");
-    await userEvent.type(within(dialog).getByLabelText("Host"), "192.0.2.81");
     await userEvent.selectOptions(within(dialog).getByLabelText("Protocol"), "http");
-    await userEvent.click(within(dialog).getByLabelText(/Allow Basic/));
+    await userEvent.type(within(dialog).getByLabelText("Host"), "192.0.2.81");
     await userEvent.selectOptions(within(dialog).getByLabelText("Authentication"), "inline");
     await userEvent.type(within(dialog).getByLabelText("Camera username"), "root");
     await userEvent.type(within(dialog).getByLabelText("Camera password"), "pw-123");

@@ -160,6 +160,87 @@ describe("discovery page", () => {
         group_ids: [],
         tag_ids: ["00000000-0000-7000-8000-0000000000c1"],
         monitoring_enabled: true,
+        allow_basic_over_http: true,
+      }),
+    );
+  });
+
+  it("tests credentials, allows Basic over HTTP and creates a tag inline", async () => {
+    detail = job("succeeded", [device(41), device(42, { scheme: "http", port: 80, tls_fingerprint_sha256: null })]);
+    let tested: unknown;
+    let registered: unknown;
+    const tags: { id: string; name: string; camera_count: number; created_at: string; updated_at: string }[] = [];
+    const TASK = "00000000-0000-7000-8000-0000000000f9";
+    server.use(
+      http.get("/api/v1/tags", () => HttpResponse.json(tags)),
+      http.post("/api/v1/tags", async ({ request }) => {
+        const { name } = (await request.json()) as { name: string };
+        const tag = { id: "00000000-0000-7000-8000-0000000000c2", name, camera_count: 0, created_at: NOW, updated_at: NOW };
+        tags.push(tag);
+        return HttpResponse.json(tag, { status: 201 });
+      }),
+      http.post("/api/v1/discovery/jobs/:id/test-credentials", async ({ request }) => {
+        tested = await request.json();
+        return HttpResponse.json({ id: TASK, kind: "test_credentials", status: "queued" }, { status: 202 });
+      }),
+      http.get(`/api/v1/tasks/${TASK}`, () =>
+        HttpResponse.json({
+          id: TASK,
+          kind: "test_credentials",
+          status: "succeeded",
+          result: {
+            results: [
+              { result_id: device(41).id, ip: "192.0.2.41", ok: true, error_category: null, message: null },
+              {
+                result_id: device(42).id,
+                ip: "192.0.2.42",
+                ok: false,
+                error_category: "auth_failed",
+                message: "authentication failed: camera rejected the configured credentials",
+              },
+            ],
+          },
+        }),
+      ),
+      http.post("/api/v1/discovery/jobs/:id/register", async ({ request }) => {
+        registered = await request.json();
+        return HttpResponse.json({ registered: [], skipped: [] });
+      }),
+    );
+    renderApp("/discovery");
+    const panel = await screen.findByRole("region", { name: "Scan results" });
+    expect(await within(panel).findByText(/Finished\./)).toBeInTheDocument();
+    await userEvent.click(within(panel).getByLabelText("Select 192.0.2.41"));
+    await userEvent.click(within(panel).getByLabelText("Select 192.0.2.42"));
+    await userEvent.click(within(panel).getByRole("button", { name: "Register 2 selected" }));
+    const dialog = screen.getByRole("dialog", { name: "Register 2 devices" });
+
+    // One of the two was found on HTTP: the Basic option shows, on by default.
+    const basic = within(dialog).getByLabelText(/Allow Basic authentication over HTTP/);
+    expect(basic).toBeChecked();
+    expect(within(dialog).getByText(/Applies to 1 of 2 selected devices/)).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByLabelText("Username and password for these cameras"));
+    await userEvent.type(within(dialog).getByLabelText("Username"), "root");
+    await userEvent.type(within(dialog).getByLabelText("Password"), "pw-123");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Test credentials" }));
+    const result = await within(dialog).findByRole("region", { name: "Credential test result" });
+    expect(result).toHaveTextContent("Credentials accepted by 1 of 2 devices");
+    expect(result).toHaveTextContent("Authentication failed");
+    expect(tested).toEqual({
+      result_ids: [device(41).id, device(42).id],
+      credentials: { type: "inline", username: "root", password: "pw-123" },
+      allow_basic_over_http: true,
+    });
+
+    await userEvent.type(within(dialog).getByLabelText("New tag name"), "Site B{Enter}");
+    expect(await within(dialog).findByRole("checkbox", { name: "Site B" })).toBeChecked();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Register 2" }));
+    await waitFor(() =>
+      expect(registered).toMatchObject({
+        tag_ids: ["00000000-0000-7000-8000-0000000000c2"],
+        allow_basic_over_http: true,
       }),
     );
   });

@@ -11,8 +11,9 @@ use crate::audit::{self, action, Event as AuditEvent, Outcome};
 use crate::auth::{AdminUser, ClientIp};
 use crate::monitoring::MonitorStatsSnapshot;
 use crate::settings::{
-    DiscoveryPatch, DiscoverySettings, MonitoringPatch, MonitoringSettings, RetentionPatch,
-    RetentionSettings, RuntimeSettings, SettingsError, StreamingPatch, StreamingSettings,
+    CameraDefaults, CameraDefaultsPatch, DiscoveryPatch, DiscoverySettings, MonitoringPatch,
+    MonitoringSettings, RetentionPatch, RetentionSettings, RuntimeSettings, SettingsError,
+    StreamingPatch, StreamingSettings,
 };
 use crate::AppState;
 
@@ -353,6 +354,83 @@ pub async fn reset_retention(
         AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
             .actor(Some(admin.id), &admin.username)
             .target("settings", "retention")
+            .ip(ip)
+            .details(serde_json::json!({ "from": before, "to": after, "reset": true })),
+    )
+    .await?;
+    Ok(Json(after))
+}
+
+/// Change the defaults new cameras get (scheme, Basic over HTTP, certificate check).
+///
+/// Required role: admin. Only affects cameras added afterwards; existing
+/// cameras keep their settings. Audited.
+#[utoipa::path(
+    patch,
+    path = "/settings/camera-defaults",
+    operation_id = "update_camera_defaults",
+    tag = "settings",
+    request_body = CameraDefaultsPatch,
+    responses(
+        (status = 200, description = "New camera defaults", body = CameraDefaults),
+        (status = 400, description = "Invalid value", body = Problem),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 403, description = "Not an admin", body = Problem),
+    )
+)]
+pub async fn update_camera_defaults(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    JsonBody(patch): JsonBody<CameraDefaultsPatch>,
+) -> Result<Json<CameraDefaults>, ApiError> {
+    let (before, after) = state
+        .settings
+        .update_camera_defaults(&state.db, &patch, &admin.username)
+        .await
+        .map_err(settings_error)?;
+    audit::record(
+        &state.db,
+        AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
+            .actor(Some(admin.id), &admin.username)
+            .target("settings", "camera_defaults")
+            .ip(ip)
+            .details(serde_json::json!({ "from": before, "to": after })),
+    )
+    .await?;
+    Ok(Json(after))
+}
+
+/// Reset the camera defaults to the startup defaults.
+///
+/// Required role: admin. Audited.
+#[utoipa::path(
+    delete,
+    path = "/settings/camera-defaults",
+    operation_id = "reset_camera_defaults",
+    tag = "settings",
+    responses(
+        (status = 200, description = "Default camera defaults, now in effect", body = CameraDefaults),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 403, description = "Not an admin", body = Problem),
+    )
+)]
+pub async fn reset_camera_defaults(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+) -> Result<Json<CameraDefaults>, ApiError> {
+    let before = state.settings.current().camera_defaults;
+    let after = state
+        .settings
+        .reset_camera_defaults(&state.db)
+        .await
+        .map_err(settings_error)?;
+    audit::record(
+        &state.db,
+        AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
+            .actor(Some(admin.id), &admin.username)
+            .target("settings", "camera_defaults")
             .ip(ip)
             .details(serde_json::json!({ "from": before, "to": after, "reset": true })),
     )

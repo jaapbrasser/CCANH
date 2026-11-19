@@ -91,6 +91,18 @@ tasks_days = 30
 # Audit log: 0 keeps it forever (the default); otherwise at least 90.
 audit_days = 0
 
+[camera_defaults]
+# What a new camera gets when the admin doesn't choose (the add-camera form and
+# discovery registration are pre-filled with these). The shipped values favour
+# ease of use on a closed local network (ADR 0011); tighten them here or on the
+# Settings page.
+scheme = "http"                     # "http" or "https"
+# Basic authentication over plain HTTP sends the camera password readable on the network.
+allow_basic_over_http = true
+# Certificate check for HTTPS cameras: "strict", "insecure_skip_verify"
+# ("pinned" needs a fingerprint per camera, so it can't be a default).
+tls_mode = "insecure_skip_verify"
+
 [logging]
 # tracing filter directive; RUST_LOG overrides it.
 level = "info"

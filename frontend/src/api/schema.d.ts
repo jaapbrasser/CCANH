@@ -446,6 +446,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/discovery/jobs/{id}/test-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check credentials against discovered devices before registering them.
+         * @description Required role: admin. Runs as a background task (kind `test_credentials`):
+         *     returns 202 with the task; its `result` is a `CredentialTestResult`. Each
+         *     device gets one authenticated request with the same TLS and Basic-auth
+         *     settings registration would use; failed authentication is never retried.
+         *     Nothing is stored.
+         */
+        post: operations["test_discovered_credentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/discovery/preview": {
         parameters: {
             query?: never;
@@ -602,6 +626,31 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/camera-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Reset the camera defaults to the startup defaults.
+         * @description Required role: admin. Audited.
+         */
+        delete: operations["reset_camera_defaults"];
+        options?: never;
+        head?: never;
+        /**
+         * Change the defaults new cameras get (scheme, Basic over HTTP, certificate check).
+         * @description Required role: admin. Only affects cameras added afterwards; existing
+         *     cameras keep their settings. Audited.
+         */
+        patch: operations["update_camera_defaults"];
         trace?: never;
     };
     "/api/v1/settings/discovery": {
@@ -1053,6 +1102,27 @@ export interface components {
             /** @description 1–500 camera ids. */
             camera_ids: string[];
         };
+        /**
+         * @description What new cameras get unless the admin chooses otherwise (issue #18, ADR
+         *     0011). Pre-fills the add-camera form and discovery registration, and
+         *     applies to API calls that omit the field. Changing these never touches
+         *     existing cameras.
+         */
+        CameraDefaults: {
+            /** @description Allow Basic authentication over plain HTTP (sends the password readable). */
+            allow_basic_over_http: boolean;
+            scheme: components["schemas"]["Scheme"];
+            /**
+             * @description Certificate check for HTTPS cameras: `strict` or `insecure_skip_verify`
+             *     (`pinned` needs a per-camera fingerprint, so it can't be a default).
+             */
+            tls_mode: components["schemas"]["TlsMode"];
+        };
+        CameraDefaultsPatch: {
+            allow_basic_over_http?: boolean | null;
+            scheme?: components["schemas"]["Scheme"] | null;
+            tls_mode?: components["schemas"]["TlsMode"] | null;
+        };
         /** @description Everything known about a camera (SPEC §6.3). */
         CameraDetail: components["schemas"]["CameraSummary"] & {
             allow_basic_over_http: boolean;
@@ -1072,10 +1142,15 @@ export interface components {
             /** Format: date-time */
             identity_updated_at?: string | null;
             mac_address?: string | null;
+            /**
+             * @description The name is a placeholder (the address) that will be replaced by the
+             *     camera's own name on the next successful identity check.
+             */
+            name_pending: boolean;
             network?: components["schemas"]["NetworkInfo"] | null;
             serial_number?: string | null;
             stream_profiles: components["schemas"]["StreamProfile"][];
-            tls_mode: components["schemas"]["TlsMode"];
+            tls_mode?: components["schemas"]["TlsMode"] | null;
             tls_pinned_sha256?: string | null;
             /** Format: date-time */
             updated_at: string;
@@ -1100,6 +1175,7 @@ export interface components {
             group_ids?: string[] | null;
             host?: string | null;
             monitoring_enabled?: boolean | null;
+            /** @description A blank name means "fill it in from the camera" (see `NewCamera::name`). */
             name?: string | null;
             /** Format: int32 */
             port?: number | null;
@@ -1229,6 +1305,21 @@ export interface components {
             name: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        /** @description The outcome for one device. */
+        CredentialTestOutcome: {
+            error_category?: components["schemas"]["ErrorCategory"] | null;
+            ip: string;
+            /** @description Short reason when not ok; never contains secrets. */
+            message?: string | null;
+            /** @description The camera accepted the credentials (an authenticated request succeeded). */
+            ok: boolean;
+            /** Format: uuid */
+            result_id: string;
+        };
+        /** @description `result` of a `test_credentials` task. */
+        CredentialTestResult: {
+            results: components["schemas"]["CredentialTestOutcome"][];
         };
         Dashboard: {
             /** Format: int32 */
@@ -1591,25 +1682,29 @@ export interface components {
         NewCamera: {
             /**
              * @description Allow Basic authentication over plain HTTP, which sends the password
-             *     unencrypted. Off by default (SPEC §4.5).
+             *     unencrypted. Omit to use the camera defaults setting (SPEC §4.5, ADR 0011).
              */
-            allow_basic_over_http?: boolean;
+            allow_basic_over_http?: boolean | null;
             credentials?: components["schemas"]["CredentialInput"] | null;
             /** @description Groups to put the camera in. */
             group_ids?: string[];
             /** @description IP address or hostname, without scheme, port or path. */
             host: string;
             monitoring_enabled?: boolean;
-            name: string;
+            /**
+             * @description Optional: leave it out (or blank) and the camera's own name is filled
+             *     in on the first successful connection; until then the address is shown.
+             */
+            name?: string | null;
             /**
              * Format: int32
              * @description Defaults to 443 for HTTPS, 80 for HTTP.
              */
             port?: number | null;
-            scheme?: components["schemas"]["Scheme"];
+            scheme?: components["schemas"]["Scheme"] | null;
             /** @description Tags to give the camera. */
             tag_ids?: string[];
-            tls_mode?: components["schemas"]["TlsMode"];
+            tls_mode?: components["schemas"]["TlsMode"] | null;
             /** @description SHA-256 certificate fingerprint (hex, colons optional). Required for `pinned`. */
             tls_pinned_sha256?: string | null;
         };
@@ -1666,6 +1761,11 @@ export interface components {
             type: string;
         };
         RegisterDiscovered: {
+            /**
+             * @description Allow Basic authentication over plain HTTP for the results found on
+             *     HTTP (ignored for HTTPS ones). Omit to use the camera defaults setting.
+             */
+            allow_basic_over_http?: boolean | null;
             credentials?: components["schemas"]["CredentialInput"] | null;
             group_ids?: string[];
             monitoring_enabled?: boolean;
@@ -1719,6 +1819,7 @@ export interface components {
          */
         Role: "admin" | "viewer";
         RuntimeSettings: {
+            camera_defaults: components["schemas"]["CameraDefaults"];
             discovery: components["schemas"]["DiscoverySettings"];
             monitoring: components["schemas"]["MonitoringSettings"];
             retention: components["schemas"]["RetentionSettings"];
@@ -2005,6 +2106,14 @@ export interface components {
              *     can be checked and pinned.
              */
             tls_fingerprint_sha256?: string | null;
+        };
+        TestDiscoveredCredentials: {
+            /** @description Same meaning as in registration; omit to use the camera defaults setting. */
+            allow_basic_over_http?: boolean | null;
+            /** @description The credentials registration would use (none, a shared set, or inline). */
+            credentials: components["schemas"]["CredentialInput"];
+            /** @description Results to test (1–20). */
+            result_ids: string[];
         };
         TestStep: {
             error_category?: components["schemas"]["ErrorCategory"] | null;
@@ -3546,6 +3655,69 @@ export interface operations {
             };
         };
     };
+    test_discovered_credentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Discovery job id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestDiscoveredCredentials"];
+            };
+        };
+        responses: {
+            /** @description Test started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description Invalid selection or credentials */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such job */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     preview_discovery: {
         parameters: {
             query?: never;
@@ -3970,6 +4142,95 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsView"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reset_camera_defaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default camera defaults, now in effect */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraDefaults"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_camera_defaults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CameraDefaultsPatch"];
+            };
+        };
+        responses: {
+            /** @description New camera defaults */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraDefaults"];
+                };
+            };
+            /** @description Invalid value */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
             /** @description Not signed in */

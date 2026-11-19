@@ -51,6 +51,9 @@ fn fnv1a(s: &str) -> u64 {
     })
 }
 
+/// The password demo cameras reject.
+pub const DEMO_WRONG_PASSWORD: &str = "wrong";
+
 #[derive(Debug)]
 pub struct DemoProvider {
     host: String,
@@ -68,13 +71,20 @@ impl DemoProvider {
     /// the host's hash.
     pub fn for_target(target: &ProviderTarget) -> Self {
         let seed = fnv1a(&target.host);
-        let (name, model, scenario) = match catalog::find(&target.host) {
+        let (name, model, mut scenario) = match catalog::find(&target.host) {
             Some(c) => (Some(c.name), c.model, c.scenario),
             None => {
                 let index = usize::try_from(seed % ALL_MODELS.len() as u64).unwrap_or(0);
                 (None, ALL_MODELS[index], Scenario::Healthy)
             }
         };
+        // Demo cameras accept any credentials except the password "wrong", so
+        // rejected credentials can be tried out (docs/demo.md).
+        if target.credentials.as_ref().is_some_and(|c| {
+            crate::secret::ExposeSecret::expose_secret(&c.password) == DEMO_WRONG_PASSWORD
+        }) {
+            scenario = Scenario::AuthFailure;
+        }
         Self::new(&target.host, name, model, scenario, seed)
     }
 
