@@ -36,14 +36,14 @@ const FIELDS: { key: Key; label: string; unit: string; hint: string }[] = [
 ];
 
 export function SettingsPage() {
-  usePageTitle("Settings");
+  usePageTitle("General settings");
   const settings = useSettings();
   const current = settings.data?.current.monitoring;
   const stats = settings.data?.monitor;
 
   return (
     <div className="max-w-3xl">
-      <PageHeader title="Settings" />
+      <PageHeader title="General" />
       {settings.isError && <Alert>{errorMessage(settings.error)}</Alert>}
 
       {stats && (

@@ -17,6 +17,8 @@ test("settings cog, user menu and favorites from the selection", async ({ page }
   // The cog opens the settings area on General; the sidebar holds the rest.
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page).toHaveURL(/\/settings\/general$/);
+  await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
+  await expect(page).toHaveTitle("[DEMO] General settings - Crane Camera Automated Navigation Hub");
   const sidebar = page.getByRole("navigation", { name: "Settings" });
   await sidebar.getByRole("link", { name: "Groups & tags" }).click();
   await expect(page.getByRole("heading", { name: "Groups & tags" })).toBeVisible();
