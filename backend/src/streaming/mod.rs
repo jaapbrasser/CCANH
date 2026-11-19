@@ -9,6 +9,7 @@ pub mod h264;
 pub mod manager;
 pub mod media;
 pub mod opener;
+pub mod policy;
 pub mod profiles;
 pub mod rtsp;
 

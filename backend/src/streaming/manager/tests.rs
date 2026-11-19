@@ -400,7 +400,7 @@ async fn force_stop_disconnects_viewers() {
 async fn policy_can_refuse_new_streams() {
     struct One;
     impl StreamPolicy for One {
-        fn admit(&self, _: &StreamKey, active: &[StreamInfo]) -> Result<(), String> {
+        fn admit(&self, _: &StreamKey, _: Priority, active: &[StreamInfo]) -> Result<(), String> {
             if active.is_empty() {
                 Ok(())
             } else {

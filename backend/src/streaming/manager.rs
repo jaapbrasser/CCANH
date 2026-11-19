@@ -103,15 +103,28 @@ pub trait SourceOpener: Send + Sync {
     ) -> Result<Box<dyn MediaSource>, ProviderError>;
 }
 
-/// Admission hook for future bandwidth limits and priorities (SPEC §7.6).
-/// Called before a new upstream stream starts. The MVP admits everything.
+/// Who is asking for a new stream: detail views outrank grid tiles when
+/// connections are limited (see `streaming::policy`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Priority {
+    Detail,
+    Grid,
+}
+
+/// Admission hook for bandwidth limits and priorities (SPEC §7.6). Called
+/// before a new upstream starts; joining an existing stream is always allowed.
 pub trait StreamPolicy: Send + Sync {
-    fn admit(&self, key: &StreamKey, active: &[StreamInfo]) -> Result<(), String>;
+    fn admit(
+        &self,
+        key: &StreamKey,
+        priority: Priority,
+        active: &[StreamInfo],
+    ) -> Result<(), String>;
 }
 
 pub struct AdmitAll;
 impl StreamPolicy for AdmitAll {
-    fn admit(&self, _: &StreamKey, _: &[StreamInfo]) -> Result<(), String> {
+    fn admit(&self, _: &StreamKey, _: Priority, _: &[StreamInfo]) -> Result<(), String> {
         Ok(())
     }
 }
@@ -252,8 +265,10 @@ pub struct StreamManager {
 }
 
 impl StreamManager {
+    /// A manager enforcing the configured limits (`streaming` settings).
     pub fn new(opener: Arc<dyn SourceOpener>, settings: SettingsHandle, bus: EventBus) -> Self {
-        Self::with_policy(opener, settings, bus, Arc::new(AdmitAll))
+        let policy = Arc::new(super::policy::LimitsPolicy::new(settings.clone()));
+        Self::with_policy(opener, settings, bus, policy)
     }
 
     pub fn with_policy(
@@ -275,8 +290,17 @@ impl StreamManager {
         }
     }
 
-    /// Subscribe to `key`, starting the upstream if needed.
+    /// Subscribe to `key` with detail priority, starting the upstream if needed.
     pub fn subscribe(&self, key: StreamKey) -> Result<Subscription, StreamError> {
+        self.subscribe_with(key, Priority::Detail)
+    }
+
+    /// Subscribe to `key`, starting the upstream if needed and the policy admits it.
+    pub fn subscribe_with(
+        &self,
+        key: StreamKey,
+        priority: Priority,
+    ) -> Result<Subscription, StreamError> {
         if self.inner.root.is_cancelled() {
             return Err(StreamError::ShuttingDown);
         }
@@ -288,7 +312,7 @@ impl StreamManager {
                     let active: Vec<StreamInfo> = hubs.values().map(|h| h.info()).collect();
                     self.inner
                         .policy
-                        .admit(&key, &active)
+                        .admit(&key, priority, &active)
                         .map_err(StreamError::Refused)?;
                     let hub = Arc::new(Hub {
                         key: key.clone(),
