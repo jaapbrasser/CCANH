@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CCANH Site Test Plan</title>
+<style>
+  :root { --bg:#fff; --fg:#14181f; --muted:#5b6472; --line:#d9dde3; --panel:#f5f7fa; --accent:#b45309;
+          --pass:#15803d; --fail:#b91c1c; --blocked:#a16207; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1318; --fg:#e7eaee; --muted:#9aa3ae; --line:#2a313b; --panel:#171c23; --accent:#f59e0b;
+            --pass:#4ade80; --fail:#f87171; --blocked:#facc15; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 36px 0 6px; padding-top: 8px; border-top: 2px solid var(--line); }
+  h3 { font-size: 15px; margin: 0; }
+  p, li { max-width: 80ch; }
+  code, kbd, pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; }
+  code { background: var(--panel); padding: 1px 4px; border-radius: 4px; }
+  .muted { color: var(--muted); }
+  .toolbar { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+             display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 0; margin-bottom: 8px; }
+  .toolbar button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+  .toolbar button.primary { background: var(--accent); border-color: var(--accent); color: #111; font-weight: 600; }
+  .counts span { margin-right: 12px; font-variant-numeric: tabular-nums; }
+  .env { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .env label { display: flex; flex-direction: column; font-size: 13px; color: var(--muted); }
+  input, select, textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; }
+  .case { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 10px 0; break-inside: avoid; }
+  .case header { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between; }
+  .case .id { font-family: Consolas, monospace; color: var(--accent); font-weight: 600; margin-right: 6px; }
+  .case ol { margin: 6px 0; padding-left: 22px; }
+  .case .expected { border-left: 3px solid var(--line); padding-left: 10px; margin: 6px 0; }
+  .case .result { display: grid; grid-template-columns: 140px 1fr; gap: 8px; margin-top: 8px; }
+  .case textarea { min-height: 34px; resize: vertical; width: 100%; }
+  .case[data-status="pass"] { border-color: var(--pass); }
+  .case[data-status="fail"] { border-color: var(--fail); border-width: 2px; }
+  .case[data-status="blocked"] { border-color: var(--blocked); }
+  .tag { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; color: var(--muted); white-space: nowrap; }
+  .tag.crit { border-color: var(--accent); color: var(--accent); }
+  nav.toc { columns: 2; font-size: 14px; }
+  nav.toc a { color: inherit; }
+  table.ref { border-collapse: collapse; width: 100%; font-size: 14px; }
+  table.ref td, table.ref th { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+  @media (max-width: 640px) { nav.toc { columns: 1; } .case .result { grid-template-columns: 1fr; } }
+  @media print {
+    .toolbar { display: none; } body { font-size: 12px; } main { max-width: none; }
+    .case { border-color: #999 !important; } h2 { break-before: auto; }
+    textarea, select { border: none; } pre { white-space: pre-wrap; }
+  }
+</style>
+</head>
+<body>
+<main>
+<h1>CCANH site test plan</h1>
+<p class="muted">Crane Camera Automated Navigation Hub: offline deployment and acceptance test on a restricted-network Windows 11 machine.
+Results are saved in this browser as you go; use <b>Export results (CSV)</b> to keep them, and <b>Print</b> for paper.</p>
+
+<div class="toolbar">
+  <button class="primary" id="export">Export results (CSV)</button>
+  <button id="print">Print</button>
+  <button id="reset">Clear all results</button>
+  <span class="counts" id="counts"></span>
+</div>
+
+<h2 id="about">1. Scope and how to use this plan</h2>
+<ul>
+  <li><b>Goal:</b> confirm that CCANH installs and runs on a standard Windows 11 machine with nothing else installed and <b>no internet access</b>,
+    and that every feature works with the site's AXIS cameras.</li>
+  <li><b>Package contents:</b> <code>crane-setup-&lt;version&gt;.exe</code> (installer), <code>portable\crane.exe</code> (same program, no install),
+    <code>tools\Test-Ccanh.ps1</code> (automated checks), <code>tools\Collect-Diagnostics.ps1</code> (problem report), <code>SHA256SUMS.txt</code>, this plan and <code>README.txt</code>.</li>
+  <li><b>Nothing else is needed:</b> no Visual C++ runtime, .NET, Node, database server or internet. The web interface is built into <code>crane.exe</code>
+    and is used with Microsoft Edge (part of Windows 11).</li>
+  <li><b>Order:</b> sections 2–4 first (install, first run). Section 5 (demo mode) can be done any time and needs no cameras. Sections 6–12 need cameras.
+    Cases marked <span class="tag crit">critical</span> are the acceptance criteria; the rest are recommended.</li>
+  <li><b>Run PowerShell as administrator</b> for all commands here (the data folder is readable by administrators only).
+    If scripts are blocked: <code>powershell -ExecutionPolicy Bypass -File .\tools\Test-Ccanh.ps1</code>.</li>
+  <li><b>Never record real passwords</b> in the notes. Camera IP addresses are fine to note on site, but remove them before sharing results outside the network.</li>
+  <li><b>If something fails:</b> set the case to Fail, describe what you saw, run <code>tools\Collect-Diagnostics.ps1</code> (creates a zip on the Desktop without the database or keys)
+    and keep it with the exported CSV.</li>
+</ul>
+
+<h3 style="margin-top:16px">Test environment record</h3>
+<div class="env" id="env"></div>
+
+<nav class="toc" id="toc" aria-label="Sections"></nav>
+
+<div id="plan"></div>
+
+<h2 id="reference">Reference</h2>
+<table class="ref">
+  <tr><th>Item</th><th>Default</th></tr>
+  <tr><td>Program folder</td><td><code>C:\Program Files\CCANH</code> (crane.exe, config.example.toml; put <code>config.toml</code> here)</td></tr>
+  <tr><td>Data folder</td><td><code>C:\ProgramData\CraneCamera</code> (database <code>crane.db</code>, <code>logs\</code>, <code>tls\</code>, pre-upgrade backups). Kept on uninstall.</td></tr>
+  <tr><td>Service</td><td><code>CraneCameraHub</code> ("Crane Camera Automated Navigation Hub"), automatic start, LocalSystem, restarts on failure</td></tr>
+  <tr><td>Address</td><td><code>http://127.0.0.1:8080</code> (this machine only) until <code>server.bind</code> and TLS are configured (case NET-01)</td></tr>
+  <tr><td>Ports used</td><td>Inbound: 8080 (web, configurable). Outbound to cameras: 80/443 (VAPIX), 554 (RTSP live video). Nothing else.</td></tr>
+  <tr><td>Logs</td><td>JSON lines, one file per day, 14 days kept: <code>C:\ProgramData\CraneCamera\logs</code></td></tr>
+  <tr><td>Demo accounts (demo mode only)</td><td><code>admin</code> / <code>crane-demo-admin</code>, <code>viewer</code> / <code>crane-demo-viewer</code></td></tr>
+  <tr><td>Password rule</td><td>At least 12 characters. Sign-in locks for growing delays after 5 wrong passwords per user.</td></tr>
+  <tr><td>Commands</td><td><code>crane.exe --help</code>, <code>--version</code>, <code>--install-service</code>, <code>--uninstall-service</code>, <code>--create-admin &lt;name&gt;</code>, <code>--demo</code></td></tr>
+</table>
+</main>
+
+<script>
+"use strict";
+// Each case: id, title, steps[], expected, critical?, needs ("cameras", "second PC", ...).
+const PLAN = [
+ { id: "PRE", title: "2. Preparation (before installing)", cases: [
+  { id: "PRE-01", crit: true, title: "Package transferred intact",
+    steps: ["Copy the package folder to the target machine (e.g. <code>C:\\CCANH-package</code>) by the approved transfer method.",
+            "In an administrator PowerShell in that folder: <code>Get-FileHash .\\crane-setup-*.exe, .\\portable\\crane.exe</code>",
+            "Compare with <code>SHA256SUMS.txt</code> (or rely on PRE-03, which checks every file)."],
+    expected: "All hashes match." },
+  { id: "PRE-02", title: "Remove the 'downloaded from the internet' mark",
+    steps: ["<code>Get-ChildItem C:\\CCANH-package -Recurse | Unblock-File</code>"],
+    expected: "No error. Without this, Windows may refuse to run the scripts or show extra warnings." },
+  { id: "PRE-03", crit: true, title: "Pre-flight checks pass",
+    steps: ["<code>powershell -ExecutionPolicy Bypass -File .\\tools\\Test-Ccanh.ps1 -Preflight</code>"],
+    expected: "No FAIL lines: Windows 11 x64, running as administrator, Edge present, port 8080 free, ≥ 2 GB disk free, all checksums match, no files blocked. A results file is saved next to the script." },
+  { id: "PRE-04", title: "Record that the machine has no internet access",
+    steps: ["<code>Test-NetConnection 1.1.1.1 -Port 443</code> and <code>Resolve-DnsName www.microsoft.com</code>"],
+    expected: "Both fail (as expected on the restricted network). This documents that everything below works offline." },
+  { id: "PRE-05", title: "Zero-dependency proof: portable program runs",
+    steps: ["<code>.\\portable\\crane.exe --version</code>", "<code>.\\portable\\crane.exe --help</code>"],
+    expected: "Prints the version and options. No 'VCRUNTIME140.dll was not found' or similar error (the C runtime is built in)." },
+ ]},
+ { id: "INS", title: "3. Installation", cases: [
+  { id: "INS-01", crit: true, title: "Install with the installer",
+    steps: ["Run <code>crane-setup-&lt;version&gt;.exe</code> as administrator.",
+            "If SmartScreen says 'Windows protected your PC' (the installer isn't code-signed): <i>More info → Run anyway</i>. Note this in the result.",
+            "Keep the default folder and leave <i>Run as a Windows service</i> ticked. Finish."],
+    expected: "Installs without errors or internet prompts. Start menu has a CCANH folder (Open CCANH, Data folder, Uninstall)." },
+  { id: "INS-02", crit: true, title: "Service installed and healthy",
+    steps: ["<code>powershell -ExecutionPolicy Bypass -File .\\tools\\Test-Ccanh.ps1</code>"],
+    expected: "PASS for: service running, starts with Windows, crash recovery, program version, health (mode production), data folder, data folder access (SYSTEM and Administrators only), no log errors, Offline. INFO shows the setup token." },
+  { id: "INS-03", crit: true, title: "Web interface opens",
+    steps: ["Open Edge at <code>http://127.0.0.1:8080</code> (or Start → CCANH → Open CCANH)."],
+    expected: "The first-run setup page appears (asks for a setup token, username and password). No broken images or missing styles (nothing loads from the internet)." },
+  { id: "INS-04", title: "Service details", steps: ["<code>sc.exe qc CraneCameraHub</code>", "<code>sc.exe qfailure CraneCameraHub</code>", "<code>icacls C:\\ProgramData\\CraneCamera</code>"],
+    expected: "AUTO_START, LocalSystem, command line includes <code>--service --data-dir \"C:\\ProgramData\\CraneCamera\"</code>; failure actions RESTART; folder ACL lists only SYSTEM and Administrators." },
+ ]},
+ { id: "SET", title: "4. First run, accounts and sign-in", cases: [
+  { id: "SET-01", crit: true, title: "No default credentials; setup needs the token",
+    steps: ["On the setup page, enter a wrong token with a valid username and password."],
+    expected: "Refused. There is no built-in admin account to sign in with." },
+  { id: "SET-02", crit: true, title: "Create the first admin",
+    steps: ["Enter the token from INS-02 (or from the newest log: <code>Select-String -Path C:\\ProgramData\\CraneCamera\\logs\\* -Pattern setup_token | Select -Last 1</code>).",
+            "Try an 11-character password first, then a 12+ character one."],
+    expected: "The short password is rejected with a clear message; the long one creates the admin and signs you in." },
+  { id: "SET-03", title: "Setup can't be repeated", steps: ["Open <code>http://127.0.0.1:8080/setup</code> again (new tab)."],
+    expected: "Setup is no longer available; the sign-in page is shown." },
+  { id: "SET-04", title: "Recovery path: create an admin from the command line",
+    steps: ["<code>&amp; 'C:\\Program Files\\CCANH\\crane.exe' --data-dir C:\\ProgramData\\CraneCamera --create-admin recovery</code>, enter a password twice.",
+            "Sign in as <code>recovery</code>, then delete that user under Users."],
+    expected: "Account created while the service keeps running; sign-in works; deletion is audited." },
+  { id: "SET-05", crit: true, title: "Roles: viewer can't administer",
+    steps: ["As admin: Users → create <code>viewer1</code> with role viewer.", "Sign in as viewer1 in an InPrivate window.",
+            "Try <code>http://127.0.0.1:8080/users</code>, <code>/settings</code>, <code>/discovery</code> and <code>/api/docs</code>."],
+    expected: "The menu has no admin items (Credentials, Users, Discovery, Groups &amp; tags, Streams, Audit log, Settings, API docs). Direct links don't show admin pages; /api/docs answers 403." },
+  { id: "SET-06", title: "Sign-in lockout", steps: ["Sign out. Enter a wrong password for viewer1 six times."],
+    expected: "From the 6th attempt the server asks you to wait (growing delays). A correct password works again after the delay." },
+  { id: "SET-07", title: "Change own password", steps: ["As viewer1: Account → change password. Sign out and in with old, then new."],
+    expected: "Old password refused, new one works. Other sessions of that user are signed out." },
+  { id: "SET-08", title: "Last admin is protected", steps: ["As the only admin, try to delete yourself or change your role to viewer."],
+    expected: "Refused: at least one admin must remain." },
+  { id: "SET-09", crit: true, title: "Audit log records security events", steps: ["Admin → Audit log. Filter by action <code>auth.login</code>, then <code>user.create</code>."],
+    expected: "Failed and successful sign-ins (with source IP), user creation, password changes and setup are listed with actor and time." },
+ ]},
+ { id: "DEMO", title: "5. Demo mode tour (no cameras needed)", cases: [
+  { id: "DEMO-01", title: "Start demo mode alongside the service",
+    steps: ["In an administrator PowerShell: <code>.\\portable\\crane.exe --demo --data-dir C:\\ccanh-demo --port 8081</code> (leave the window open).",
+            "Edge: <code>http://127.0.0.1:8081</code>, sign in as <code>admin</code> / <code>crane-demo-admin</code>."],
+    expected: "Orange DEMO MODE banner. 24 simulated cameras; no network access to cameras is attempted." },
+  { id: "DEMO-02", title: "Live status and failure scenarios", steps: ["Cameras page: watch for 2 minutes."],
+    expected: "Most cameras online; 'A Yard – Rail Spur' and 'B Perimeter – Fence West' offline; 'B Loading – Dock 3' flips every ~45 s without reloading; 'B Storage – Aisle 4' shows an authentication problem." },
+  { id: "DEMO-03", crit: true, title: "Live video plays in Edge", steps: ["Open 'A1 Crane 1 – Hook'."],
+    expected: "A moving test pattern plays within ~2 s. (Confirms Edge on this machine decodes the H.264 video.)" },
+  { id: "DEMO-04", crit: true, title: "Dashboard rearranging doesn't restart streams",
+    steps: ["Dashboards → 'Site A cranes' (8 tiles playing).", "In a second tab open Streams; note the 'Startup' and viewer columns.",
+            "Back on the dashboard, drag one tile's title bar onto another tile.", "Check Streams again."],
+    expected: "Tiles swap and keep playing. Streams still shows 8 connections, reconnects 0, no stream restarted." },
+  { id: "DEMO-05", title: "Discovery simulation", steps: ["Discovery → ranges <code>192.0.2.0/24</code> → Start scan."],
+    expected: "Results appear while scanning; finishes with 17 AXIS devices: 11 'Already registered', 6 'New'. Register one → it appears under Cameras." },
+  { id: "DEMO-06", title: "Stop demo mode", steps: ["Press Ctrl+C in the demo window."],
+    expected: "Logs 'shutdown complete' within a few seconds. Restarting resets the demo data. Delete <code>C:\\ccanh-demo</code> when done." },
+ ]},
+ { id: "CAM", title: "6. Cameras", needs: "AXIS cameras on the network", cases: [
+  { id: "CAM-01", title: "Shared credential set", steps: ["Credentials → New set: name 'Site default', a camera username and password (a Viewer account is enough for monitoring and video)."],
+    expected: "Saved. The password is never shown again (only that credentials exist)." },
+  { id: "CAM-02", crit: true, title: "Test connection before adding",
+    steps: ["Cameras → Add camera: name, camera IP, HTTPS (or HTTP), credentials 'Site default'.", "Click Test connection."],
+    expected: "Steps pass: reachable and identified (model, firmware), credentials accepted, capabilities read. For HTTPS: a certificate fingerprint is shown with a <i>Pin</i> button." },
+  { id: "CAM-03", crit: true, title: "Add camera (HTTPS pinned)",
+    steps: ["Click Pin (TLS mode becomes pinned), then Add camera."],
+    expected: "Camera page opens; status Online within ~30 s; identity shows model, firmware, serial, MAC. Matches the camera's own web page." },
+  { id: "CAM-04", title: "Add camera (HTTP)", steps: ["Add a camera over HTTP (if any are HTTP-only)."],
+    expected: "Works with Digest authentication. (Basic over plain HTTP is refused unless explicitly allowed per camera.)" },
+  { id: "CAM-05", title: "Capabilities and stream profiles", steps: ["On the camera page, review the capability sections and Stream profiles."],
+    expected: "Supported/unsupported features plausible for the model; stream profiles match those configured in the camera." },
+  { id: "CAM-06", title: "Wrong credentials are reported, not 'offline'",
+    steps: ["Edit a camera, set inline credentials with a wrong password, save.", "Afterwards restore 'Site default'."],
+    expected: "Status stays Online (status checks are anonymous) with an 'Authentication failed' warning. Camera account doesn't get locked by rapid retries." },
+  { id: "CAM-07", crit: true, title: "Offline detection and recovery",
+    steps: ["Disconnect one camera (unplug network or PoE). Time it.", "Reconnect it."],
+    expected: "Shown Offline after about 3 failed checks (≤ ~45 s), live in the list without reload; Status history records it. Back Online within ~1 minute of reconnecting." },
+  { id: "CAM-08", title: "Edit, refresh, remove",
+    steps: ["Rename a camera; turn monitoring off and on; click Refresh details.", "Remove a test camera (confirm)."],
+    expected: "Changes apply immediately and appear in the Audit log (camera.update, camera.delete). A removed camera's live video stops." },
+  { id: "CAM-09", title: "Add all site cameras", steps: ["Add the remaining cameras (or use Discovery, section 9)."],
+    expected: "All expected cameras listed with correct status. Record the count in the environment table." },
+ ]},
+ { id: "LIVE", title: "7. Live video", needs: "AXIS cameras", cases: [
+  { id: "LIVE-01", crit: true, title: "Live view plays with low delay",
+    steps: ["Open a camera page. Point the camera at a clock or compare its timestamp overlay with the PC clock."],
+    expected: "Video starts within ~2 s and stays under ~2 s behind real time." },
+  { id: "LIVE-02", title: "Profile picker", steps: ["Switch the Live view profile between the camera's H.264 profiles."],
+    expected: "Resolution changes; playback continues." },
+  { id: "LIVE-03", crit: true, title: "One camera connection shared by many viewers",
+    steps: ["Open the same camera in 3 tabs (and/or a second browser).", "Admin → Streams."],
+    expected: "One row for that camera and profile with 3 viewers. 'From cameras' rate is one stream's bitrate, not three." },
+  { id: "LIVE-04", title: "Grace period", steps: ["Close all tabs showing the camera; watch Streams."],
+    expected: "The row stays ~15 s (shown as draining), then disappears; the camera connection closes." },
+  { id: "LIVE-05", crit: true, title: "Automatic reconnect",
+    steps: ["While watching, disconnect the camera's network for ~20 s, then reconnect."],
+    expected: "Player shows 'Reconnecting to camera…' and resumes by itself; Streams shows reconnects ≥ 1." },
+  { id: "LIVE-06", title: "Admin force stop", steps: ["Streams → Stop on an active stream."],
+    expected: "Viewers see 'Stream stopped — stopped by an administrator' with Try again; audited as stream.force_stop." },
+  { id: "LIVE-07", title: "Grid/detail profile choices",
+    steps: ["On a camera page (admin), set Grid tiles and Detail view profiles; Save.", "Settings → Live video: optionally set fleet-wide profile names."],
+    expected: "Dashboard tiles use the grid profile, the camera page uses the detail profile (check the resolution on Streams)." },
+  { id: "LIVE-08", title: "H.265-only camera (if present)", steps: ["Open a camera that only offers H.265."],
+    expected: "A clear message explains that live view needs H.264; no endless loading." },
+ ]},
+ { id: "DASH", title: "8. Dashboards", needs: "AXIS cameras", cases: [
+  { id: "DASH-01", crit: true, title: "Create and fill a dashboard",
+    steps: ["Dashboards → New dashboard 'Site test'. Grid size 9 (3×3).", "Use '+ Add camera' on tiles; try the picker's search, group, tag and favorites filters."],
+    expected: "Cameras play in tiles; cameras already on the dashboard are marked in the picker; 'Saved' shows after changes." },
+  { id: "DASH-02", crit: true, title: "Rearranging doesn't restart streams",
+    steps: ["Note Streams → Startup/reconnects for the dashboard's cameras.", "Drag tiles to swap and move several times."],
+    expected: "Video keeps playing during moves; Streams shows the same connections (no new startup, reconnects unchanged)." },
+  { id: "DASH-03", crit: true, title: "Layout persists across sessions and machines",
+    steps: ["Reload the page; sign out and back in; sign in as the same user from another browser or PC.", "Sign in as a different user."],
+    expected: "Same layout for the same user everywhere. The other user doesn't see it (dashboards are private)." },
+  { id: "DASH-04", title: "Sizes, remove, expand, fullscreen",
+    steps: ["Try presets 1, 4, 16 and Custom (e.g. 5×6). Shrink to a size smaller than the number of cameras.", "Remove a tile (×).",
+            "Expand a tile (⤢ or click the video); press Esc.", "Click Fullscreen; exit with Esc."],
+    expected: "Shrinking too far is refused with a message; expanded view shows the detail stream and camera facts; Esc returns; fullscreen fills the screen." },
+  { id: "DASH-05", title: "Hidden tiles pause", steps: ["With a 16-tile dashboard open, switch to another tab for 10 s; check Streams in a separate window. Switch back."],
+    expected: "After ~5 s hidden, the dashboard's viewers drop (connections close after the grace period); returning resumes playback." },
+  { id: "DASH-06", title: "Default dashboard", steps: ["Make a second dashboard default; delete it."],
+    expected: "Default marked in the switcher; after deleting the default, another becomes default." },
+ ]},
+ { id: "ORG", title: "9a. Groups, tags, favorites and bulk actions", needs: "AXIS cameras", cases: [
+  { id: "ORG-01", crit: true, title: "Group tree filtering includes subgroups",
+    steps: ["Groups &amp; tags: build e.g. Site → Building 1 → Crane 1. Put cameras in the leaf groups (camera Edit dialog).", "Cameras → Filter by group: Site."],
+    expected: "Cameras in all subgroups are listed." },
+  { id: "ORG-02", crit: true, title: "Bulk tagging",
+    steps: ["Cameras: tick several cameras → Bulk action 'Add tag' → choose a tag → Apply.", "Filter by that tag."],
+    expected: "Toast 'started', then all selected cameras carry the tag; filter shows exactly them. Audit log: camera.bulk_update." },
+  { id: "ORG-03", crit: true, title: "Favorites are per user", steps: ["Star cameras as admin and as viewer1. Open Favorites for each."],
+    expected: "Each user sees only their own favorites." },
+  { id: "ORG-04", title: "Group delete modes and tag rules",
+    steps: ["Delete a middle group with 'Move up', another with 'Detach'.", "Create tag 'Outdoor', then 'outdoor'."],
+    expected: "Subgroups and cameras move as described; cameras are never deleted. The second tag is refused (names ignore case)." },
+  { id: "ORG-05", title: "Bulk monitoring and delete", steps: ["Bulk 'Turn monitoring off' then on; bulk delete two test cameras (confirm dialog)."],
+    expected: "Monitoring state changes; delete asks for confirmation and removes only the selected cameras (each audited)." },
+ ]},
+ { id: "DISC", title: "9b. Discovery", needs: "Written approval to scan the camera subnet", cases: [
+  { id: "DISC-01", crit: true, title: "Address count and safety cap",
+    steps: ["Discovery → type the camera subnet (e.g. <code>10.x.y.0/24</code>), then a /16."],
+    expected: "Address count shown as you type (254 for a /24). The /16 needs ticking 'more than the usual limit' before Start is enabled." },
+  { id: "DISC-02", crit: true, title: "Scan the camera subnet; results stream live",
+    steps: ["Scan the approved /24. While it runs, open Cameras in another tab.", "Time the scan."],
+    expected: "Devices appear while scanning; the rest of the interface stays responsive. A /24 finishes in about 10–30 s. Found count equals the AXIS devices you know of; non-camera hosts aren't listed." },
+  { id: "DISC-03", crit: true, title: "Duplicates flagged", steps: ["Look at results for cameras that are already registered."],
+    expected: "Shown as 'Already registered as &lt;name&gt; (same serial number)' and can't be selected." },
+  { id: "DISC-04", crit: true, title: "Register approved devices",
+    steps: ["Select new devices → Register selected → credentials 'Site default', a group and a tag → Register."],
+    expected: "Toast 'Registered N cameras'; rows show Registered; cameras appear online with the group/tag. HTTPS cameras are pinned to the scanned certificate. Nothing was added before you clicked Register." },
+  { id: "DISC-05", crit: true, title: "Cancel", steps: ["Start a larger confirmed scan (e.g. a /20) and press Cancel scan after a few seconds."],
+    expected: "Shows 'Cancelled' within a second or two; counters stop; results found so far remain." },
+ ]},
+ { id: "CFG", title: "10. Settings", cases: [
+  { id: "CFG-01", title: "Monitoring settings apply live", steps: ["Settings → Camera monitoring: set check interval 5 s; Save. Watch 'Last contact' on Cameras. Reset."],
+    expected: "Checks speed up within seconds, no restart needed. Change audited (settings.update)." },
+  { id: "CFG-02", title: "Connection limits",
+    steps: ["Settings → Live video: Camera connection limit 2, Kept for detail views 1. Save.", "Open a dashboard with 4 cameras; open a camera page.", "Set the limit back to 0."],
+    expected: "Only 1 grid tile plays; the others say 'The camera connection limit for grid tiles … is reached'. The camera page still plays (reserved). After resetting, Try again plays all." },
+  { id: "CFG-03", title: "Retention validation", steps: ["Settings → History retention: set Audit log to 30; Save. Then 365."],
+    expected: "30 is refused (0 = forever, or at least 90); 365 saves." },
+  { id: "CFG-04", title: "Discovery limits", steps: ["Settings → Discovery: Address limit 1000; Save. Preview a /22 on Discovery."],
+    expected: "A /22 (1022 addresses) now needs confirmation." },
+ ]},
+ { id: "NET", title: "11. Network access from other PCs (HTTPS)", needs: "A second PC on the LAN", cases: [
+  { id: "NET-01", crit: true, title: "Serve the LAN over HTTPS",
+    steps: ["Copy <code>C:\\Program Files\\CCANH\\config.example.toml</code> to <code>config.toml</code> in the same folder and set:<pre>[server]\nbind = \"0.0.0.0\"\nport = 8080\n\n[server.tls]\nmode = \"self_signed\"\nself_signed_names = [\"&lt;this PC's DNS name&gt;\"]</pre>",
+            "<code>Restart-Service CraneCameraHub</code>",
+            "Allow it through the firewall (domain/private only):<pre>New-NetFirewallRule -DisplayName \"CCANH HTTPS\" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow -Profile Domain,Private</pre>",
+            "<code>.\\tools\\Test-Ccanh.ps1 -Url https://127.0.0.1:8080</code>"],
+    expected: "Health PASS over HTTPS; INFO shows the TLS certificate SHA-256 fingerprint." },
+  { id: "NET-02", crit: true, title: "Second PC: sign in and watch video",
+    steps: ["On the second PC: Edge → <code>https://&lt;host&gt;:8080</code>.", "At the certificate warning, open the certificate details and compare the SHA-256 fingerprint with NET-01. Continue only if it matches.",
+            "Sign in, open a camera, open a dashboard."],
+    expected: "Everything works from the second PC, including live video and live status updates." },
+  { id: "NET-03", title: "Access by another name", steps: ["If users reach the server by a different DNS name or IP than the certificate names, try changing a setting from that address."],
+    expected: "If saving fails with a cross-site error, add that origin to <code>server.allowed_origins</code> (e.g. <code>[\"https://ccanh.site.local:8080\"]</code>) and restart." },
+  { id: "NET-04", title: "Plain HTTP on the LAN is discouraged", steps: ["Optional: set tls mode \"off\" with bind 0.0.0.0, restart, check the newest log."],
+    expected: "A warning is logged that passwords would cross the network unencrypted. Revert to self_signed." },
+ ]},
+ { id: "REL", title: "12. Operations and resilience", cases: [
+  { id: "REL-01", crit: true, title: "Service restart keeps sessions and data", steps: ["<code>Restart-Service CraneCameraHub</code> while signed in and watching a dashboard."],
+    expected: "Back within ~5 s; the browser reconnects by itself (no sign-in needed); video resumes." },
+  { id: "REL-02", crit: true, title: "Starts after reboot without anyone signed in",
+    steps: ["Reboot the machine; don't sign in to Windows. From the second PC open the web interface."],
+    expected: "Available within ~1 minute of boot; cameras monitored; history shows no gap beyond the reboot." },
+  { id: "REL-03", title: "Recovers from a crash", steps: ["<code>Stop-Process -Name crane -Force</code>; wait 10 s; <code>Get-Service CraneCameraHub</code>."],
+    expected: "Windows restarts the service automatically (Running again). Event Viewer → System shows the unexpected stop and restart." },
+  { id: "REL-04", title: "Graceful stop", steps: ["<code>Stop-Service CraneCameraHub</code>; check the newest log; <code>Start-Service CraneCameraHub</code>."],
+    expected: "Log ends with 'shutdown complete'; on start, no tasks are reported as interrupted unless one was running." },
+  { id: "REL-05", crit: true, title: "Backup and restore",
+    steps: ["<code>Stop-Service CraneCameraHub</code>; copy <code>C:\\ProgramData\\CraneCamera</code> to a backup location; start the service.",
+            "Make a change (add a tag). Stop the service, replace the data folder with the backup, start."],
+    expected: "After restore the tag is gone and everything else is as at backup time (accounts, cameras, credentials, dashboards). Credentials still work: they're tied to this machine (DPAPI), so a backup only restores on the same machine." },
+  { id: "REL-06", title: "Reinstall / upgrade keeps data", steps: ["Run the installer again (same or newer version)."],
+    expected: "Service replaced and running; all accounts, cameras and dashboards kept. On a version with database changes, a pre-upgrade backup appears in the data folder." },
+  { id: "REL-07", title: "Logs rotate", steps: ["After 2+ days, list <code>C:\\ProgramData\\CraneCamera\\logs</code>."],
+    expected: "One file per day; no more than 14 kept." },
+ ]},
+ { id: "SEC", title: "13. Security checks", cases: [
+  { id: "SEC-01", crit: true, title: "No passwords in logs",
+    steps: ["<code>Select-String -Path C:\\ProgramData\\CraneCamera\\logs\\* -Pattern '&lt;admin password&gt;','&lt;camera password&gt;' -SimpleMatch</code> (type the real ones in the shell only, don't save them)."],
+    expected: "No matches." },
+  { id: "SEC-02", crit: true, title: "Camera credentials can't be read back",
+    steps: ["Credentials page and camera Edit dialogs; as admin open <code>/api/v1/cameras/&lt;id&gt;</code> in the browser."],
+    expected: "Only 'has credentials' / the set name is shown; passwords never appear anywhere." },
+  { id: "SEC-03", crit: true, title: "Only connects to cameras (no internet)",
+    steps: ["After at least 30 minutes of normal use (cameras streaming): <code>.\\tools\\Test-Ccanh.ps1 -Connections</code>"],
+    expected: "PASS Offline: connections only to camera addresses (ports 80/443/554) and local browsers." },
+  { id: "SEC-04", title: "Data folder restricted", steps: ["As a standard (non-admin) Windows user: <code>dir C:\\ProgramData\\CraneCamera</code>"],
+    expected: "Access denied." },
+  { id: "SEC-05", title: "Session timeout (optional)", steps: ["In config.toml set <code>[auth] idle_timeout_minutes = 5</code>, restart, stay idle 6 minutes, then click around. Remove the setting afterwards."],
+    expected: "Signed out after the idle period." },
+ ]},
+ { id: "PERF", title: "14. Load and soak at site scale", needs: "All site cameras", cases: [
+  { id: "PERF-01", crit: true, title: "Full dashboard load",
+    steps: ["Build a 16-tile dashboard (or the site's typical layout). Open it on 2–3 PCs.", "After 15 minutes, record from Task Manager: crane.exe CPU % and memory; Streams page totals (From cameras / To viewers)."],
+    expected: "All tiles play smoothly; crane.exe CPU stays low (copying video, not decoding: typically a few %); memory stable (roughly 100–300 MB). Note values in the result." },
+  { id: "PERF-02", title: "Camera network bandwidth", steps: ["Compare Streams 'From cameras' with grid profile vs detail profile on the same dashboard."],
+    expected: "Grid profiles use much less bandwidth; each camera/profile is pulled once regardless of the number of viewers." },
+  { id: "PERF-03", crit: true, title: "24-hour soak",
+    steps: ["Leave the dashboards open (one PC) for 24 h. Record crane.exe memory at start and end; run <code>.\\tools\\Test-Ccanh.ps1</code> at the end."],
+    expected: "Memory doesn't keep growing; video still playing; no ERROR entries (or only explained ones, e.g. a camera that went offline); status of all cameras correct." },
+ ]},
+ { id: "UNI", title: "15. Uninstall", cases: [
+  { id: "UNI-01", crit: true, title: "Uninstall removes the program, keeps data",
+    steps: ["Settings → Apps → Installed apps → Crane Camera Automated Navigation Hub → Uninstall (or Start → CCANH → Uninstall)."],
+    expected: "Service stopped and removed (<code>Get-Service CraneCameraHub</code> fails); <code>C:\\Program Files\\CCANH</code> removed except a user-created config.toml; <code>C:\\ProgramData\\CraneCamera</code> kept." },
+  { id: "UNI-02", title: "Reinstall reuses data", steps: ["Install again; open the web interface."],
+    expected: "Existing accounts, cameras and dashboards are back." },
+  { id: "UNI-03", title: "Complete removal (end of test)", steps: ["Uninstall; then delete <code>C:\\ProgramData\\CraneCamera</code> and <code>C:\\ccanh-demo</code>; remove the 'CCANH HTTPS' firewall rule."],
+    expected: "No CCANH files, services or firewall rules remain." },
+ ]},
+];
+
+const ENV_FIELDS = [
+  ["tester", "Tester"], ["date", "Date"], ["site", "Site / network"], ["host", "Machine name"],
+  ["windows", "Windows edition and build (winver)"], ["edge", "Edge version (edge://version)"],
+  ["cpu", "CPU / RAM"], ["version", "CCANH version (crane.exe --version)"],
+  ["cameras", "Number of cameras"], ["models", "Camera models and firmware"],
+  ["network", "Camera subnet(s) (keep on site)"], ["browsers", "Other client PCs used"],
+];
+
+const KEY = "ccanh-test-plan-v1";
+let state = {};
+try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { state = {}; }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* private window: results not kept */ } updateCounts(); }
+
+function el(tag, attrs, html) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+const env = document.getElementById("env");
+for (const [key, label] of ENV_FIELDS) {
+  const l = el("label", {}, label);
+  const i = el("input", { type: "text", "data-env": key });
+  i.value = (state.env || {})[key] || "";
+  i.addEventListener("input", () => { state.env = state.env || {}; state.env[key] = i.value; save(); });
+  l.appendChild(i); env.appendChild(l);
+}
+
+const toc = document.getElementById("toc");
+const plan = document.getElementById("plan");
+for (const section of PLAN) {
+  toc.appendChild(el("div", {}, `<a href="#${section.id}">${section.title}</a>`));
+  plan.appendChild(el("h2", { id: section.id }, section.title));
+  if (section.needs) plan.appendChild(el("p", { class: "muted" }, `Needs: ${section.needs}.`));
+  for (const c of section.cases) {
+    const r = (state.cases || {})[c.id] || {};
+    const box = el("section", { class: "case", "data-status": r.status || "" });
+    box.appendChild(el("header", {}, `<h3><span class="id">${c.id}</span>${c.title}</h3>${c.crit ? '<span class="tag crit">critical</span>' : ""}`));
+    box.appendChild(el("ol", {}, c.steps.map(s => `<li>${s}</li>`).join("")));
+    box.appendChild(el("div", { class: "expected" }, `<b>Expected:</b> ${c.expected}`));
+    const res = el("div", { class: "result" });
+    const sel = el("select", { "aria-label": `Result of ${c.id}` },
+      ["", "pass", "fail", "blocked", "n/a"].map(v => `<option value="${v}">${v ? v[0].toUpperCase() + v.slice(1) : "Not run"}</option>`).join(""));
+    sel.value = r.status || "";
+    const notes = el("textarea", { "aria-label": `Notes for ${c.id}`, placeholder: "Notes: what you saw, values measured (no passwords)" });
+    notes.value = r.notes || "";
+    const update = () => {
+      state.cases = state.cases || {};
+      state.cases[c.id] = { status: sel.value, notes: notes.value, at: new Date().toISOString() };
+      box.dataset.status = sel.value; save();
+    };
+    sel.addEventListener("change", update); notes.addEventListener("input", update);
+    res.appendChild(sel); res.appendChild(notes); box.appendChild(res);
+    plan.appendChild(box);
+  }
+}
+
+function allCases() { return PLAN.flatMap(s => s.cases.map(c => ({ ...c, section: s.title }))); }
+function updateCounts() {
+  const counts = { pass: 0, fail: 0, blocked: 0, "n/a": 0, "": 0 };
+  let critOpen = 0;
+  for (const c of allCases()) {
+    const st = ((state.cases || {})[c.id] || {}).status || "";
+    counts[st]++;
+    if (c.crit && st !== "pass") critOpen++;
+  }
+  const total = allCases().length;
+  document.getElementById("counts").innerHTML =
+    `<span>${total} cases</span><span style="color:var(--pass)">${counts.pass} pass</span>` +
+    `<span style="color:var(--fail)">${counts.fail} fail</span><span style="color:var(--blocked)">${counts.blocked} blocked</span>` +
+    `<span>${counts["n/a"]} n/a</span><span>${counts[""]} not run</span><span>${critOpen} critical not yet passed</span>`;
+}
+updateCounts();
+
+function csvCell(v) { v = String(v ?? ""); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+document.getElementById("export").addEventListener("click", () => {
+  const rows = [["Field", "Value"]];
+  for (const [key, label] of ENV_FIELDS) rows.push([label, (state.env || {})[key] || ""]);
+  rows.push([]);
+  rows.push(["ID", "Section", "Title", "Critical", "Result", "Notes", "Recorded at"]);
+  for (const c of allCases()) {
+    const r = (state.cases || {})[c.id] || {};
+    rows.push([c.id, c.section, c.title, c.crit ? "yes" : "", r.status || "not run", r.notes || "", r.at || ""]);
+  }
+  const blob = new Blob(["\ufeff" + rows.map(r => r.map(csvCell).join(",")).join("\r\n")], { type: "text/csv" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: `ccanh-test-results-${new Date().toISOString().slice(0, 10)}.csv` });
+  document.body.appendChild(a); a.click(); a.remove();
+});
+document.getElementById("print").addEventListener("click", () => window.print());
+document.getElementById("reset").addEventListener("click", () => {
+  if (confirm("Clear every result and note in this plan? Export first if you want to keep them.")) {
+    state = {}; save(); location.reload();
+  }
+});
+</script>
+</body>
+</html>
