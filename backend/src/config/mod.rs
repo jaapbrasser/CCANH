@@ -200,6 +200,12 @@ pub struct StreamingConfig {
     /// Stream profile name for the detail view, used on cameras that have it.
     /// Unset: the largest H.264 profile.
     pub default_detail_profile: Option<String>,
+    /// Most camera connections (upstreams) at once; 0 = no limit.
+    pub max_upstreams: u32,
+    /// Connections kept free for detail views when `max_upstreams` is set.
+    pub detail_reserve: u32,
+    /// Refuse new upstreams while inbound video exceeds this many Mbit/s; 0 = no limit.
+    pub max_inbound_mbps: u32,
 }
 
 impl Default for StreamingConfig {
@@ -210,6 +216,9 @@ impl Default for StreamingConfig {
             global_buffer_mb: 256,
             default_grid_profile: None,
             default_detail_profile: None,
+            max_upstreams: 0,
+            detail_reserve: 2,
+            max_inbound_mbps: 0,
         }
     }
 }
@@ -239,6 +248,28 @@ impl Default for DiscoveryConfig {
     }
 }
 
+/// How long history is kept (SPEC §11.3). Becomes admin-editable at runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RetentionConfig {
+    /// Days of camera status history to keep.
+    pub status_history_days: u32,
+    /// Days to keep finished tasks, including discovery scans and their results.
+    pub tasks_days: u32,
+    /// Days of audit log to keep; 0 keeps it forever.
+    pub audit_days: u32,
+}
+
+impl Default for RetentionConfig {
+    fn default() -> Self {
+        Self {
+            status_history_days: 30,
+            tasks_days: 30,
+            audit_days: 0,
+        }
+    }
+}
+
 /// Fully merged configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -251,6 +282,7 @@ pub struct Config {
     pub monitoring: MonitoringConfig,
     pub streaming: StreamingConfig,
     pub discovery: DiscoveryConfig,
+    pub retention: RetentionConfig,
     pub logging: LoggingConfig,
     /// Demo mode only: keep `demo.db` between runs instead of reseeding.
     pub demo_keep_state: bool,
@@ -266,6 +298,7 @@ impl Default for Config {
             monitoring: MonitoringConfig::default(),
             streaming: StreamingConfig::default(),
             discovery: DiscoveryConfig::default(),
+            retention: RetentionConfig::default(),
             logging: LoggingConfig::default(),
             demo_keep_state: false,
         }

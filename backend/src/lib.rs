@@ -14,6 +14,7 @@ pub mod events;
 pub mod monitoring;
 pub mod organization;
 pub mod providers;
+pub mod retention;
 pub mod secret;
 pub mod settings;
 pub mod storage;
@@ -165,6 +166,24 @@ pub async fn serve(
         },
     ));
 
+    let retention = tokio::spawn(supervisor::supervise(
+        "retention",
+        state.services.clone(),
+        shutdown.child_token(),
+        {
+            let (db, settings) = (state.db.clone(), state.settings.clone());
+            move |cancel| {
+                retention::run(
+                    db.clone(),
+                    settings.clone(),
+                    retention::FIRST_RUN_DELAY,
+                    retention::INTERVAL,
+                    cancel,
+                )
+            }
+        },
+    ));
+
     let handle = axum_server::Handle::new();
     tokio::spawn({
         let handle = handle.clone();
@@ -210,6 +229,7 @@ pub async fn serve(
     shutdown.cancel();
     let _ = sweeper.await;
     let _ = monitor.await;
+    let _ = retention.await;
     db.close().await;
     Ok(())
 }
@@ -225,11 +245,6 @@ async fn sweep_sessions(db: SqlitePool, timeouts: Timeouts, cancel: Cancellation
             Ok(0) => {}
             Ok(n) => tracing::debug!(removed = n, "purged expired sessions"),
             Err(err) => tracing::warn!(error = %err, "failed to purge expired sessions"),
-        }
-        match tasks::purge_old(&db).await {
-            Ok(0) => {}
-            Ok(n) => tracing::debug!(removed = n, "purged old tasks"),
-            Err(err) => tracing::warn!(error = %err, "failed to purge old tasks"),
         }
     }
 }

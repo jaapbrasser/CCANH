@@ -154,6 +154,10 @@ fn v1_routes() -> OpenApiRouter<AppState> {
             settings::update_discovery,
             settings::reset_discovery
         ))
+        .routes(routes!(
+            settings::update_retention,
+            settings::reset_retention
+        ))
         .routes(routes!(ws::ws))
 }
 

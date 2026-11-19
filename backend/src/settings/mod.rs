@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 use tokio::sync::watch;
 use utoipa::ToSchema;
 
-use crate::config::{DiscoveryConfig, MonitoringConfig, StreamingConfig};
+use crate::config::{DiscoveryConfig, MonitoringConfig, RetentionConfig, StreamingConfig};
 
 /// Camera status monitoring (SPEC §10.2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -132,6 +132,19 @@ pub struct StreamingSettings {
     /// Profile name preferred for the detail view on cameras that have it (≤ 64 chars).
     #[serde(default)]
     pub default_detail_profile: Option<String>,
+    /// Most camera connections at once; 0 = no limit (0–1000).
+    #[serde(default)]
+    pub max_upstreams: u32,
+    /// Connections kept free for detail views when limited (0–100).
+    #[serde(default = "default_detail_reserve")]
+    pub detail_reserve: u32,
+    /// Refuse new connections while inbound video exceeds this (Mbit/s); 0 = no limit (0–100000).
+    #[serde(default)]
+    pub max_inbound_mbps: u32,
+}
+
+fn default_detail_reserve() -> u32 {
+    2
 }
 
 impl From<&StreamingConfig> for StreamingSettings {
@@ -142,6 +155,9 @@ impl From<&StreamingConfig> for StreamingSettings {
             global_buffer_mb: c.global_buffer_mb,
             default_grid_profile: non_empty(c.default_grid_profile.as_deref()),
             default_detail_profile: non_empty(c.default_detail_profile.as_deref()),
+            max_upstreams: c.max_upstreams,
+            detail_reserve: c.detail_reserve,
+            max_inbound_mbps: c.max_inbound_mbps,
         }
     }
 }
@@ -160,6 +176,9 @@ pub struct StreamingPatch {
     pub global_buffer_mb: Option<u32>,
     pub default_grid_profile: Option<String>,
     pub default_detail_profile: Option<String>,
+    pub max_upstreams: Option<u32>,
+    pub detail_reserve: Option<u32>,
+    pub max_inbound_mbps: Option<u32>,
 }
 
 const MAX_PROFILE_NAME: usize = 64;
@@ -176,6 +195,9 @@ impl StreamingSettings {
             global_buffer_mb: p.global_buffer_mb.unwrap_or(self.global_buffer_mb),
             default_grid_profile: name(&p.default_grid_profile, &self.default_grid_profile),
             default_detail_profile: name(&p.default_detail_profile, &self.default_detail_profile),
+            max_upstreams: p.max_upstreams.unwrap_or(self.max_upstreams),
+            detail_reserve: p.detail_reserve.unwrap_or(self.detail_reserve),
+            max_inbound_mbps: p.max_inbound_mbps.unwrap_or(self.max_inbound_mbps),
         }
     }
 
@@ -192,6 +214,15 @@ impl StreamingSettings {
             return Err(
                 "global_buffer_mb must be between 16 and 4096 and at least stream_buffer_mb".into(),
             );
+        }
+        if self.max_upstreams > 1000 {
+            return Err("max_upstreams must be between 0 (no limit) and 1000".into());
+        }
+        if self.detail_reserve > 100 {
+            return Err("detail_reserve must be between 0 and 100".into());
+        }
+        if self.max_inbound_mbps > 100_000 {
+            return Err("max_inbound_mbps must be between 0 (no limit) and 100000".into());
         }
         for (field, v) in [
             ("default_grid_profile", &self.default_grid_profile),
@@ -273,11 +304,63 @@ impl DiscoverySettings {
     }
 }
 
+/// History retention (SPEC §11.3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct RetentionSettings {
+    /// Days of camera status history (1–3650).
+    pub status_history_days: u32,
+    /// Days of finished tasks, discovery scans included (1–3650).
+    pub tasks_days: u32,
+    /// Days of audit log; 0 keeps it forever, otherwise 90–3650.
+    pub audit_days: u32,
+}
+
+impl From<&RetentionConfig> for RetentionSettings {
+    fn from(c: &RetentionConfig) -> Self {
+        Self {
+            status_history_days: c.status_history_days,
+            tasks_days: c.tasks_days,
+            audit_days: c.audit_days,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+pub struct RetentionPatch {
+    pub status_history_days: Option<u32>,
+    pub tasks_days: Option<u32>,
+    pub audit_days: Option<u32>,
+}
+
+impl RetentionSettings {
+    pub fn patched(&self, p: &RetentionPatch) -> Self {
+        Self {
+            status_history_days: p.status_history_days.unwrap_or(self.status_history_days),
+            tasks_days: p.tasks_days.unwrap_or(self.tasks_days),
+            audit_days: p.audit_days.unwrap_or(self.audit_days),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if !(1..=3650).contains(&self.status_history_days) {
+            return Err("status_history_days must be between 1 and 3650".into());
+        }
+        if !(1..=3650).contains(&self.tasks_days) {
+            return Err("tasks_days must be between 1 and 3650".into());
+        }
+        if self.audit_days != 0 && !(90..=3650).contains(&self.audit_days) {
+            return Err("audit_days must be 0 (keep forever) or between 90 and 3650".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 pub struct RuntimeSettings {
     pub monitoring: MonitoringSettings,
     pub streaming: StreamingSettings,
     pub discovery: DiscoverySettings,
+    pub retention: RetentionSettings,
 }
 
 impl RuntimeSettings {
@@ -286,6 +369,7 @@ impl RuntimeSettings {
             monitoring: MonitoringSettings::from(&c.monitoring),
             streaming: StreamingSettings::from(&c.streaming),
             discovery: DiscoverySettings::from(&c.discovery),
+            retention: RetentionSettings::from(&c.retention),
         }
     }
 }
@@ -293,6 +377,7 @@ impl RuntimeSettings {
 const MONITORING_KEY: &str = "monitoring";
 const STREAMING_KEY: &str = "streaming";
 const DISCOVERY_KEY: &str = "discovery";
+const RETENTION_KEY: &str = "retention";
 
 /// Shared handle: current values plus the defaults they override.
 #[derive(Debug, Clone)]
@@ -363,10 +448,22 @@ impl SettingsHandle {
             }
             None => self.defaults.discovery.clone(),
         };
+        let retention = match Self::stored(db, RETENTION_KEY)
+            .await?
+            .map(|v| serde_json::from_str::<RetentionSettings>(&v))
+        {
+            Some(Ok(s)) if s.validate().is_ok() => s,
+            Some(_) => {
+                tracing::warn!("ignoring invalid stored retention settings; using defaults");
+                self.defaults.retention.clone()
+            }
+            None => self.defaults.retention.clone(),
+        };
         self.tx.send_replace(RuntimeSettings {
             monitoring,
             streaming,
             discovery,
+            retention,
         });
         Ok(())
     }
@@ -402,6 +499,35 @@ impl SettingsHandle {
         Self::persist(db, MONITORING_KEY, &json, by).await?;
         self.tx.send_modify(|s| s.monitoring = after.clone());
         Ok((before, after))
+    }
+
+    /// Validate, persist and publish new retention settings.
+    pub async fn update_retention(
+        &self,
+        db: &SqlitePool,
+        patch: &RetentionPatch,
+        by: &str,
+    ) -> Result<(RetentionSettings, RetentionSettings), SettingsError> {
+        let before = self.current().retention;
+        let after = before.patched(patch);
+        after.validate().map_err(SettingsError::Invalid)?;
+        let json =
+            serde_json::to_string(&after).map_err(|e| SettingsError::Invalid(e.to_string()))?;
+        Self::persist(db, RETENTION_KEY, &json, by).await?;
+        self.tx.send_modify(|s| s.retention = after.clone());
+        Ok((before, after))
+    }
+
+    pub async fn reset_retention(
+        &self,
+        db: &SqlitePool,
+    ) -> Result<RetentionSettings, SettingsError> {
+        sqlx::query!("DELETE FROM settings WHERE key = ?1", RETENTION_KEY)
+            .execute(db)
+            .await?;
+        let defaults = self.defaults.retention.clone();
+        self.tx.send_modify(|s| s.retention = defaults.clone());
+        Ok(defaults)
     }
 
     /// Validate, persist and publish new discovery settings.

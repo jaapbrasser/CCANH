@@ -11,8 +11,8 @@ use crate::audit::{self, action, Event as AuditEvent, Outcome};
 use crate::auth::{AdminUser, ClientIp};
 use crate::monitoring::MonitorStatsSnapshot;
 use crate::settings::{
-    DiscoveryPatch, DiscoverySettings, MonitoringPatch, MonitoringSettings, RuntimeSettings,
-    SettingsError, StreamingPatch, StreamingSettings,
+    DiscoveryPatch, DiscoverySettings, MonitoringPatch, MonitoringSettings, RetentionPatch,
+    RetentionSettings, RuntimeSettings, SettingsError, StreamingPatch, StreamingSettings,
 };
 use crate::AppState;
 
@@ -277,6 +277,82 @@ pub async fn reset_discovery(
         AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
             .actor(Some(admin.id), &admin.username)
             .target("settings", "discovery")
+            .ip(ip)
+            .details(serde_json::json!({ "from": before, "to": after, "reset": true })),
+    )
+    .await?;
+    Ok(Json(after))
+}
+
+/// Change how long history is kept (status history, tasks and scans, audit log).
+///
+/// Required role: admin. Applies at the next daily cleanup. Audited.
+#[utoipa::path(
+    patch,
+    path = "/settings/retention",
+    operation_id = "update_retention_settings",
+    tag = "settings",
+    request_body = RetentionPatch,
+    responses(
+        (status = 200, description = "New retention settings", body = RetentionSettings),
+        (status = 400, description = "A value is out of range", body = Problem),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 403, description = "Not an admin", body = Problem),
+    )
+)]
+pub async fn update_retention(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    JsonBody(patch): JsonBody<RetentionPatch>,
+) -> Result<Json<RetentionSettings>, ApiError> {
+    let (before, after) = state
+        .settings
+        .update_retention(&state.db, &patch, &admin.username)
+        .await
+        .map_err(settings_error)?;
+    audit::record(
+        &state.db,
+        AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
+            .actor(Some(admin.id), &admin.username)
+            .target("settings", "retention")
+            .ip(ip)
+            .details(serde_json::json!({ "from": before, "to": after })),
+    )
+    .await?;
+    Ok(Json(after))
+}
+
+/// Reset retention settings to the startup defaults.
+///
+/// Required role: admin.
+#[utoipa::path(
+    delete,
+    path = "/settings/retention",
+    operation_id = "reset_retention_settings",
+    tag = "settings",
+    responses(
+        (status = 200, description = "Default retention settings, now in effect", body = RetentionSettings),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 403, description = "Not an admin", body = Problem),
+    )
+)]
+pub async fn reset_retention(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+) -> Result<Json<RetentionSettings>, ApiError> {
+    let before = state.settings.current().retention;
+    let after = state
+        .settings
+        .reset_retention(&state.db)
+        .await
+        .map_err(settings_error)?;
+    audit::record(
+        &state.db,
+        AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
+            .actor(Some(admin.id), &admin.username)
+            .target("settings", "retention")
             .ip(ip)
             .details(serde_json::json!({ "from": before, "to": after, "reset": true })),
     )

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM camera_status_history WHERE occurred_at < ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "ad253c3ab6b53c07ebebc6ddc620ee983b44959ea6dbd1d752a1596fbd4f8d7e"
+}

@@ -68,6 +68,12 @@ global_buffer_mb = 256
 # for the detail view.
 # default_grid_profile = "grid"
 # default_detail_profile = "main"
+# Camera-network bandwidth limits (0 = no limit). When max_upstreams is set,
+# detail_reserve connections are kept free for detail views (grid tiles can't
+# use them), so a full wall of tiles never blocks opening a camera.
+max_upstreams = 0
+detail_reserve = 2
+max_inbound_mbps = 0
 
 [discovery]
 # Most addresses one scan may cover without explicit confirmation (about a /20).
@@ -76,6 +82,14 @@ max_addresses = 4096
 concurrency = 32
 connect_timeout_ms = 1000
 http_timeout_ms = 3000
+
+[retention]
+# Days of history to keep; a cleanup runs shortly after startup and then daily.
+status_history_days = 30
+# Finished tasks, including discovery scans and their results.
+tasks_days = 30
+# Audit log: 0 keeps it forever (the default); otherwise at least 90.
+audit_days = 0
 
 [logging]
 # tracing filter directive; RUST_LOG overrides it.
