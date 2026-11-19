@@ -31,6 +31,9 @@ type SocketFactory = (url: string) => WebSocket;
 
 /** How long a connection stays open after its last player leaves. */
 export const LINGER_MS = 3000;
+/** Retry delays when the server refuses the stream before it starts (e.g. 409:
+ * the camera's stream profiles aren't known yet right after it was added). */
+export const RETRY_MS = [1000, 2000, 5000, 10000, 30000];
 /** Cap for the cached current GOP (bytes) used to start late players. */
 const MAX_GOP_BYTES = 8 * 1024 * 1024;
 
@@ -45,6 +48,8 @@ export class StreamConnection {
   private state: StreamState = "connecting";
   private message: string | null = null;
   private lingerTimer: ReturnType<typeof setTimeout> | undefined;
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
+  private retries = 0;
   private closed = false;
 
   constructor(
@@ -59,10 +64,26 @@ export class StreamConnection {
 
   private open() {
     const ws = this.makeSocket(this.url);
+    let received = false;
     ws.binaryType = "arraybuffer";
-    ws.onmessage = (ev) => this.handle(ev.data);
+    ws.onmessage = (ev) => {
+      received = true;
+      this.retries = 0;
+      this.handle(ev.data);
+    };
     ws.onclose = () => {
       if (this.closed) return;
+      // Refused before anything arrived (the browser hides the status): the
+      // stream may simply not be available yet, so try again with backoff.
+      if (!received && this.listeners.size > 0) {
+        const delay = RETRY_MS[Math.min(this.retries, RETRY_MS.length - 1)]!;
+        this.retries += 1;
+        this.setState("connecting", "Waiting for the camera's stream…");
+        this.retryTimer = setTimeout(() => {
+          if (!this.closed) this.open();
+        }, delay);
+        return;
+      }
       if (this.state !== "failed" && this.state !== "stopped") this.setState("stopped", "connection lost");
       this.close();
     };
@@ -137,6 +158,7 @@ export class StreamConnection {
     if (this.closed) return;
     this.closed = true;
     clearTimeout(this.lingerTimer);
+    clearTimeout(this.retryTimer);
     this.socket?.close();
     this.onGone(this.key);
   }
