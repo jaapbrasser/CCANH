@@ -108,7 +108,7 @@ describe("authorization in the UI", () => {
       "API docs ↗",
     ]);
     expect(screen.getByTestId("location")).toHaveTextContent(/^\/settings\/general$/);
-    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "General" })).toBeInTheDocument();
     await userEvent.click(within(settings).getByRole("link", { name: "Audit log" }));
     expect(await screen.findByRole("heading", { name: "Audit log" })).toBeInTheDocument();
   });
