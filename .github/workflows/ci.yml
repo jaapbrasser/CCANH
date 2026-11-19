@@ -122,6 +122,23 @@ jobs:
       - name: Windows service test
         shell: pwsh
         run: ./scripts/service-test.ps1 -Exe target/release/crane.exe
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+      - name: Build installer
+        shell: pwsh
+        run: ./scripts/build-installer.ps1
+      - name: Installer test
+        shell: pwsh
+        run: ./scripts/installer-test.ps1 -Installer (Get-ChildItem dist/crane-setup-*.exe).FullName
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crane-setup-windows-x64
+          path: dist/crane-setup-*.exe
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: crane-windows-x64
