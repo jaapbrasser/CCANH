@@ -3,6 +3,7 @@ import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { meKey } from "./auth";
 import { cameraKeys, type CameraDetail, type CameraList } from "./cameras";
 import { isTerminal, taskKeys, type Task } from "./tasks";
+import { applyFound, applyProgress, discoveryKeys } from "./discovery";
 import { orgKeys } from "./organization";
 import { streamsKey } from "./streams";
 import { showToast } from "../components/toasts";
@@ -14,7 +15,11 @@ type ClientMessage = components["schemas"]["WsClientMessage"];
 /** Close codes from the server (ADR 0007). */
 export const CLOSE_SESSION_ENDED = 4401;
 
-const TASK_LABELS: Record<string, string> = { test_connection: "Connection test" };
+const TASK_LABELS: Record<string, string> = {
+  test_connection: "Connection test",
+  discovery: "Scan",
+  bulk_cameras: "Bulk update",
+};
 
 /** Notify the user when one of their tasks finishes. */
 function notifyTaskFinished(task: Task, myId: string | undefined) {
@@ -22,7 +27,10 @@ function notifyTaskFinished(task: Task, myId: string | undefined) {
   const label = TASK_LABELS[task.kind] ?? "Task";
   if (task.status === "succeeded") {
     const ok = (task.result as { ok?: boolean } | null)?.ok;
+    const found = (task.result as { found?: number } | null)?.found;
     if (ok === false) showToast("error", `${label} finished with problems.`);
+    else if (task.kind === "discovery" && found !== undefined)
+      showToast("success", `${label} finished: ${found} AXIS device${found === 1 ? "" : "s"} found.`);
     else showToast("success", `${label} finished.`);
   } else if (task.status === "failed") {
     showToast("error", `${label} failed: ${task.error_message ?? "unknown error"}`);
@@ -63,8 +71,17 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage, myId?: str
       qc.setQueryData(taskKeys.detail(msg.task.id), msg.task);
       if (prev?.status !== msg.task.status) qc.invalidateQueries({ queryKey: taskKeys.lists() });
       if (!isTerminal(prev?.status)) notifyTaskFinished(msg.task, myId);
+      if (msg.task.kind === "discovery" && prev?.status !== msg.task.status) {
+        qc.invalidateQueries({ queryKey: discoveryKeys.all });
+      }
       break;
     }
+    case "discovery_found":
+      applyFound(qc, msg.job_id, msg.result);
+      break;
+    case "discovery_progress":
+      applyProgress(qc, msg.job_id, msg);
+      break;
     case "organization_changed":
       qc.invalidateQueries({ queryKey: msg.kind === "groups" ? orgKeys.groups : orgKeys.tags });
       break;
@@ -125,7 +142,7 @@ export function useLiveUpdates(enabled: boolean, myId?: string, admin = false) {
       socket = new WebSocket(url);
       socket.onopen = () => {
         const topics: ClientMessage["topics"] = ["camera_status", "cameras", "tasks"];
-        if (admin) topics.push("streams");
+        if (admin) topics.push("streams", "discovery");
         const subscribe: ClientMessage = { type: "subscribe", topics };
         socket?.send(JSON.stringify(subscribe));
         if (attempt > 0) {

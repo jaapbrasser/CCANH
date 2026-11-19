@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { errorMessage } from "../api/client";
 import {
+  useResetDiscovery,
+  useUpdateDiscovery,
+  type DiscoverySettings,
   useResetMonitoring,
   useResetStreaming,
   useSettings,
@@ -71,6 +74,16 @@ export function SettingsPage() {
           key={JSON.stringify(settings.data.current.streaming)}
           current={settings.data.current.streaming}
           defaults={settings.data.defaults.streaming}
+        />
+      )}
+
+      <h2 className="mb-1 mt-10 text-lg font-semibold">Discovery</h2>
+      <p className="mb-4 text-sm text-slate-400">Limits for scanning address ranges for cameras.</p>
+      {settings.data && (
+        <DiscoveryForm
+          key={JSON.stringify(settings.data.current.discovery)}
+          current={settings.data.current.discovery}
+          defaults={settings.data.defaults.discovery}
         />
       )}
     </div>
@@ -205,6 +218,60 @@ function StreamingForm({ current, defaults }: { current: StreamingSettings; defa
           variant="secondary"
           disabled={reset.isPending}
           onClick={() => reset.mutate(undefined, { onSuccess: () => showToast("success", "Live video settings reset.") })}
+        >
+          Reset
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+type DKey = keyof DiscoverySettings;
+const DISCOVERY_FIELDS: { key: DKey; label: string; hint: string }[] = [
+  { key: "max_addresses", label: "Address limit per scan", hint: "Larger scans need explicit confirmation (16–65536)." },
+  { key: "concurrency", label: "Hosts at once", hint: "Addresses probed in parallel (1–256)." },
+  { key: "connect_timeout_ms", label: "Port check timeout (ms)", hint: "Per TCP connection attempt (100–10000)." },
+  { key: "http_timeout_ms", label: "Identification timeout (ms)", hint: "For the one request to a responding host (500–30000)." },
+];
+
+function DiscoveryForm({ current, defaults }: { current: DiscoverySettings; defaults: DiscoverySettings }) {
+  const update = useUpdateDiscovery();
+  const reset = useResetDiscovery();
+  const [form, setForm] = useState(
+    () => Object.fromEntries(DISCOVERY_FIELDS.map((f) => [f.key, String(current[f.key])])) as Record<DKey, string>,
+  );
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const patch: Partial<Record<DKey, number>> = {};
+    for (const f of DISCOVERY_FIELDS) {
+      const v = Number(form[f.key]);
+      if (v !== current[f.key]) patch[f.key] = v;
+    }
+    update.mutate(patch, { onSuccess: () => showToast("success", "Discovery settings saved.") });
+  };
+  return (
+    <form onSubmit={onSubmit} aria-label="Discovery settings" className="flex flex-col gap-4">
+      {(update.isError || reset.isError) && <Alert>{errorMessage(update.error ?? reset.error)}</Alert>}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {DISCOVERY_FIELDS.map((f) => (
+          <Field
+            key={f.key}
+            label={f.label}
+            inputMode="numeric"
+            hint={`${f.hint}${defaults[f.key] !== Number(form[f.key]) ? ` Default: ${defaults[f.key]}.` : ""}`}
+            value={form[f.key]}
+            onChange={(e) => setForm({ ...form, [f.key]: e.target.value.replace(/\D/g, "") })}
+          />
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={update.isPending}>
+          Save discovery settings
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={reset.isPending}
+          onClick={() => reset.mutate(undefined, { onSuccess: () => showToast("success", "Discovery settings reset.") })}
         >
           Reset
         </Button>

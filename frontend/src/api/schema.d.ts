@@ -377,6 +377,96 @@ export interface paths {
         patch: operations["update_dashboard"];
         trace?: never;
     };
+    "/api/v1/discovery/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent discovery jobs, newest first (up to 20).
+         * @description Required role: admin.
+         */
+        get: operations["list_discovery_jobs"];
+        put?: never;
+        /**
+         * Start scanning ranges for AXIS devices.
+         * @description Required role: admin. Runs as a `discovery` task (202). Results and
+         *     progress stream on the `discovery` WebSocket topic; cancel with
+         *     `POST /tasks/{id}/cancel`. Nothing is registered automatically. Audited.
+         */
+        post: operations["start_discovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discovery/jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A job with its results, duplicates flagged against current cameras.
+         * @description Required role: admin.
+         */
+        get: operations["get_discovery_job"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discovery/jobs/{id}/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register approved results as cameras.
+         * @description Required role: admin. Results already registered (from this scan or as a
+         *     duplicate of an existing camera) are skipped with a reason. HTTPS devices
+         *     are pinned to the certificate fingerprint seen during the scan. Each new
+         *     camera is audited.
+         */
+        post: operations["register_discovered"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discovery/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count the addresses ranges cover and check them against the caps,
+         *     without starting anything.
+         * @description Required role: admin.
+         */
+        post: operations["preview_discovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/favorites": {
         parameters: {
             query?: never;
@@ -512,6 +602,30 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/discovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Reset discovery settings to the startup defaults.
+         * @description Required role: admin.
+         */
+        delete: operations["reset_discovery_settings"];
+        options?: never;
+        head?: never;
+        /**
+         * Change discovery settings (address cap, concurrency, timeouts).
+         * @description Required role: admin. Applies to the next scan. Audited.
+         */
+        patch: operations["update_discovery_settings"];
         trace?: never;
     };
     "/api/v1/settings/monitoring": {
@@ -1141,6 +1255,140 @@ export interface components {
             network?: components["schemas"]["NetworkInfo"] | null;
             serial_number?: string | null;
         };
+        /** @description One device found by a scan. */
+        DiscoveredDevice: {
+            device_name?: string | null;
+            duplicate_of?: components["schemas"]["DuplicateOf"] | null;
+            firmware_version?: string | null;
+            /** Format: date-time */
+            found_at: string;
+            hostname?: string | null;
+            /** Format: uuid */
+            id: string;
+            ip: string;
+            /** Format: uuid */
+            job_id: string;
+            mac_address?: string | null;
+            manufacturer?: string | null;
+            model?: string | null;
+            /** Format: int32 */
+            port: number;
+            /**
+             * Format: uuid
+             * @description Set when this result was registered from this scan.
+             */
+            registered_camera_id?: string | null;
+            /** Format: int32 */
+            response_time_ms?: number | null;
+            scheme: components["schemas"]["Scheme"];
+            serial_number?: string | null;
+            /**
+             * @description HTTPS certificate fingerprint seen during the scan (unverified).
+             *     Registering pins it, after the admin has approved the device.
+             */
+            tls_fingerprint_sha256?: string | null;
+        };
+        /** @description A discovery job: its ranges, counters and task (status, progress, cancel). */
+        DiscoveryJob: {
+            /** Format: int32 */
+            address_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: int32
+             * @description AXIS devices identified.
+             */
+            found: number;
+            /**
+             * Format: uuid
+             * @description Same as the task id; cancel with `POST /tasks/{id}/cancel`.
+             */
+            id: string;
+            ranges: string[];
+            /**
+             * Format: int32
+             * @description Addresses with an open HTTP or HTTPS port.
+             */
+            responsive: number;
+            /** Format: int32 */
+            scanned: number;
+            task: components["schemas"]["Task"];
+        };
+        DiscoveryJobDetail: components["schemas"]["DiscoveryJob"] & {
+            /** @description Devices found so far, by address. */
+            results: components["schemas"]["DiscoveredDevice"][];
+        };
+        DiscoveryPatch: {
+            /** Format: int32 */
+            concurrency?: number | null;
+            /** Format: int64 */
+            connect_timeout_ms?: number | null;
+            /** Format: int64 */
+            http_timeout_ms?: number | null;
+            /** Format: int32 */
+            max_addresses?: number | null;
+        };
+        DiscoveryPreview: {
+            /** Format: int64 */
+            address_count: number;
+            /**
+             * Format: int32
+             * @description The configured cap (runtime setting `discovery.max_addresses`).
+             */
+            max_addresses: number;
+            /** @description More than the cap: starting needs `confirm_large: true`. */
+            needs_confirmation: boolean;
+            /** @description More than the hard ceiling: can't be scanned at all. */
+            too_large: boolean;
+        };
+        DiscoveryRanges: {
+            /**
+             * @description IPv4 CIDR blocks, single addresses or dash ranges
+             *     (`192.0.2.0/24`, `192.0.2.7`, `192.0.2.10-20`). Entries may hold
+             *     several, separated by commas, spaces or newlines.
+             */
+            ranges: string[];
+        };
+        /** @description Camera discovery (SPEC §5). */
+        DiscoverySettings: {
+            /**
+             * Format: int32
+             * @description Hosts probed at once (1–256).
+             */
+            concurrency: number;
+            /**
+             * Format: int64
+             * @description TCP connect timeout per port in ms (100–10000).
+             */
+            connect_timeout_ms: number;
+            /**
+             * Format: int64
+             * @description Identification request timeout in ms (500–30000).
+             */
+            http_timeout_ms: number;
+            /**
+             * Format: int32
+             * @description Most addresses per job without explicit confirmation (16–65536).
+             */
+            max_addresses: number;
+        };
+        /**
+         * @description What a result duplicates: a registered camera, or an earlier result in
+         *     the same scan (the same device answering on two addresses).
+         */
+        DuplicateOf: {
+            /** Format: uuid */
+            camera_id?: string | null;
+            camera_name?: string | null;
+            reason: components["schemas"]["DuplicateReason"];
+            /** Format: uuid */
+            result_id?: string | null;
+        };
+        /**
+         * @description Why a result is flagged as a duplicate, strongest first.
+         * @enum {string}
+         */
+        DuplicateReason: "serial_number" | "mac_address" | "ip" | "hostname";
         /**
          * @description Error categories shared by the API, UI and retry policy (SPEC §10.4).
          * @enum {string}
@@ -1393,6 +1641,23 @@ export interface components {
             /** @description URI identifying the problem type, e.g. `urn:crane:problem:not_found`. */
             type: string;
         };
+        RegisterDiscovered: {
+            credentials?: components["schemas"]["CredentialInput"] | null;
+            group_ids?: string[];
+            monitoring_enabled?: boolean;
+            /** @description Results to register (up to 500). */
+            result_ids: string[];
+            tag_ids?: string[];
+        };
+        RegisterOutcome: {
+            registered: components["schemas"]["RegisteredResult"][];
+            skipped: components["schemas"]["SkippedResult"][];
+        };
+        RegisteredResult: {
+            camera: components["schemas"]["CameraSummary"];
+            /** Format: uuid */
+            result_id: string;
+        };
         ResetPasswordRequest: {
             /** Format: password */
             new_password: string;
@@ -1404,6 +1669,7 @@ export interface components {
          */
         Role: "admin" | "viewer";
         RuntimeSettings: {
+            discovery: components["schemas"]["DiscoverySettings"];
             monitoring: components["schemas"]["MonitoringSettings"];
             streaming: components["schemas"]["StreamingSettings"];
         };
@@ -1435,6 +1701,16 @@ export interface components {
         SetupStatus: {
             /** @description True when no users exist and the setup page should be shown. */
             setup_required: boolean;
+        };
+        SkippedResult: {
+            reason: string;
+            /** Format: uuid */
+            result_id: string;
+        };
+        StartDiscovery: {
+            /** @description Required to scan more addresses than `discovery.max_addresses`. */
+            confirm_large?: boolean;
+            ranges: string[];
         };
         StatusHistory: {
             items: components["schemas"]["StatusTransition"][];
@@ -1683,7 +1959,7 @@ export interface components {
          * @description Subscription topics a WebSocket client can ask for.
          * @enum {string}
          */
-        Topic: "camera_status" | "cameras" | "tasks" | "streams";
+        Topic: "camera_status" | "cameras" | "tasks" | "streams" | "discovery";
         UpdateUserRequest: {
             disabled?: boolean | null;
             role?: components["schemas"]["Role"] | null;
@@ -1771,6 +2047,25 @@ export interface components {
             kind: components["schemas"]["OrganizationKind"];
             /** @enum {string} */
             type: "organization_changed";
+        } | {
+            /** Format: uuid */
+            job_id: string;
+            result: components["schemas"]["DiscoveredDevice"];
+            /** @enum {string} */
+            type: "discovery_found";
+        } | {
+            /** Format: int32 */
+            found: number;
+            /** Format: uuid */
+            job_id: string;
+            /** Format: int32 */
+            responsive: number;
+            /** Format: int32 */
+            scanned: number;
+            /** Format: int32 */
+            total: number;
+            /** @enum {string} */
+            type: "discovery_progress";
         };
     };
     responses: never;
@@ -2977,6 +3272,259 @@ export interface operations {
             };
         };
     };
+    list_discovery_jobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent jobs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryJob"][];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    start_discovery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartDiscovery"];
+            };
+        };
+        responses: {
+            /** @description Scan started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryJob"];
+                };
+            };
+            /** @description Invalid ranges, or too many addresses without confirmation */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_discovery_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Job (task) ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The job and its results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryJobDetail"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such job */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    register_discovered: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Job (task) ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterDiscovered"];
+            };
+        };
+        responses: {
+            /** @description What was registered and what was skipped */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegisterOutcome"];
+                };
+            };
+            /** @description Invalid selection, groups or tags */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such job */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    preview_discovery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscoveryRanges"];
+            };
+        };
+        responses: {
+            /** @description Address count and caps */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryPreview"];
+                };
+            };
+            /** @description A range can't be parsed */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_favorites: {
         parameters: {
             query?: never;
@@ -3350,6 +3898,95 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsView"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reset_discovery_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Default discovery settings, now in effect */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySettings"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_discovery_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscoveryPatch"];
+            };
+        };
+        responses: {
+            /** @description New discovery settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoverySettings"];
+                };
+            };
+            /** @description A value is out of range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
             /** @description Not signed in */

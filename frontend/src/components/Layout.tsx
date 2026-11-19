@@ -70,6 +70,9 @@ export function Layout() {
                 <NavLink to="/users" className={linkClass}>
                   Users
                 </NavLink>
+                <NavLink to="/discovery" className={linkClass}>
+                  Discovery
+                </NavLink>
                 <NavLink to="/organization" className={linkClass}>
                   Groups &amp; tags
                 </NavLink>

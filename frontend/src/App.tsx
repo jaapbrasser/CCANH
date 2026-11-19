@@ -11,6 +11,7 @@ import { CredentialSetsPage } from "./pages/CredentialSetsPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { DashboardsPage } from "./pages/dashboards/DashboardsPage";
+import { DiscoveryPage } from "./pages/DiscoveryPage";
 import { OrganizationPage } from "./pages/OrganizationPage";
 import { StreamsPage } from "./pages/StreamsPage";
 import { CameraDetailPage } from "./pages/cameras/CameraDetailPage";
@@ -35,6 +36,14 @@ export default function App() {
         <Route path="dashboards" element={<DashboardsPage />} />
         <Route path="dashboards/:id" element={<DashboardsPage />} />
         <Route path="favorites" element={<CamerasPage key="favorites" favoritesOnly />} />
+        <Route
+          path="discovery"
+          element={
+            <RequireAdmin>
+              <DiscoveryPage />
+            </RequireAdmin>
+          }
+        />
         <Route
           path="organization"
           element={
