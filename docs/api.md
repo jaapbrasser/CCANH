@@ -19,6 +19,8 @@ The OpenAPI document is generated from code (`/api/openapi.json`, Swagger UI at
 - Organization (ADR 0009): `GET /cameras` filters by `group_id` (includes
   subgroups), `tag_id` and `favorites=true` (the caller's own). Bulk changes go
   through `POST /cameras/bulk` and return 202 with a `bulk_cameras` task.
+- Dashboards (`/dashboards`, ADR 0005) belong to the caller; another user's
+  dashboard id answers 404, for admins too.
 - Live video: a media WebSocket per stream at
   `/api/v1/streams/{camera_id}/ws?profile=|purpose=`, carrying fMP4 for MSE
   (ADR 0002). It isn't in the OpenAPI document beyond the upgrade route.

@@ -94,6 +94,21 @@ cargo test -p crane --test rtsp_source -- --ignored
 regular test suite doesn't need it: `providers/axis/rtsp_tests.rs` runs a fake
 AXIS RTSP server in-process.
 
+## End-to-end tests (Playwright)
+
+They run against the release binary in demo mode (a fresh demo database in a
+temp directory, port 18080):
+
+```bash
+pwsh scripts/build.ps1
+cd frontend && npx playwright install chromium   # once
+npm run e2e
+```
+
+`CRANE_E2E_EXE` and `CRANE_E2E_PORT` override the binary and port. Rebuild the
+binary after frontend changes, since the UI is embedded. CI runs them in the
+`e2e` job and uploads the report on failure.
+
 ## Database queries (SQLx offline mode)
 
 Queries use `sqlx::query!` macros, checked at compile time against `.sqlx/`.

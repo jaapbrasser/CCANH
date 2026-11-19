@@ -6,12 +6,12 @@ Read §0–3 before coding, then the section for the current phase (§17).
 
 ## Current phase
 
-Phases 0–6 are complete: Foundation, Auth & users, Camera core + demo,
+Phases 0–7 are complete: Foundation, Auth & users, Camera core + demo,
 streaming spike (ADR 0002), AXIS provider + credentials + polling + tasks +
 runtime settings, Phase 5 (stream manager, demo video, live view, Streams page,
-AXIS RTSP via `retina`, grid/detail profile choices) and Phase 6 (groups, tags,
-favorites, bulk operations, ADR 0009).
-Next: Phase 7 (Dashboards, ADR 0005). Don't build ahead of the current phase,
+AXIS RTSP via `retina`, grid/detail profile choices), Phase 6 (groups, tags,
+favorites, bulk operations, ADR 0009) and Phase 7 (dashboards, ADR 0005;
+Playwright e2e). Next: Phase 8 (Discovery). Don't build ahead of the current phase,
 and post a plan before starting one.
 
 ## Commands
@@ -38,6 +38,7 @@ npm run lint
 npm run typecheck
 npm test
 npm run build        # -> frontend/dist, embedded by release builds
+npm run e2e          # Playwright vs target/release/crane in demo mode (build first)
 ```
 
 Scripts (`pwsh`, cross-platform):
@@ -78,6 +79,7 @@ backend/
   src/settings/        admin-editable runtime settings (watch channel, DB overrides)
   src/tasks/           background task manager (persisted, cancellable, `tasks` topic)
   src/organization/    groups (tree, cycle checks), tags, favorites, memberships
+  src/dashboards/      per-user dashboards (grid, tiles, default)
   src/streaming/       MediaSource, H.264 parsing, fMP4 muxer, demo clip replay,
                        RTSP source (retina), profile resolution,
                        StreamManager (shared upstream, GOP cache, grace, reconnect)
@@ -90,6 +92,7 @@ backend/
   tests/               in-process integration tests (common/ = helpers)
 .sqlx/                 SQLx offline query cache (committed)
 assets/demo/           bundled H.264 demo clips (embedded; scripts/gen-demo-clips.ps1)
+frontend/e2e/          Playwright specs (run against the release binary)
 frontend/src/          App (routes), pages/, components/, auth/ (guards),
                        streaming/ (shared media sockets, MSE player),
                        api/ (client.ts, hooks, generated schema.d.ts), test/ (MSW)
@@ -153,6 +156,12 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
   in tests and opens no socket. Test stream sharing via `StreamRegistry` with a
   fake socket factory (`src/streaming/registry.test.ts`).
 - Live video uses its own media WebSocket per stream, not the control socket.
+- Dashboard tiles must stay keyed by camera id and positioned with CSS grid
+  coordinates (never reparented), or rearranging remounts players (ADR 0005).
+- Playwright's Chromium may lack H.264; e2e asserts on `/api/v1/streams`, not
+  on decoded video. Rebuild the binary before `npm run e2e` (UI is embedded).
+- Fresh demo cameras answer 409 on the media socket until their profiles
+  load; the stream registry retries refused sockets with backoff.
 - AXIS RTSP tests use the in-process fake server in
   `providers/axis/rtsp_tests.rs` (`FakeCamera::start_with`); the AXIS contract
   suite needs it too, since `open_stream` really connects.
