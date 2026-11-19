@@ -1,13 +1,23 @@
 import { useState } from "react";
 import { errorMessage } from "../../api/client";
 import { useBulkCameras, type BulkAction, type Group, type Tag } from "../../api/organization";
+import { BulkSettingsDialog } from "../../components/BulkSettingsDialog";
 import { GroupSelect } from "../../components/organization";
 import { showToast } from "../../components/toasts";
 import { Alert, Button, Dialog } from "../../components/ui";
 
-type Choice = "add_tags" | "remove_tags" | "add_groups" | "remove_groups" | "monitoring_on" | "monitoring_off" | "delete";
+type Choice =
+  | "edit_settings"
+  | "add_tags"
+  | "remove_tags"
+  | "add_groups"
+  | "remove_groups"
+  | "monitoring_on"
+  | "monitoring_off"
+  | "delete";
 
 const LABELS: Record<Choice, string> = {
+  edit_settings: "Edit settings…",
   add_tags: "Add tag",
   remove_tags: "Remove tag",
   add_groups: "Add to group",
@@ -32,7 +42,8 @@ export function BulkBar({
   onDone: () => void;
 }) {
   const bulk = useBulkCameras();
-  const [choice, setChoice] = useState<Choice>("add_tags");
+  const [choice, setChoice] = useState<Choice>("edit_settings");
+  const [editing, setEditing] = useState(false);
   const [target, setTarget] = useState("");
   const [confirming, setConfirming] = useState(false);
   const needsTag = choice === "add_tags" || choice === "remove_tags";
@@ -53,6 +64,8 @@ export function BulkBar({
         return { type: "set_monitoring", enabled: false };
       case "delete":
         return { type: "delete" };
+      case "edit_settings":
+        return null;
     }
   };
 
@@ -110,7 +123,9 @@ export function BulkBar({
       <Button
         variant={choice === "delete" ? "danger" : "primary"}
         disabled={bulk.isPending || ((needsTag || needsGroup) && !target)}
-        onClick={() => (choice === "delete" ? setConfirming(true) : run())}
+        onClick={() =>
+          choice === "delete" ? setConfirming(true) : choice === "edit_settings" ? setEditing(true) : run()
+        }
       >
         Apply
       </Button>
@@ -119,6 +134,14 @@ export function BulkBar({
       </Button>
       {bulk.isError && !confirming && <Alert>{errorMessage(bulk.error)}</Alert>}
 
+      {editing && (
+        <BulkSettingsDialog
+          selection={{ camera_ids: cameraIds }}
+          description={`${n} selected camera${n === 1 ? "" : "s"}`}
+          onClose={() => setEditing(false)}
+          onStarted={onDone}
+        />
+      )}
       {confirming && (
         <Dialog title={`Delete ${n} camera${n === 1 ? "" : "s"}?`} onClose={() => setConfirming(false)}>
           <div className="flex flex-col gap-4 text-sm">

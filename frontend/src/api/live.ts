@@ -19,6 +19,7 @@ const TASK_LABELS: Record<string, string> = {
   test_connection: "Connection test",
   discovery: "Scan",
   bulk_cameras: "Bulk update",
+  test_credentials: "Credential test",
 };
 
 /** Notify the user when one of their tasks finishes. */
@@ -28,7 +29,13 @@ function notifyTaskFinished(task: Task, myId: string | undefined) {
   if (task.status === "succeeded") {
     const ok = (task.result as { ok?: boolean } | null)?.ok;
     const found = (task.result as { found?: number } | null)?.found;
+    const skipped = (task.result as { skipped?: { reason: string }[] } | null)?.skipped;
     if (ok === false) showToast("error", `${label} finished with problems.`);
+    else if (task.kind === "bulk_cameras" && skipped?.length)
+      showToast(
+        "error",
+        `${label} finished; ${skipped.length} camera${skipped.length === 1 ? "" : "s"} skipped: ${skipped[0]!.reason}`,
+      );
     else if (task.kind === "discovery" && found !== undefined)
       showToast("success", `${label} finished: ${found} AXIS device${found === 1 ? "" : "s"} found.`);
     else showToast("success", `${label} finished.`);

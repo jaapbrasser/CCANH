@@ -142,11 +142,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Apply one action to many cameras (tag, group, monitoring, delete).
-         * @description Required role: admin. Validated up front (400 for unknown cameras, tags
-         *     or groups), then runs as a background task (`bulk_cameras`) whose result
-         *     is `{"action", "processed"}`. Follow it via the `tasks` topic. Cancelling
-         *     stops between cameras; work already done stays done.
+         * Apply one action to many cameras (tag, group, monitoring, settings, delete).
+         * @description Required role: admin. Select cameras by id, by group (optionally with its
+         *     subgroups) and/or by tag. Validated up front (400 for unknown cameras,
+         *     tags or groups, or an empty selection), then runs as a background task
+         *     (`bulk_cameras`) whose result is a `BulkResult`. Follow it via the `tasks`
+         *     topic. Cancelling stops between cameras; work already done stays done.
+         *     Settings changes are audited per camera (`camera.update`, never secrets)
+         *     and once for the whole request (`camera.bulk_update`).
          */
         post: operations["bulk_update_cameras"];
         delete?: never;
@@ -1094,13 +1097,63 @@ export interface components {
             /** @enum {string} */
             type: "set_monitoring";
         } | {
+            settings: components["schemas"]["BulkSettings"];
+            /** @enum {string} */
+            type: "update_settings";
+        } | {
             /** @enum {string} */
             type: "delete";
         };
         BulkRequest: {
             action: components["schemas"]["BulkAction"];
-            /** @description 1–500 camera ids. */
+            /**
+             * @description Cameras by id. Together with `group_id` and `tag_id` (all optional,
+             *     combined as a union) the selection must come to 1–500 cameras.
+             */
+            camera_ids?: string[];
+            /**
+             * Format: uuid
+             * @description Every camera in this group.
+             */
+            group_id?: string | null;
+            /** @description With `group_id`: include cameras in its subgroups (default true). */
+            include_subgroups?: boolean;
+            /**
+             * Format: uuid
+             * @description Every camera with this tag.
+             */
+            tag_id?: string | null;
+        };
+        /** @description `result` of a `bulk_cameras` task. */
+        BulkResult: {
+            action: string;
+            /** @description The cameras the selection resolved to. */
             camera_ids: string[];
+            /**
+             * Format: int32
+             * @description Cameras the action was applied to.
+             */
+            processed: number;
+            /** @description Cameras left unchanged (settings changes only), with the reason. */
+            skipped: components["schemas"]["BulkSkipped"][];
+        };
+        /**
+         * @description Connection and security settings to change on many cameras at once (issue
+         *     #19). Only the fields present change; everything else stays as it is.
+         */
+        BulkSettings: {
+            allow_basic_over_http?: boolean | null;
+            credentials?: components["schemas"]["CredentialInput"] | null;
+            /** Format: int32 */
+            port?: number | null;
+            scheme?: components["schemas"]["Scheme"] | null;
+            tls_mode?: components["schemas"]["TlsMode"] | null;
+        };
+        /** @description A camera a bulk change skipped, and why. */
+        BulkSkipped: {
+            /** Format: uuid */
+            camera_id: string;
+            reason: string;
         };
         /**
          * @description What new cameras get unless the admin chooses otherwise (issue #18, ADR

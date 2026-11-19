@@ -19,6 +19,7 @@ import {
 import { GroupSelect } from "../components/organization";
 import { showToast } from "../components/toasts";
 import { Alert, Button, Dialog, Field, PageHeader } from "../components/ui";
+import { BulkSettingsDialog } from "../components/BulkSettingsDialog";
 import { usePageTitle } from "../components/pageTitle";
 
 /** Admin page: the group tree and the tag list (SPEC §9). */
@@ -46,6 +47,7 @@ function GroupsSection() {
   const [parent, setParent] = useState("");
   const [editing, setEditing] = useState<GroupNode | null>(null);
   const [deleting, setDeleting] = useState<GroupNode | null>(null);
+  const [configuring, setConfiguring] = useState<GroupNode | null>(null);
   const list = groups.data ?? [];
   const tree = groupTree(list);
 
@@ -86,6 +88,13 @@ function GroupsSection() {
               </span>
             </span>
             <span className="flex gap-2">
+              <Button
+                variant="secondary"
+                aria-label={`Camera settings for ${g.path}`}
+                onClick={() => setConfiguring(g)}
+              >
+                Camera settings
+              </Button>
               <Button variant="secondary" aria-label={`Edit ${g.path}`} onClick={() => setEditing(g)}>
                 Edit
               </Button>
@@ -99,6 +108,13 @@ function GroupsSection() {
       </ul>
       {editing && <EditGroupDialog group={editing} groups={list} onClose={() => setEditing(null)} />}
       {deleting && <DeleteGroupDialog group={deleting} groups={list} onClose={() => setDeleting(null)} />}
+      {configuring && (
+        <BulkSettingsDialog
+          selection={{ group_id: configuring.id, include_subgroups: true }}
+          description={`cameras in ${configuring.path} and its subgroups`}
+          onClose={() => setConfiguring(null)}
+        />
+      )}
     </section>
   );
 }
@@ -213,6 +229,7 @@ function TagsSection() {
   const [name, setName] = useState("");
   const [editing, setEditing] = useState<Tag | null>(null);
   const [deleting, setDeleting] = useState<Tag | null>(null);
+  const [configuring, setConfiguring] = useState<Tag | null>(null);
   return (
     <section aria-label="Tags" className="flex flex-col gap-3">
       <h2 className="text-lg font-semibold">Tags</h2>
@@ -247,6 +264,9 @@ function TagsSection() {
               </span>
             </span>
             <span className="flex gap-2">
+              <Button variant="secondary" aria-label={`Camera settings for ${t.name}`} onClick={() => setConfiguring(t)}>
+                Camera settings
+              </Button>
               <Button variant="secondary" aria-label={`Rename ${t.name}`} onClick={() => setEditing(t)}>
                 Rename
               </Button>
@@ -260,6 +280,13 @@ function TagsSection() {
       </ul>
       {editing && <RenameTagDialog tag={editing} onClose={() => setEditing(null)} />}
       {deleting && <DeleteTagDialog tag={deleting} onClose={() => setDeleting(null)} />}
+      {configuring && (
+        <BulkSettingsDialog
+          selection={{ tag_id: configuring.id }}
+          description={`cameras tagged ${configuring.name}`}
+          onClose={() => setConfiguring(null)}
+        />
+      )}
     </section>
   );
 }

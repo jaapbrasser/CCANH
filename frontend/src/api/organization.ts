@@ -146,10 +146,20 @@ export function useToggleFavorite() {
   });
 }
 
+export type BulkSettings = components["schemas"]["BulkSettings"];
+export type BulkResult = components["schemas"]["BulkResult"];
+/** Which cameras a bulk operation applies to: ids, a group and/or a tag (a union). */
+export interface BulkSelection {
+  camera_ids?: string[];
+  group_id?: string;
+  include_subgroups?: boolean;
+  tag_id?: string;
+}
+
 /** Start a bulk operation; returns the task to follow. */
 export function useBulkCameras() {
   return useMutation({
-    mutationFn: (body: { camera_ids: string[]; action: BulkAction }) =>
+    mutationFn: (body: BulkSelection & { action: BulkAction }) =>
       unwrap(api.POST("/api/v1/cameras/bulk", { body })),
   });
 }

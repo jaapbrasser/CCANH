@@ -410,3 +410,134 @@ async fn favorites_are_per_user() {
         .await;
     assert_eq!(missing.status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn bulk_settings_by_group_and_tag() {
+    let app = TestApp::new().await;
+    let (_, admin) = app.signed_in("admin", Role::Admin).await;
+    let site = id_of(&app, &admin, "/api/v1/groups", json!({ "name": "Site" })).await;
+    let crane = id_of(
+        &app,
+        &admin,
+        "/api/v1/groups",
+        json!({ "name": "Crane", "parent_id": site }),
+    )
+    .await;
+    let old = id_of(
+        &app,
+        &admin,
+        "/api/v1/tags",
+        json!({ "name": "Old firmware" }),
+    )
+    .await;
+    let in_site = camera(&app, &admin, 1, json!({ "group_ids": [site] })).await;
+    let in_crane = camera(&app, &admin, 2, json!({ "group_ids": [crane] })).await;
+    let tagged = camera(
+        &app,
+        &admin,
+        3,
+        json!({ "tag_ids": [old], "scheme": "https", "tls_mode": "strict" }),
+    )
+    .await;
+    let untouched = camera(&app, &admin, 4, json!({})).await;
+    let set = id_of(
+        &app,
+        &admin,
+        "/api/v1/credential-sets",
+        json!({ "name": "Site viewer", "username": "viewer", "password": "s3cret-pw" }),
+    )
+    .await;
+
+    // The group (with its subgroup) plus the tag: three cameras.
+    let started = post(
+        &app,
+        &admin,
+        "/api/v1/cameras/bulk",
+        json!({
+            "group_id": site,
+            "tag_id": old,
+            "action": { "type": "update_settings", "settings": {
+                "credentials": { "type": "set", "id": set },
+                "allow_basic_over_http": false,
+                "tls_mode": "insecure_skip_verify",
+            } },
+        }),
+    )
+    .await;
+    assert_eq!(started.status, StatusCode::ACCEPTED, "{}", started.text());
+    let task = app
+        .wait_task(&admin, started.json()["id"].as_str().unwrap())
+        .await;
+    assert_eq!(task["status"], "succeeded", "{task}");
+    assert_eq!(task["result"]["processed"], 3, "{task}");
+    assert_eq!(task["result"]["skipped"], json!([]));
+
+    let get = |id: &str| {
+        let (app, admin) = (&app, &admin);
+        let id = id.to_owned();
+        async move {
+            app.send(req(Method::GET, &format!("/api/v1/cameras/{id}")).cookie(admin))
+                .await
+                .json()
+        }
+    };
+    for id in [&in_site, &in_crane, &tagged] {
+        let c = get(id).await;
+        assert_eq!(c["credential_set"]["id"], set.as_str(), "{c}");
+        assert_eq!(c["allow_basic_over_http"], false);
+    }
+    // Only the HTTPS camera gets a certificate mode; HTTP ones still have none.
+    assert_eq!(get(&tagged).await["tls_mode"], "insecure_skip_verify");
+    assert_eq!(get(&in_site).await["tls_mode"], Value::Null);
+    let u = get(&untouched).await;
+    assert_eq!(u["has_credentials"], false);
+    assert_eq!(u["allow_basic_over_http"], true);
+
+    // Subgroups can be left out.
+    let started = post(
+        &app,
+        &admin,
+        "/api/v1/cameras/bulk",
+        json!({
+            "group_id": site, "include_subgroups": false,
+            "action": { "type": "update_settings", "settings": { "port": 8080 } },
+        }),
+    )
+    .await;
+    let task = app
+        .wait_task(&admin, started.json()["id"].as_str().unwrap())
+        .await;
+    assert_eq!(task["result"]["processed"], 1);
+    assert_eq!(get(&in_site).await["port"], 8080);
+    assert_eq!(get(&in_crane).await["port"], 80);
+
+    // Audit: one entry per camera plus a summary; never the password.
+    let audit = app
+        .send(req(Method::GET, "/api/v1/audit?action=camera.").cookie(&admin))
+        .await;
+    assert!(!audit.text().contains("s3cret-pw"));
+    let summary = app
+        .send(req(Method::GET, "/api/v1/audit?action=camera.bulk_update").cookie(&admin))
+        .await
+        .json();
+    assert_eq!(summary["total"], 2);
+
+    // Nothing to change, a pin, or an empty selection: rejected up front.
+    for (body, why) in [
+        (
+            json!({ "camera_ids": [untouched], "action": { "type": "update_settings", "settings": {} } }),
+            "no settings",
+        ),
+        (
+            json!({ "camera_ids": [untouched], "action": { "type": "update_settings", "settings": { "tls_mode": "pinned" } } }),
+            "pins are per camera",
+        ),
+        (
+            json!({ "action": { "type": "set_monitoring", "enabled": true } }),
+            "empty selection",
+        ),
+    ] {
+        let r = post(&app, &admin, "/api/v1/cameras/bulk", body).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST, "{why}: {}", r.text());
+    }
+}

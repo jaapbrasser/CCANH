@@ -145,6 +145,7 @@ describe("camera list organization", () => {
     await userEvent.click(await screen.findByLabelText("Select all cameras on this page"));
     const bar = screen.getByRole("region", { name: "Bulk actions" });
     expect(bar).toHaveTextContent("2 selected");
+    await userEvent.selectOptions(within(bar).getByLabelText("Bulk action"), "add_tags");
     await userEvent.selectOptions(within(bar).getByLabelText("Tag"), TAG.id);
     await userEvent.click(within(bar).getByRole("button", { name: "Apply" }));
     await waitFor(() =>
@@ -180,6 +181,77 @@ describe("camera list organization", () => {
     await userEvent.click(within(dialog).getByRole("checkbox", { name: "Outdoor" }));
     await userEvent.click(within(dialog).getByRole("button", { name: "Add camera" }));
     await waitFor(() => expect(body).toMatchObject({ group_ids: [YARD.id], tag_ids: [TAG.id] }));
+  });
+});
+
+describe("bulk camera settings", () => {
+  const SET = { id: "00000000-0000-7000-8000-0000000000d1", name: "Site viewer", camera_count: 0, created_at: NOW, updated_at: NOW };
+  function capture(bodies: unknown[]) {
+    return [
+      http.get("/api/v1/credential-sets", () => HttpResponse.json([SET])),
+      http.post("/api/v1/cameras/bulk", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json(
+          { id: "00000000-0000-7000-8000-0000000000fa", kind: "bulk_cameras", status: "queued", progress_current: 0, created_at: NOW },
+          { status: 202 },
+        );
+      }),
+    ];
+  }
+
+  it("changes only the ticked settings for selected cameras", async () => {
+    signedInAs(ADMIN);
+    const bodies: unknown[] = [];
+    server.use(...capture(bodies));
+    renderApp("/cameras");
+    await userEvent.click(await screen.findByLabelText("Select all cameras on this page"));
+    const bar = screen.getByRole("region", { name: "Bulk actions" });
+    await userEvent.click(within(bar).getByRole("button", { name: "Apply" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit camera settings" });
+    expect(within(dialog).getByRole("button", { name: "Apply to 2 selected cameras" })).toBeDisabled();
+    await userEvent.click(within(dialog).getByLabelText("Change credentials"));
+    await userEvent.selectOptions(await within(dialog).findByLabelText("Credential set"), SET.id);
+    await userEvent.click(within(dialog).getByLabelText("Change basic authentication over http"));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Apply to 2 selected cameras" }));
+    await waitFor(() =>
+      expect(bodies[0]).toEqual({
+        camera_ids: [HOOK.id, GATE.id],
+        action: {
+          type: "update_settings",
+          settings: { credentials: { type: "set", id: SET.id }, allow_basic_over_http: true },
+        },
+      }),
+    );
+  });
+
+  it("applies to a whole group or tag from the organization page", async () => {
+    signedInAs(ADMIN);
+    const bodies: unknown[] = [];
+    server.use(...capture(bodies));
+    renderApp("/organization");
+    await userEvent.click(await screen.findByRole("button", { name: "Camera settings for Site A" }));
+    let dialog = screen.getByRole("dialog", { name: "Edit camera settings" });
+    await userEvent.click(within(dialog).getByLabelText("Change certificate check"));
+    await userEvent.selectOptions(within(dialog).getByLabelText("Certificate check"), "strict");
+    await userEvent.click(within(dialog).getByRole("button", { name: /^Apply to cameras in Site A/ }));
+    await waitFor(() =>
+      expect(bodies[0]).toEqual({
+        group_id: SITE.id,
+        include_subgroups: true,
+        action: { type: "update_settings", settings: { tls_mode: "strict" } },
+      }),
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Camera settings for Outdoor" }));
+    dialog = screen.getByRole("dialog", { name: "Edit camera settings" });
+    await userEvent.click(within(dialog).getByLabelText("Change protocol and port"));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Apply to cameras tagged Outdoor" }));
+    await waitFor(() =>
+      expect(bodies[1]).toEqual({
+        tag_id: TAG.id,
+        action: { type: "update_settings", settings: { scheme: "http", port: 80 } },
+      }),
+    );
   });
 });
 
