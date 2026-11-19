@@ -11,8 +11,8 @@ use crate::audit::{self, action, Event as AuditEvent, Outcome};
 use crate::auth::{AdminUser, ClientIp};
 use crate::monitoring::MonitorStatsSnapshot;
 use crate::settings::{
-    MonitoringPatch, MonitoringSettings, RuntimeSettings, SettingsError, StreamingPatch,
-    StreamingSettings,
+    DiscoveryPatch, DiscoverySettings, MonitoringPatch, MonitoringSettings, RuntimeSettings,
+    SettingsError, StreamingPatch, StreamingSettings,
 };
 use crate::AppState;
 
@@ -201,6 +201,82 @@ pub async fn reset_streaming(
         AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
             .actor(Some(admin.id), &admin.username)
             .target("settings", "streaming")
+            .ip(ip)
+            .details(serde_json::json!({ "from": before, "to": after, "reset": true })),
+    )
+    .await?;
+    Ok(Json(after))
+}
+
+/// Change discovery settings (address cap, concurrency, timeouts).
+///
+/// Required role: admin. Applies to the next scan. Audited.
+#[utoipa::path(
+    patch,
+    path = "/settings/discovery",
+    operation_id = "update_discovery_settings",
+    tag = "settings",
+    request_body = DiscoveryPatch,
+    responses(
+        (status = 200, description = "New discovery settings", body = DiscoverySettings),
+        (status = 400, description = "A value is out of range", body = Problem),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 403, description = "Not an admin", body = Problem),
+    )
+)]
+pub async fn update_discovery(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    JsonBody(patch): JsonBody<DiscoveryPatch>,
+) -> Result<Json<DiscoverySettings>, ApiError> {
+    let (before, after) = state
+        .settings
+        .update_discovery(&state.db, &patch, &admin.username)
+        .await
+        .map_err(settings_error)?;
+    audit::record(
+        &state.db,
+        AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
+            .actor(Some(admin.id), &admin.username)
+            .target("settings", "discovery")
+            .ip(ip)
+            .details(serde_json::json!({ "from": before, "to": after })),
+    )
+    .await?;
+    Ok(Json(after))
+}
+
+/// Reset discovery settings to the startup defaults.
+///
+/// Required role: admin.
+#[utoipa::path(
+    delete,
+    path = "/settings/discovery",
+    operation_id = "reset_discovery_settings",
+    tag = "settings",
+    responses(
+        (status = 200, description = "Default discovery settings, now in effect", body = DiscoverySettings),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 403, description = "Not an admin", body = Problem),
+    )
+)]
+pub async fn reset_discovery(
+    admin: AdminUser,
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+) -> Result<Json<DiscoverySettings>, ApiError> {
+    let before = state.settings.current().discovery;
+    let after = state
+        .settings
+        .reset_discovery(&state.db)
+        .await
+        .map_err(settings_error)?;
+    audit::record(
+        &state.db,
+        AuditEvent::new(action::SETTINGS_UPDATE, Outcome::Success)
+            .actor(Some(admin.id), &admin.username)
+            .target("settings", "discovery")
             .ip(ip)
             .details(serde_json::json!({ "from": before, "to": after, "reset": true })),
     )

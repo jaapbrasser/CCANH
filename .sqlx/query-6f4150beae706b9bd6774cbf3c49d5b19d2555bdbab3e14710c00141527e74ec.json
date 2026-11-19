@@ -1,0 +1,206 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id: Hyphenated\", job_id AS \"job_id: Hyphenated\", ip, port,\n                  scheme AS \"scheme: Scheme\", manufacturer, model, firmware_version,\n                  serial_number, mac_address, hostname, device_name, tls_fingerprint_sha256,\n                  response_time_ms, registered_camera_id AS \"registered_camera_id: Hyphenated\",\n                  found_at AS \"found_at: OffsetDateTime\"\n             FROM discovery_results WHERE job_id = ?1\n            ORDER BY found_at, id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "job_id: Hyphenated",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "job_id"
+          }
+        }
+      },
+      {
+        "name": "ip",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "ip"
+          }
+        }
+      },
+      {
+        "name": "port",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "port"
+          }
+        }
+      },
+      {
+        "name": "scheme: Scheme",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "scheme"
+          }
+        }
+      },
+      {
+        "name": "manufacturer",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "manufacturer"
+          }
+        }
+      },
+      {
+        "name": "model",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "model"
+          }
+        }
+      },
+      {
+        "name": "firmware_version",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "firmware_version"
+          }
+        }
+      },
+      {
+        "name": "serial_number",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "serial_number"
+          }
+        }
+      },
+      {
+        "name": "mac_address",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "mac_address"
+          }
+        }
+      },
+      {
+        "name": "hostname",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "hostname"
+          }
+        }
+      },
+      {
+        "name": "device_name",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "device_name"
+          }
+        }
+      },
+      {
+        "name": "tls_fingerprint_sha256",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "tls_fingerprint_sha256"
+          }
+        }
+      },
+      {
+        "name": "response_time_ms",
+        "ordinal": 13,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "response_time_ms"
+          }
+        }
+      },
+      {
+        "name": "registered_camera_id: Hyphenated",
+        "ordinal": 14,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "registered_camera_id"
+          }
+        }
+      },
+      {
+        "name": "found_at: OffsetDateTime",
+        "ordinal": 15,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_results",
+            "name": "found_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "6f4150beae706b9bd6774cbf3c49d5b19d2555bdbab3e14710c00141527e74ec"
+}

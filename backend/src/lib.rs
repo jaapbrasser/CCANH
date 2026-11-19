@@ -9,6 +9,7 @@ pub mod config;
 pub mod credentials;
 pub mod dashboards;
 pub mod demo;
+pub mod discovery;
 pub mod events;
 pub mod monitoring;
 pub mod organization;

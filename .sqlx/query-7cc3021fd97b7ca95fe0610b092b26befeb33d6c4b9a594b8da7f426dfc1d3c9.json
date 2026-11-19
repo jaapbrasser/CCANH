@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO discovery_jobs (id, ranges, address_count, created_at) VALUES (?1, ?2, ?3, ?4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "7cc3021fd97b7ca95fe0610b092b26befeb33d6c4b9a594b8da7f426dfc1d3c9"
+}

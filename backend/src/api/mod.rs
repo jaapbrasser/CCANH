@@ -5,6 +5,7 @@ mod auth;
 mod cameras;
 mod credentials;
 mod dashboards;
+mod discovery;
 pub mod error;
 mod extract;
 pub mod health;
@@ -106,6 +107,10 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(cameras::set_stream_profiles))
         .routes(routes!(cameras::bulk))
         .routes(routes!(dashboards::list, dashboards::create))
+        .routes(routes!(discovery::preview))
+        .routes(routes!(discovery::list, discovery::start))
+        .routes(routes!(discovery::get))
+        .routes(routes!(discovery::register))
         .routes(routes!(
             dashboards::get,
             dashboards::update,
@@ -144,6 +149,10 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(
             settings::update_streaming,
             settings::reset_streaming
+        ))
+        .routes(routes!(
+            settings::update_discovery,
+            settings::reset_discovery
         ))
         .routes(routes!(ws::ws))
 }

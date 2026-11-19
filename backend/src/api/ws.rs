@@ -30,6 +30,7 @@ use super::error::{ApiError, Problem};
 use crate::auth::session::{self, Timeouts, COOKIE_NAME};
 use crate::auth::{csrf, AuthUser, Role};
 use crate::cameras::{CameraStatusView, CameraSummary};
+use crate::discovery::DiscoveredDevice;
 use crate::events::{Event, OrganizationKind, Topic};
 use crate::streaming::StreamInfo;
 use crate::tasks::Task;
@@ -94,6 +95,19 @@ pub enum WsServerMessage {
     OrganizationChanged {
         kind: OrganizationKind,
     },
+    /// A scan found a device (topic `discovery`, admins only).
+    DiscoveryFound {
+        job_id: Uuid,
+        result: DiscoveredDevice,
+    },
+    /// Scan progress, a few times a second while running (topic `discovery`).
+    DiscoveryProgress {
+        job_id: Uuid,
+        scanned: u32,
+        total: u32,
+        responsive: u32,
+        found: u32,
+    },
 }
 
 impl From<Event> for WsServerMessage {
@@ -107,6 +121,22 @@ impl From<Event> for WsServerMessage {
             Event::TaskUpdated { task } => WsServerMessage::TaskUpdated { task },
             Event::StreamsUpdated { streams } => WsServerMessage::StreamsUpdated { streams },
             Event::OrganizationChanged { kind } => WsServerMessage::OrganizationChanged { kind },
+            Event::DiscoveryFound { job_id, result } => {
+                WsServerMessage::DiscoveryFound { job_id, result }
+            }
+            Event::DiscoveryProgress {
+                job_id,
+                scanned,
+                total,
+                responsive,
+                found,
+            } => WsServerMessage::DiscoveryProgress {
+                job_id,
+                scanned,
+                total,
+                responsive,
+                found,
+            },
         }
     }
 }
@@ -117,7 +147,9 @@ impl From<Event> for WsServerMessage {
 fn may_see(user: &AuthUser, event: &Event) -> bool {
     match event {
         Event::TaskUpdated { task } => user.is_admin() || task.created_by == Some(user.id),
-        Event::StreamsUpdated { .. } => user.is_admin(),
+        Event::StreamsUpdated { .. }
+        | Event::DiscoveryFound { .. }
+        | Event::DiscoveryProgress { .. } => user.is_admin(),
         _ => true,
     }
 }
