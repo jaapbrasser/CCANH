@@ -233,6 +233,30 @@ fn default_true() -> bool {
     true
 }
 
+impl CredentialInput {
+    /// A copy for applying the same credentials to several cameras.
+    pub fn duplicate(&self) -> Self {
+        match self {
+            CredentialInput::None => CredentialInput::None,
+            CredentialInput::Set { id } => CredentialInput::Set { id: *id },
+            CredentialInput::Inline { username, password } => CredentialInput::Inline {
+                username: username.clone(),
+                password: password.clone(),
+            },
+        }
+    }
+
+    /// For audit entries: the kind of credentials, never the secret.
+    pub fn describe(&self) -> serde_json::Value {
+        match self {
+            CredentialInput::None => serde_json::json!({ "type": "none" }),
+            CredentialInput::Set { id } => serde_json::json!({ "type": "set", "id": id }),
+            // Usernames are write-only too (SPEC §4.6).
+            CredentialInput::Inline { .. } => serde_json::json!({ "type": "inline" }),
+        }
+    }
+}
+
 /// Partial update. Omitted fields are unchanged. Send `tls_pinned_sha256: null`
 /// together with a non-pinned `tls_mode` to clear a pin.
 #[derive(Debug, Default, Deserialize, ToSchema)]

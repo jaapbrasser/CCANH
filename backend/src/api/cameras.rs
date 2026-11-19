@@ -16,7 +16,8 @@ use crate::audit::{self, action, Event as AuditEvent, Outcome};
 use crate::auth::{AdminUser, AuthUser, ClientIp};
 use crate::cameras::{
     self, CameraDetail, CameraError, CameraPatch, CameraSettings, CameraSort, CameraState,
-    CameraSummary, NewCamera, StatusTransition, StreamProfileOverrides, TlsMode,
+    CameraSummary, CredentialInput, NewCamera, Scheme, StatusTransition, StreamProfileOverrides,
+    TlsMode,
 };
 use crate::events::Event;
 use crate::monitoring;
@@ -548,8 +549,62 @@ pub async fn refresh(
 /// Most cameras one bulk request may touch.
 pub const MAX_BULK: usize = 500;
 
+/// Connection and security settings to change on many cameras at once (issue
+/// #19). Only the fields present change; everything else stays as it is.
+#[derive(Debug, Default, Deserialize, ToSchema)]
+pub struct BulkSettings {
+    /// New credentials (none, a shared set, or inline: each camera gets its
+    /// own private copy).
+    #[serde(default)]
+    pub credentials: Option<CredentialInput>,
+    #[serde(default)]
+    pub allow_basic_over_http: Option<bool>,
+    /// Certificate check for the HTTPS cameras among them (`pinned` needs a
+    /// per-camera fingerprint, so it isn't offered here).
+    #[serde(default)]
+    pub tls_mode: Option<TlsMode>,
+    #[serde(default)]
+    pub scheme: Option<Scheme>,
+    #[serde(default)]
+    pub port: Option<u16>,
+}
+
+impl BulkSettings {
+    fn is_empty(&self) -> bool {
+        self.credentials.is_none()
+            && self.allow_basic_over_http.is_none()
+            && self.tls_mode.is_none()
+            && self.scheme.is_none()
+            && self.port.is_none()
+    }
+
+    /// What changes, for the audit log: never secrets.
+    fn describe(&self) -> serde_json::Value {
+        serde_json::json!({
+            "credentials": self.credentials.as_ref().map(CredentialInput::describe),
+            "allow_basic_over_http": self.allow_basic_over_http,
+            "tls_mode": self.tls_mode,
+            "scheme": self.scheme,
+            "port": self.port,
+        })
+    }
+
+    fn patch_for(&self, camera: &CameraDetail) -> CameraPatch {
+        let scheme = self.scheme.unwrap_or(camera.summary.scheme);
+        CameraPatch {
+            credentials: self.credentials.as_ref().map(CredentialInput::duplicate),
+            allow_basic_over_http: self.allow_basic_over_http,
+            // Certificate settings only mean something for HTTPS cameras.
+            tls_mode: self.tls_mode.filter(|_| scheme == Scheme::Https),
+            scheme: self.scheme,
+            port: self.port,
+            ..Default::default()
+        }
+    }
+}
+
 /// What to do to every selected camera.
-#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BulkAction {
     AddTags {
@@ -567,6 +622,10 @@ pub enum BulkAction {
     SetMonitoring {
         enabled: bool,
     },
+    /// Change connection and security settings (issue #19).
+    UpdateSettings {
+        settings: BulkSettings,
+    },
     /// Remove the cameras (stops their streams and polling).
     Delete,
 }
@@ -579,24 +638,109 @@ impl BulkAction {
             BulkAction::AddGroups { .. } => "add_groups",
             BulkAction::RemoveGroups { .. } => "remove_groups",
             BulkAction::SetMonitoring { .. } => "set_monitoring",
+            BulkAction::UpdateSettings { .. } => "update_settings",
             BulkAction::Delete => "delete",
+        }
+    }
+
+    /// For the audit log; never contains secrets.
+    fn describe(&self) -> serde_json::Value {
+        match self {
+            BulkAction::AddTags { tag_ids } | BulkAction::RemoveTags { tag_ids } => {
+                serde_json::json!({ "type": self.name(), "tag_ids": tag_ids })
+            }
+            BulkAction::AddGroups { group_ids } | BulkAction::RemoveGroups { group_ids } => {
+                serde_json::json!({ "type": self.name(), "group_ids": group_ids })
+            }
+            BulkAction::SetMonitoring { enabled } => {
+                serde_json::json!({ "type": self.name(), "enabled": enabled })
+            }
+            BulkAction::UpdateSettings { settings } => {
+                serde_json::json!({ "type": self.name(), "settings": settings.describe() })
+            }
+            BulkAction::Delete => serde_json::json!({ "type": self.name() }),
         }
     }
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct BulkRequest {
-    /// 1–500 camera ids.
+    /// Cameras by id. Together with `group_id` and `tag_id` (all optional,
+    /// combined as a union) the selection must come to 1–500 cameras.
+    #[serde(default)]
     pub camera_ids: Vec<Uuid>,
+    /// Every camera in this group.
+    #[serde(default)]
+    pub group_id: Option<Uuid>,
+    /// With `group_id`: include cameras in its subgroups (default true).
+    #[serde(default = "default_true")]
+    pub include_subgroups: bool,
+    /// Every camera with this tag.
+    #[serde(default)]
+    pub tag_id: Option<Uuid>,
     pub action: BulkAction,
 }
 
-/// Apply one action to many cameras (tag, group, monitoring, delete).
+fn default_true() -> bool {
+    true
+}
+
+/// A camera a bulk change skipped, and why.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BulkSkipped {
+    pub camera_id: Uuid,
+    pub reason: String,
+}
+
+/// `result` of a `bulk_cameras` task.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BulkResult {
+    pub action: String,
+    /// Cameras the action was applied to.
+    pub processed: u32,
+    /// The cameras the selection resolved to.
+    pub camera_ids: Vec<Uuid>,
+    /// Cameras left unchanged (settings changes only), with the reason.
+    pub skipped: Vec<BulkSkipped>,
+}
+
+/// Resolve a bulk selection (ids, group, tag) to unique camera ids.
+async fn resolve_selection(state: &AppState, body: &BulkRequest) -> Result<Vec<Uuid>, ApiError> {
+    use crate::organization::{ensure_cameras_exist, unique};
+    let org = super::organization::org_error;
+    let mut ids = body.camera_ids.clone();
+    ensure_cameras_exist(&state.db, &unique(&ids))
+        .await
+        .map_err(org)?;
+    if let Some(group) = body.group_id {
+        groups::ensure_exist(&state.db, &[group])
+            .await
+            .map_err(org)?;
+        let groups_in = if body.include_subgroups {
+            groups::subtree(&state.db, group).await?
+        } else {
+            vec![group]
+        };
+        for g in groups_in {
+            ids.extend(groups::direct_members(&state.db, g).await?);
+        }
+    }
+    if let Some(tag) = body.tag_id {
+        tags::ensure_exist(&state.db, &[tag]).await.map_err(org)?;
+        ids.extend(tags::members(&state.db, tag).await?);
+    }
+    Ok(unique(&ids))
+}
+
+/// Apply one action to many cameras (tag, group, monitoring, settings, delete).
 ///
-/// Required role: admin. Validated up front (400 for unknown cameras, tags
-/// or groups), then runs as a background task (`bulk_cameras`) whose result
-/// is `{"action", "processed"}`. Follow it via the `tasks` topic. Cancelling
-/// stops between cameras; work already done stays done.
+/// Required role: admin. Select cameras by id, by group (optionally with its
+/// subgroups) and/or by tag. Validated up front (400 for unknown cameras,
+/// tags or groups, or an empty selection), then runs as a background task
+/// (`bulk_cameras`) whose result is a `BulkResult`. Follow it via the `tasks`
+/// topic. Cancelling stops between cameras; work already done stays done.
+/// Settings changes are audited per camera (`camera.update`, never secrets)
+/// and once for the whole request (`camera.bulk_update`).
 #[utoipa::path(
     post,
     path = "/cameras/bulk",
@@ -616,15 +760,14 @@ pub async fn bulk(
     ClientIp(ip): ClientIp,
     JsonBody(body): JsonBody<BulkRequest>,
 ) -> Result<(StatusCode, Json<crate::tasks::Task>), ApiError> {
-    use crate::organization::{ensure_cameras_exist, unique};
-    let ids = unique(&body.camera_ids);
+    let ids = resolve_selection(&state, &body).await?;
     if ids.is_empty() || ids.len() > MAX_BULK {
         return Err(ApiError::BadRequest(format!(
-            "select between 1 and {MAX_BULK} cameras"
+            "the selection must come to between 1 and {MAX_BULK} cameras (it has {})",
+            ids.len()
         )));
     }
     let org = super::organization::org_error;
-    ensure_cameras_exist(&state.db, &ids).await.map_err(org)?;
     match &body.action {
         BulkAction::AddTags { tag_ids } | BulkAction::RemoveTags { tag_ids } => {
             if tag_ids.is_empty() {
@@ -640,6 +783,25 @@ pub async fn bulk(
                 .await
                 .map_err(org)?;
         }
+        BulkAction::UpdateSettings { settings } => {
+            if settings.is_empty() {
+                return Err(ApiError::BadRequest(
+                    "choose at least one setting to change".into(),
+                ));
+            }
+            if settings.tls_mode == Some(TlsMode::Pinned) {
+                return Err(ApiError::BadRequest(
+                    "a pinned certificate is per camera; pin it on the camera itself".into(),
+                ));
+            }
+            if let Some(CredentialInput::Set { id }) = &settings.credentials {
+                if !crate::credentials::is_shared(&state.db, *id).await? {
+                    return Err(ApiError::BadRequest(
+                        "The selected credential set does not exist.".into(),
+                    ));
+                }
+            }
+        }
         BulkAction::SetMonitoring { .. } | BulkAction::Delete => {}
     }
 
@@ -647,7 +809,7 @@ pub async fn bulk(
         id: admin.id,
         username: admin.username.clone(),
     };
-    let action = body.action.clone();
+    let action = body.action;
     let task_state = state.clone();
     let task = state
         .tasks
@@ -656,6 +818,7 @@ pub async fn bulk(
             let total = u32::try_from(ids.len()).unwrap_or(u32::MAX);
             let fail = |e: ApiError| crate::tasks::TaskFailure::internal(e.to_string());
             let mut processed: u32 = 0;
+            let mut skipped: Vec<BulkSkipped> = Vec::new();
             match &action {
                 BulkAction::AddTags { tag_ids } => {
                     tags::add_cameras(&state.db, &ids, tag_ids)
@@ -677,7 +840,9 @@ pub async fn bulk(
                         .await
                         .map_err(|e| fail(e.into()))?;
                 }
-                BulkAction::SetMonitoring { .. } | BulkAction::Delete => {}
+                BulkAction::SetMonitoring { .. }
+                | BulkAction::UpdateSettings { .. }
+                | BulkAction::Delete => {}
             }
             for id in &ids {
                 if ctx.cancel.is_cancelled() {
@@ -705,6 +870,18 @@ pub async fn bulk(
                             .await
                             .map_err(fail)?;
                     }
+                    BulkAction::UpdateSettings { settings } => {
+                        match update_one(&state, &admin, ip, *id, settings).await {
+                            Ok(()) => {}
+                            Err(reason) => {
+                                skipped.push(BulkSkipped {
+                                    camera_id: *id,
+                                    reason,
+                                });
+                                continue;
+                            }
+                        }
+                    }
                     _ => super::organization::announce_cameras(&state, &[*id])
                         .await
                         .map_err(fail)?,
@@ -717,7 +894,8 @@ pub async fn bulk(
             }
             if !matches!(action, BulkAction::Delete) {
                 let details = serde_json::json!({
-                    "action": action, "cameras": ids, "processed": processed,
+                    "action": action.describe(), "cameras": ids, "processed": processed,
+                    "skipped": skipped.len(),
                 });
                 audit::record(
                     &state.db,
@@ -729,8 +907,65 @@ pub async fn bulk(
                 .await
                 .map_err(|e| crate::tasks::TaskFailure::internal(e.to_string()))?;
             }
-            Ok(serde_json::json!({ "action": action.name(), "processed": processed }))
+            serde_json::to_value(BulkResult {
+                action: action.name().to_owned(),
+                processed,
+                camera_ids: ids,
+                skipped,
+            })
+            .map_err(|e| crate::tasks::TaskFailure::internal(e.to_string()))
         })
         .await?;
     Ok((StatusCode::ACCEPTED, Json(task)))
+}
+
+/// Apply bulk settings to one camera. `Err` is a user-facing reason to skip it.
+async fn update_one(
+    state: &AppState,
+    admin: &AdminUser,
+    ip: Option<std::net::IpAddr>,
+    id: Uuid,
+    settings: &BulkSettings,
+) -> Result<(), String> {
+    let internal = |e: &dyn std::fmt::Display| format!("internal error: {e}");
+    let Some(current) = cameras::get(&state.db, id)
+        .await
+        .map_err(|e| internal(&e))?
+    else {
+        return Err("the camera no longer exists".into());
+    };
+    let defaults = state.settings.current().camera_defaults;
+    let patch = settings.patch_for(&current);
+    let (before, after) =
+        match cameras::update(&state.db, &*state.credentials, id, patch, &defaults).await {
+            Ok(v) => v,
+            Err(CameraError::Invalid(e)) => return Err(e.to_string()),
+            Err(CameraError::UnknownCredentialSet) => {
+                return Err("the selected credential set does not exist".into())
+            }
+            Err(CameraError::Duplicate) => {
+                return Err("another camera already uses this address and port".into())
+            }
+            Err(CameraError::NotFound) => return Err("the camera no longer exists".into()),
+            Err(e) => return Err(internal(&e)),
+        };
+    warn_if_insecure(&after, admin);
+    audit::record(
+        &state.db,
+        AuditEvent::new(action::CAMERA_UPDATE, Outcome::Success)
+            .actor(Some(admin.id), &admin.username)
+            .target("camera", id)
+            .ip(ip)
+            .details(serde_json::json!({
+                "from": settings_json(&before),
+                "to": settings_json(&after),
+                "source": "bulk",
+            })),
+    )
+    .await
+    .map_err(|e| internal(&e))?;
+    state.events.publish(Event::CameraChanged {
+        camera: after.summary.clone(),
+    });
+    Ok(())
 }

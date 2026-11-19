@@ -53,6 +53,7 @@ pub const DOCS_PATH: &str = "/api/docs";
         ws::WsServerMessage,
         credentials::TestConnectionResult,
         discovery::CredentialTestResult,
+        cameras::BulkResult,
     )),
     modifiers(&SessionCookie),
     security(("session_cookie" = [])),
