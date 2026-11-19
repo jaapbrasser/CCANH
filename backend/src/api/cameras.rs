@@ -27,7 +27,7 @@ use crate::AppState;
 /// How long an on-demand identity refresh may take per provider call.
 const REFRESH_TIMEOUT: Duration = Duration::from_secs(15);
 
-fn camera_error(err: CameraError) -> ApiError {
+pub(super) fn camera_error(err: CameraError) -> ApiError {
     match err {
         CameraError::NotFound => ApiError::NotFound,
         CameraError::Duplicate => {
@@ -214,7 +214,7 @@ fn warn_if_insecure(camera: &CameraDetail, admin: &AdminUser) {
     }
 }
 
-fn settings_json(c: &CameraDetail) -> serde_json::Value {
+pub(super) fn settings_json(c: &CameraDetail) -> serde_json::Value {
     serde_json::json!({
         "name": c.summary.name,
         "host": c.summary.host,

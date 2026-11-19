@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id: Hyphenated\", ranges, address_count, scanned, responsive, found,\n                  created_at AS \"created_at: OffsetDateTime\"\n             FROM discovery_jobs WHERE id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_jobs",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "ranges",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_jobs",
+            "name": "ranges"
+          }
+        }
+      },
+      {
+        "name": "address_count",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "discovery_jobs",
+            "name": "address_count"
+          }
+        }
+      },
+      {
+        "name": "scanned",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "discovery_jobs",
+            "name": "scanned"
+          }
+        }
+      },
+      {
+        "name": "responsive",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "discovery_jobs",
+            "name": "responsive"
+          }
+        }
+      },
+      {
+        "name": "found",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "discovery_jobs",
+            "name": "found"
+          }
+        }
+      },
+      {
+        "name": "created_at: OffsetDateTime",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "discovery_jobs",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fd9f62d5b9bc86f2059fb78220ee8d73742acd15348738f1030ffdcec0935dcf"
+}

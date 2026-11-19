@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id AS \"id: Hyphenated\", name, host, serial_number, mac_address, device_hostname\n             FROM cameras",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "host",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "host"
+          }
+        }
+      },
+      {
+        "name": "serial_number",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "serial_number"
+          }
+        }
+      },
+      {
+        "name": "mac_address",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "mac_address"
+          }
+        }
+      },
+      {
+        "name": "device_hostname",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cameras",
+            "name": "device_hostname"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "eee80aa9b5db1abb753e5ae4e999503aef4a059fd190e3d711e97ed6b7243ba1"
+}

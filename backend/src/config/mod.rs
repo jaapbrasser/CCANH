@@ -214,6 +214,31 @@ impl Default for StreamingConfig {
     }
 }
 
+/// Camera discovery (SPEC §5). Becomes admin-editable at runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DiscoveryConfig {
+    /// Most addresses one job may scan without explicit confirmation.
+    pub max_addresses: u32,
+    /// Hosts probed at the same time.
+    pub concurrency: u32,
+    /// TCP connect timeout per port, in milliseconds.
+    pub connect_timeout_ms: u64,
+    /// Identification request timeout, in milliseconds.
+    pub http_timeout_ms: u64,
+}
+
+impl Default for DiscoveryConfig {
+    fn default() -> Self {
+        Self {
+            max_addresses: 4096,
+            concurrency: 32,
+            connect_timeout_ms: 1000,
+            http_timeout_ms: 3000,
+        }
+    }
+}
+
 /// Fully merged configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -225,6 +250,7 @@ pub struct Config {
     pub auth: AuthConfig,
     pub monitoring: MonitoringConfig,
     pub streaming: StreamingConfig,
+    pub discovery: DiscoveryConfig,
     pub logging: LoggingConfig,
     /// Demo mode only: keep `demo.db` between runs instead of reseeding.
     pub demo_keep_state: bool,
@@ -239,6 +265,7 @@ impl Default for Config {
             auth: AuthConfig::default(),
             monitoring: MonitoringConfig::default(),
             streaming: StreamingConfig::default(),
+            discovery: DiscoveryConfig::default(),
             logging: LoggingConfig::default(),
             demo_keep_state: false,
         }

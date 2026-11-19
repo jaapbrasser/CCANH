@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE discovery_jobs SET scanned = ?2, responsive = ?3, found = ?4 WHERE id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "66493021d47941322bcd5b028aba535d33131c85917bebea63c0d757b307c0e8"
+}

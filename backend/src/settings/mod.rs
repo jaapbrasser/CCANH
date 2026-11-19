@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 use tokio::sync::watch;
 use utoipa::ToSchema;
 
-use crate::config::{MonitoringConfig, StreamingConfig};
+use crate::config::{DiscoveryConfig, MonitoringConfig, StreamingConfig};
 
 /// Camera status monitoring (SPEC §10.2).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -209,10 +209,75 @@ impl StreamingSettings {
     }
 }
 
+/// Camera discovery (SPEC §5).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct DiscoverySettings {
+    /// Most addresses per job without explicit confirmation (16–65536).
+    pub max_addresses: u32,
+    /// Hosts probed at once (1–256).
+    pub concurrency: u32,
+    /// TCP connect timeout per port in ms (100–10000).
+    pub connect_timeout_ms: u64,
+    /// Identification request timeout in ms (500–30000).
+    pub http_timeout_ms: u64,
+}
+
+impl From<&DiscoveryConfig> for DiscoverySettings {
+    fn from(c: &DiscoveryConfig) -> Self {
+        Self {
+            max_addresses: c.max_addresses,
+            concurrency: c.concurrency,
+            connect_timeout_ms: c.connect_timeout_ms,
+            http_timeout_ms: c.http_timeout_ms,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+pub struct DiscoveryPatch {
+    pub max_addresses: Option<u32>,
+    pub concurrency: Option<u32>,
+    pub connect_timeout_ms: Option<u64>,
+    pub http_timeout_ms: Option<u64>,
+}
+
+/// Hard ceiling for one scan, even with confirmation (a /16).
+pub const MAX_SCAN_ADDRESSES: u32 = 65_536;
+
+impl DiscoverySettings {
+    pub fn patched(&self, p: &DiscoveryPatch) -> Self {
+        Self {
+            max_addresses: p.max_addresses.unwrap_or(self.max_addresses),
+            concurrency: p.concurrency.unwrap_or(self.concurrency),
+            connect_timeout_ms: p.connect_timeout_ms.unwrap_or(self.connect_timeout_ms),
+            http_timeout_ms: p.http_timeout_ms.unwrap_or(self.http_timeout_ms),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if !(16..=MAX_SCAN_ADDRESSES).contains(&self.max_addresses) {
+            return Err(format!(
+                "max_addresses must be between 16 and {MAX_SCAN_ADDRESSES}"
+            ));
+        }
+        if !(1..=256).contains(&self.concurrency) {
+            return Err("concurrency must be between 1 and 256".into());
+        }
+        if !(100..=10_000).contains(&self.connect_timeout_ms) {
+            return Err("connect_timeout_ms must be between 100 and 10000".into());
+        }
+        if !(500..=30_000).contains(&self.http_timeout_ms) {
+            return Err("http_timeout_ms must be between 500 and 30000".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 pub struct RuntimeSettings {
     pub monitoring: MonitoringSettings,
     pub streaming: StreamingSettings,
+    pub discovery: DiscoverySettings,
 }
 
 impl RuntimeSettings {
@@ -220,12 +285,14 @@ impl RuntimeSettings {
         Self {
             monitoring: MonitoringSettings::from(&c.monitoring),
             streaming: StreamingSettings::from(&c.streaming),
+            discovery: DiscoverySettings::from(&c.discovery),
         }
     }
 }
 
 const MONITORING_KEY: &str = "monitoring";
 const STREAMING_KEY: &str = "streaming";
+const DISCOVERY_KEY: &str = "discovery";
 
 /// Shared handle: current values plus the defaults they override.
 #[derive(Debug, Clone)]
@@ -285,9 +352,21 @@ impl SettingsHandle {
             }
             None => self.defaults.streaming.clone(),
         };
+        let discovery = match Self::stored(db, DISCOVERY_KEY)
+            .await?
+            .map(|v| serde_json::from_str::<DiscoverySettings>(&v))
+        {
+            Some(Ok(s)) if s.validate().is_ok() => s,
+            Some(_) => {
+                tracing::warn!("ignoring invalid stored discovery settings; using defaults");
+                self.defaults.discovery.clone()
+            }
+            None => self.defaults.discovery.clone(),
+        };
         self.tx.send_replace(RuntimeSettings {
             monitoring,
             streaming,
+            discovery,
         });
         Ok(())
     }
@@ -323,6 +402,35 @@ impl SettingsHandle {
         Self::persist(db, MONITORING_KEY, &json, by).await?;
         self.tx.send_modify(|s| s.monitoring = after.clone());
         Ok((before, after))
+    }
+
+    /// Validate, persist and publish new discovery settings.
+    pub async fn update_discovery(
+        &self,
+        db: &SqlitePool,
+        patch: &DiscoveryPatch,
+        by: &str,
+    ) -> Result<(DiscoverySettings, DiscoverySettings), SettingsError> {
+        let before = self.current().discovery;
+        let after = before.patched(patch);
+        after.validate().map_err(SettingsError::Invalid)?;
+        let json =
+            serde_json::to_string(&after).map_err(|e| SettingsError::Invalid(e.to_string()))?;
+        Self::persist(db, DISCOVERY_KEY, &json, by).await?;
+        self.tx.send_modify(|s| s.discovery = after.clone());
+        Ok((before, after))
+    }
+
+    pub async fn reset_discovery(
+        &self,
+        db: &SqlitePool,
+    ) -> Result<DiscoverySettings, SettingsError> {
+        sqlx::query!("DELETE FROM settings WHERE key = ?1", DISCOVERY_KEY)
+            .execute(db)
+            .await?;
+        let defaults = self.defaults.discovery.clone();
+        self.tx.send_modify(|s| s.discovery = defaults.clone());
+        Ok(defaults)
     }
 
     /// Validate, persist and publish new streaming settings.

@@ -69,6 +69,14 @@ global_buffer_mb = 256
 # default_grid_profile = "grid"
 # default_detail_profile = "main"
 
+[discovery]
+# Most addresses one scan may cover without explicit confirmation (about a /20).
+max_addresses = 4096
+# Hosts probed at once, and timeouts for the TCP check and identification request.
+concurrency = 32
+connect_timeout_ms = 1000
+http_timeout_ms = 3000
+
 [logging]
 # tracing filter directive; RUST_LOG overrides it.
 level = "info"

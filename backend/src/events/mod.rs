@@ -7,6 +7,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::cameras::{CameraStatusView, CameraSummary};
+use crate::discovery::DiscoveredDevice;
 use crate::streaming::StreamInfo;
 use crate::tasks::Task;
 
@@ -24,6 +25,9 @@ pub enum Topic {
     Tasks,
     /// Active stream metrics, about once a second (admins only).
     Streams,
+    /// Discovery results and progress for all jobs (admins only); messages
+    /// carry their `job_id`.
+    Discovery,
 }
 
 /// Which organization list changed.
@@ -57,6 +61,17 @@ pub enum Event {
     OrganizationChanged {
         kind: OrganizationKind,
     },
+    DiscoveryFound {
+        job_id: Uuid,
+        result: DiscoveredDevice,
+    },
+    DiscoveryProgress {
+        job_id: Uuid,
+        scanned: u32,
+        total: u32,
+        responsive: u32,
+        found: u32,
+    },
 }
 
 impl Event {
@@ -68,6 +83,7 @@ impl Event {
             | Event::OrganizationChanged { .. } => Topic::Cameras,
             Event::TaskUpdated { .. } => Topic::Tasks,
             Event::StreamsUpdated { .. } => Topic::Streams,
+            Event::DiscoveryFound { .. } | Event::DiscoveryProgress { .. } => Topic::Discovery,
         }
     }
 }

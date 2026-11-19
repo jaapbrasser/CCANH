@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE discovery_results SET registered_camera_id = ?2 WHERE id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "6468427c961d08821513b958d761298cdaa9d704eb67bd068fdeca7b840ab3d6"
+}

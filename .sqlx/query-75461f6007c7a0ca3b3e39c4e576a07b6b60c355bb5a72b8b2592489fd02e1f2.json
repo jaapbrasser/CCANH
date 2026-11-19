@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO discovery_results (id, job_id, ip, port, scheme, manufacturer, model,\n                firmware_version, serial_number, mac_address, hostname, device_name,\n                tls_fingerprint_sha256, response_time_ms, found_at)\n         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 15
+    },
+    "nullable": []
+  },
+  "hash": "75461f6007c7a0ca3b3e39c4e576a07b6b60c355bb5a72b8b2592489fd02e1f2"
+}
