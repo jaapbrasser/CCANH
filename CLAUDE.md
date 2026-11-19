@@ -17,8 +17,10 @@ connection limits, Windows service + Inno Setup installer, load test, ADRs
 site feedback from the first deployment, GitHub milestone "Phase 10: site
 feedback", issues #14–#21: camera defaults with ADR 0011, optional names,
 discovery credential test, bulk settings, icons, tab titles; versioned dist
-with diff packages). Next: gather feedback from the 0.2.0 site test as
-issues; review the §18 answers with the owner. Don't build ahead of the current phase,
+with diff packages), and Phase 11 (0.3.0, milestone "Phase 11: navigation",
+issues #23–#26: settings cog with a sidebar, user menu, favorites from the
+camera selection, discovery under Cameras; ADR 0012). Next: gather feedback
+from the 0.3.0 site test as issues; review the §18 answers with the owner. Don't build ahead of the current phase,
 and post a plan before starting one.
 
 ## Commands
@@ -200,6 +202,10 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
 - Demo cameras reject the password `wrong`; demo discovery devices
   192.0.2.42/.44 (and 198.51.100.42/.44) answer on HTTP only.
 - `backend/build.rs` embeds the icon only on Windows hosts (`winresource`).
+- Admin pages live under `/settings/*` (`SettingsLayout`, ADR 0012); old
+  top-level addresses only redirect. New admin pages go in `SETTINGS_PAGES`,
+  not the top bar. Every user can select cameras; viewers' bulk bar only has
+  the favorite actions.
 - AXIS RTSP tests use the in-process fake server in
   `providers/axis/rtsp_tests.rs` (`FakeCamera::start_with`); the AXIS contract
   suite needs it too, since `open_stream` really connects.

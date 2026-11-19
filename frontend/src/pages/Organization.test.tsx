@@ -85,7 +85,6 @@ describe("camera list organization", () => {
     const table = await screen.findByRole("table");
     expect(await within(table).findByRole("list", { name: "Groups of Crane Hook" })).toHaveTextContent("Building 1");
     expect(within(table).getByRole("list", { name: "Tags of Crane Hook" })).toHaveTextContent("Outdoor");
-    expect(screen.queryByLabelText("Select Crane Hook")).not.toBeInTheDocument();
 
     await screen.findByRole("option", { name: /Building 1/ });
     await userEvent.selectOptions(screen.getByLabelText("Filter by group"), SITE.id);
@@ -116,11 +115,53 @@ describe("camera list organization", () => {
     );
   });
 
-  it("favorites view asks for the user's favorites", async () => {
+  it("forwards the old Favorites page to the favorites filter", async () => {
     signedInAs(VIEWER);
     renderApp("/favorites");
-    expect(await screen.findByRole("heading", { name: "Favorites" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Cameras" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Favorites only")).toBeChecked();
     await waitFor(() => expect(lastQuery.get("favorites")).toBe("true"));
+  });
+
+  it("lets viewers favorite selected cameras, and nothing else", async () => {
+    signedInAs(VIEWER);
+    const added: string[] = [];
+    const removed: string[] = [];
+    server.use(
+      http.put("/api/v1/favorites/:id", ({ params }) => {
+        added.push(params.id as string);
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.delete("/api/v1/favorites/:id", ({ params }) => {
+        removed.push(params.id as string);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderApp("/cameras");
+    expect(screen.queryByRole("button", { name: "Discover cameras" })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByLabelText("Select all cameras on this page"));
+    const bar = screen.getByRole("region", { name: "Bulk actions" });
+    const options = within(within(bar).getByLabelText("Bulk action")).getAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["Add to favorites", "Remove from favorites"]);
+    await userEvent.click(within(bar).getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(added.sort()).toEqual([HOOK.id, GATE.id].sort()));
+    expect(await screen.findByText("2 cameras added to your favorites.")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText("Select Gate North"));
+    const bar2 = screen.getByRole("region", { name: "Bulk actions" });
+    await userEvent.selectOptions(within(bar2).getByLabelText("Bulk action"), "remove_favorites");
+    await userEvent.click(within(bar2).getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(removed).toEqual([GATE.id]));
+  });
+
+  it("opens discovery from the Cameras page", async () => {
+    signedInAs(ADMIN);
+    renderApp("/cameras");
+    await userEvent.click(await screen.findByRole("button", { name: "Discover cameras" }));
+    expect(await screen.findByRole("heading", { name: "Discover cameras" })).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/cameras\/discovery$/);
+    await userEvent.click(screen.getByRole("link", { name: "← Cameras" }));
+    expect(await screen.findByRole("heading", { name: "Cameras" })).toBeInTheDocument();
   });
 
   it("bulk-tags selected cameras and confirms bulk delete", async () => {

@@ -56,7 +56,7 @@ gets the cached GOP (up to 2 s of frames) at once.
   Real AXIS streams are often 2–8 Mbit/s at 1080p. The server only copies
   bytes (no decoding or transcoding), so CPU scales with bitrate roughly
   linearly. The camera-network bandwidth lever is the grid profile and the
-  connection limits (Settings → Live video).
+  connection limits (⚙ Settings → General → Live video).
 - Server and load clients share one process and machine, so the CPU and
   memory figures are upper bounds for the server alone.
 - Not yet measured on Windows or against real cameras (SPEC §18 Q1). Re-run

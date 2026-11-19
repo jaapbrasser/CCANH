@@ -9,7 +9,9 @@ test("scan a /24, watch results arrive, cancel a large scan, register a device",
   await page.getByLabel("Password").fill(ADMIN.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/cameras/);
-  await page.goto("/discovery");
+  // Discovery lives under Cameras (0.3.0).
+  await page.getByRole("button", { name: "Discover cameras" }).click();
+  await expect(page).toHaveURL(/\/cameras\/discovery$/);
 
   const form = page.getByRole("form", { name: "New scan" });
   await form.getByLabel("Address ranges").fill("192.0.2.0/24");

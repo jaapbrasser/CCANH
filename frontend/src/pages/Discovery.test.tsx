@@ -88,7 +88,7 @@ describe("discovery page", () => {
         return HttpResponse.json(detail, { status: 202 });
       }),
     );
-    renderApp("/discovery");
+    renderApp("/cameras/discovery");
     const form = await screen.findByRole("form", { name: "New scan" });
     const start = within(form).getByRole("button", { name: "Start scan" });
     await userEvent.type(within(form).getByLabelText("Address ranges"), "10.0.0.0/16");
@@ -100,7 +100,7 @@ describe("discovery page", () => {
   });
 
   it("shows results as they stream in and progress as it's reported", async () => {
-    renderApp("/discovery");
+    renderApp("/cameras/discovery");
     const panel = await screen.findByRole("region", { name: "Scan results" });
     expect(await within(panel).findByText("https://192.0.2.41")).toBeInTheDocument();
     expect(within(panel).getByText("New")).toBeInTheDocument();
@@ -126,7 +126,7 @@ describe("discovery page", () => {
         return HttpResponse.json(detail.task);
       }),
     );
-    renderApp("/discovery");
+    renderApp("/cameras/discovery");
     await userEvent.click(await screen.findByRole("button", { name: "Cancel scan" }));
     await waitFor(() => expect(cancelled).toBe(true));
   });
@@ -145,7 +145,7 @@ describe("discovery page", () => {
         return HttpResponse.json({ registered: [], skipped: [] });
       }),
     );
-    renderApp("/discovery");
+    renderApp("/cameras/discovery");
     const panel = await screen.findByRole("region", { name: "Scan results" });
     expect(await within(panel).findByText(/Finished\./)).toBeInTheDocument();
     await userEvent.click(within(panel).getByLabelText("Select 192.0.2.41"));
@@ -207,7 +207,7 @@ describe("discovery page", () => {
         return HttpResponse.json({ registered: [], skipped: [] });
       }),
     );
-    renderApp("/discovery");
+    renderApp("/cameras/discovery");
     const panel = await screen.findByRole("region", { name: "Scan results" });
     expect(await within(panel).findByText(/Finished\./)).toBeInTheDocument();
     await userEvent.click(within(panel).getByLabelText("Select 192.0.2.41"));
@@ -247,7 +247,7 @@ describe("discovery page", () => {
 
   it("is admin only", async () => {
     signedInAs(VIEWER);
-    renderApp("/discovery");
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Discovery" })).not.toBeInTheDocument());
+    renderApp("/cameras/discovery");
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Discover cameras" })).not.toBeInTheDocument());
   });
 });

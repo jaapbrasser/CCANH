@@ -1,7 +1,8 @@
-import { Navigate, Route, Routes } from "react-router";
+import { Navigate, Route, Routes, useLocation } from "react-router";
 import { RequireAdmin, RequireAuth } from "./auth/guards";
 import { useUnauthorizedListener } from "./auth/session";
 import { Layout } from "./components/Layout";
+import { SettingsIndex, SettingsLayout } from "./components/SettingsLayout";
 import { usePageTitle } from "./components/pageTitle";
 import { AccountPage } from "./pages/AccountPage";
 import { AuditPage } from "./pages/AuditPage";
@@ -36,69 +37,86 @@ export default function App() {
         <Route path="cameras/:id" element={<CameraDetailPage />} />
         <Route path="dashboards" element={<DashboardsPage />} />
         <Route path="dashboards/:id" element={<DashboardsPage />} />
-        <Route path="favorites" element={<CamerasPage key="favorites" favoritesOnly />} />
         <Route
-          path="discovery"
+          path="cameras/discovery"
           element={
             <RequireAdmin>
               <DiscoveryPage />
             </RequireAdmin>
           }
         />
-        <Route
-          path="organization"
-          element={
-            <RequireAdmin>
-              <OrganizationPage />
-            </RequireAdmin>
-          }
-        />
         <Route path="account" element={<AccountPage />} />
-        <Route path="activity" element={<ActivityPage />} />
-        <Route
-          path="streams"
-          element={
-            <RequireAdmin>
-              <StreamsPage />
-            </RequireAdmin>
-          }
-        />
-        <Route
-          path="settings"
-          element={
-            <RequireAdmin>
-              <SettingsPage />
-            </RequireAdmin>
-          }
-        />
-        <Route
-          path="credentials"
-          element={
-            <RequireAdmin>
-              <CredentialSetsPage />
-            </RequireAdmin>
-          }
-        />
-        <Route
-          path="users"
-          element={
-            <RequireAdmin>
-              <UsersPage />
-            </RequireAdmin>
-          }
-        />
-        <Route
-          path="audit"
-          element={
-            <RequireAdmin>
-              <AuditPage />
-            </RequireAdmin>
-          }
-        />
+        <Route path="settings" element={<SettingsLayout />}>
+          <Route index element={<SettingsIndex />} />
+          <Route
+            path="general"
+            element={
+              <RequireAdmin>
+                <SettingsPage />
+              </RequireAdmin>
+            }
+          />
+          <Route path="activity" element={<ActivityPage />} />
+          <Route
+            path="credentials"
+            element={
+              <RequireAdmin>
+                <CredentialSetsPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="users"
+            element={
+              <RequireAdmin>
+                <UsersPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="groups-tags"
+            element={
+              <RequireAdmin>
+                <OrganizationPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="streams"
+            element={
+              <RequireAdmin>
+                <StreamsPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="audit"
+            element={
+              <RequireAdmin>
+                <AuditPage />
+              </RequireAdmin>
+            }
+          />
+        </Route>
+        {/* Addresses from before 0.3.0. */}
+        <Route path="favorites" element={<Navigate to="/cameras?favorites=1" replace />} />
+        <Route path="discovery" element={<Navigate to="/cameras/discovery" replace />} />
+        <Route path="activity" element={<Navigate to="/settings/activity" replace />} />
+        <Route path="credentials" element={<Navigate to="/settings/credentials" replace />} />
+        <Route path="users" element={<KeepQuery to="/settings/users" />} />
+        <Route path="organization" element={<Navigate to="/settings/groups-tags" replace />} />
+        <Route path="streams" element={<Navigate to="/settings/streams" replace />} />
+        <Route path="audit" element={<KeepQuery to="/settings/audit" />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
   );
+}
+
+/** Forward an old address, keeping its query string (e.g. page numbers). */
+function KeepQuery({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={to + search} replace />;
 }
 
 function NotFound() {

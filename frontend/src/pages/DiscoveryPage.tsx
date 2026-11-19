@@ -33,13 +33,16 @@ const REASON: Record<string, string> = {
 
 /** Admin page: scan ranges for AXIS devices and register the ones you approve (SPEC §5). */
 export function DiscoveryPage() {
-  usePageTitle("Discovery");
+  usePageTitle("Discover cameras");
   const jobs = useDiscoveryJobs();
   const [selected, setSelected] = useState<string | null>(null);
   const jobId = selected ?? jobs.data?.[0]?.id ?? null;
   return (
     <div>
-      <PageHeader title="Discovery" />
+      <Link to="/cameras" className="mb-2 inline-block text-sm text-slate-400 hover:text-white">
+        ← Cameras
+      </Link>
+      <PageHeader title="Discover cameras" />
       <p className="mb-4 max-w-3xl text-sm text-slate-400">
         Scan address ranges for AXIS devices. Each address gets a quick port check and, if it answers, one anonymous
         identification request. Nothing is added until you register it.

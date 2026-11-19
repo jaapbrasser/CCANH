@@ -16,7 +16,7 @@ behaviour available as a configurable choice.
 
 ## Decisions
 
-- New runtime settings group `camera_defaults` (Settings → New camera
+- New runtime settings group `camera_defaults` (⚙ Settings → General → New camera
   defaults; config section `[camera_defaults]`), audited like the others:
   - `scheme`: **`http`** (owner decision, #18).
   - `allow_basic_over_http`: **`true`**.
