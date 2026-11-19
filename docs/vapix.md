@@ -24,7 +24,7 @@ real device.
 
 | Purpose | Request | Access | Docs | Version / firmware | Fixture |
 |---|---|---|---|---|---|
-| Probe: reachability + identity (brand, model `ProdNbr`, firmware `Version`, serial) | `POST /axis-cgi/basicdeviceinfo.cgi` `{"apiVersion":"1.0","method":"getAllUnrestrictedProperties"}` | Anonymous | [Basic device information](https://developer.axis.com/vapix/network-video/basic-device-information/) | API 1.x; AXIS OS 8.40+ | `basicdeviceinfo_unrestricted.json` |
+| Probe: reachability + identity (brand, model `ProdNbr`, firmware `Version`, serial); also **discovery identification** (Phase 8) | `POST /axis-cgi/basicdeviceinfo.cgi` `{"apiVersion":"1.0","method":"getAllUnrestrictedProperties"}` | Anonymous | [Basic device information](https://developer.axis.com/vapix/network-video/basic-device-information/) | API 1.x; AXIS OS 8.40+ | `basicdeviceinfo_unrestricted.json` |
 | Status: readiness + uptime | `POST /axis-cgi/systemready.cgi` `{"apiVersion":"1.0","method":"systemready","params":{"timeout":1}}` | Anonymous | [Systemready API](https://developer.axis.com/vapix/network-video/systemready-api/) | AXIS OS 9.50+; older firmware falls back to the probe call | `systemready.json` |
 | Capabilities: list of supported APIs and versions | `POST /axis-cgi/apidiscovery.cgi` `{"apiVersion":"1.0","method":"getApiList"}` | Anonymous (AXIS OS 9.80 and 10.12 require auth; the client retries with credentials on 401) | [API Discovery service](https://developer.axis.com/vapix/network-video/api-discovery-service/) | AXIS OS 8.50+; missing → only "relied-on APIs unsupported" reported | `apidiscovery_getapilist*.json` |
 | Stream profiles; also verifies credentials | `POST /axis-cgi/streamprofile.cgi` `{"apiVersion":"1.0","method":"list","params":{"streamProfileName":[]}}` | Viewer | [Stream profiles](https://developer.axis.com/vapix/network-video/stream-profiles/) | API 1.0; `parameters` is `key=value&…` (`resolution`, `fps`, `videocodec` as used in [Video streaming](https://developer.axis.com/vapix/network-video/video-streaming/)) | `streamprofile_list.json`, `error_unsupported_method.json` |
@@ -47,9 +47,20 @@ Live video notes:
   playing, any interruption is retried with backoff.
 - The RTSP port is fixed at the documented default, 554.
 
+Discovery notes (Phase 8, SPEC §5.1):
+
+- Before any HTTP request, discovery makes a TCP connect check on 443 and 80
+  (at the same time, so a silent address costs one timeout). A responsive host
+  then gets **exactly one** request: the anonymous `getAllUnrestrictedProperties`
+  call above, which the docs list as needing no credentials. HTTPS is preferred.
+- The certificate can't be verified during a scan (no pin exists yet), so the
+  scan reads only unrestricted data and records the fingerprint it saw.
+  Registering a result pins that fingerprint, once an admin has approved it.
+- An error or non-AXIS answer counts as "responding, unidentified". No
+  further requests are made to that host.
+
 ## Planned (not called yet)
 
 | Purpose | Request | Docs | Phase |
 |---|---|---|---|
 | MJPEG fallback | to be verified under [Media stream over HTTP](https://developer.axis.com/vapix/network-video/media-stream-over-http/) | — | deferred (ADR 0002) |
-| Discovery identification | the anonymous Basic device information call above | — | 8 |

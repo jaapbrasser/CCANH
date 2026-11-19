@@ -50,13 +50,18 @@ Server → client:
 | `camera_deleted` | `camera_id` | camera removed (topic `cameras`) |
 | `task_updated` | `task` | task created, progressed or finished (topic `tasks`; own tasks only, admins see all) |
 | `organization_changed` | `kind` (`groups` or `tags`) | a group or tag was created, renamed, moved or deleted; refetch the list (topic `cameras`; memberships arrive as `camera_changed`, ADR 0009) |
+| `discovery_found` | `job_id`, `result` | a scan identified a device (topic `discovery`, admins only) |
+| `discovery_progress` | `job_id`, `scanned`, `total`, `responsive`, `found` | while a scan runs, at most 4 per second (topic `discovery`) |
 | `streams_updated` | `streams` (list as in `GET /api/v1/streams`) | every second while any stream exists, once more after the last ends (topic `streams`, admins only) |
 | `resync` | `reason` | client fell behind the event stream; refetch over REST |
 | `error` | `code`, `message` | malformed message or unknown topic |
 
 Topics so far: `camera_status`, `cameras`, `tasks` (added in Phase 4b, see
 ADR 0008), `streams` (Phase 5; admin only, a viewer's subscription is accepted
-but receives nothing). Later phases add e.g. `discovery:{job_id}`. Live video
+but receives nothing) and `discovery` (Phase 8; admin only). SPEC §8 names
+per-job topics (`discovery:{job_id}`). We use one `discovery` topic whose
+messages carry `job_id` instead: topics stay a closed enum, and admins usually
+watch every running scan anyway. Live video
 itself uses separate media sockets (ADR 0002). Unknown topics are rejected with `error`.
 
 ### Delivery semantics
