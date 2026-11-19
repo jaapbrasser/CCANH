@@ -30,7 +30,7 @@ use crate::audit::{self, action, Event as AuditEvent, Outcome};
 use crate::auth::{csrf, AdminUser, AuthUser, ClientIp};
 use crate::cameras;
 use crate::providers::StreamProfileId;
-use crate::streaming::manager::StreamError;
+use crate::streaming::manager::{Priority, StreamError};
 use crate::streaming::profiles::{resolve_profile, ViewPurpose};
 use crate::streaming::{Packet, StreamInfo, StreamKey};
 use crate::AppState;
@@ -115,15 +115,31 @@ pub async fn watch(
             })?
         }
     };
-    let sub = state
+    let priority = if q.purpose == Some(ViewPurpose::Grid) {
+        Priority::Grid
+    } else {
+        Priority::Detail
+    };
+    let sub = match state
         .streams
-        .subscribe(StreamKey { camera_id, profile })
-        .map_err(|e| match e {
-            StreamError::Refused(m) => ApiError::Conflict(m),
-            StreamError::ShuttingDown => {
-                ApiError::Unavailable("the server is shutting down".into())
-            }
-        })?;
+        .subscribe_with(StreamKey { camera_id, profile }, priority)
+    {
+        Ok(sub) => sub,
+        // A limit refused the stream: accept the socket so the viewer can be
+        // told why (browsers hide handshake status codes), then close it.
+        Err(StreamError::Refused(reason)) => {
+            return Ok(upgrade.on_upgrade(move |mut socket| async move {
+                let msg = text(
+                    serde_json::json!({ "type": "state", "state": "failed", "message": reason }),
+                );
+                let _ = socket.send(msg).await;
+                let _ = socket.send(Message::Close(None)).await;
+            }));
+        }
+        Err(StreamError::ShuttingDown) => {
+            return Err(ApiError::Unavailable("the server is shutting down".into()))
+        }
+    };
     Ok(upgrade.on_upgrade(move |socket| pump(socket, sub)))
 }
 

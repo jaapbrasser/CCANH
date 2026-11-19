@@ -359,3 +359,34 @@ async fn removing_a_camera_stops_its_streams() {
     assert!(saw_stopped, "viewers are told why the stream ended");
     assert!(s.app.state.streams.list().is_empty());
 }
+
+#[tokio::test]
+async fn connection_limits_refuse_new_upstreams_but_not_new_viewers() {
+    let s = start().await;
+    let patched = s
+        .app
+        .send(
+            req(Method::PATCH, "/api/v1/settings/streaming")
+                .cookie(&s.admin)
+                .json(json!({ "max_upstreams": 1, "detail_reserve": 0 })),
+        )
+        .await;
+    assert_eq!(patched.status, StatusCode::OK, "{}", patched.text());
+
+    let mut first = connect(&s, &s.admin, "?profile=grid", true).await.unwrap();
+    handshake(&mut first).await;
+    // Another viewer of the same stream doesn't need a new camera connection.
+    let mut second = connect(&s, &s.admin, "?profile=grid", true).await.unwrap();
+    handshake(&mut second).await;
+    // A different profile would be a second connection: refused, with the
+    // reason sent on the socket so the player can show it.
+    let mut refused = connect(&s, &s.admin, "?profile=main", true).await.unwrap();
+    match next(&mut refused).await {
+        Message::Text(t) => {
+            assert!(t.contains("\"failed\""), "{t}");
+            assert!(t.contains("connection limit (1)"), "{t}");
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    assert_eq!(s.app.state.streams.list().len(), 1);
+}
