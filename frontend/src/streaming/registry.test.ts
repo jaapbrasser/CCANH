@@ -1,4 +1,4 @@
-import { LINGER_MS, StreamRegistry, type StreamListener } from "./registry";
+import { LINGER_MS, RETRY_MS, StreamRegistry, type StreamListener } from "./registry";
 
 class FakeSocket {
   static all: FakeSocket[] = [];
@@ -86,11 +86,27 @@ describe("stream registry", () => {
     expect(r.size).toBe(0);
   });
 
+  it("retries with backoff when refused before the stream starts", () => {
+    vi.useFakeTimers();
+    const r = registry();
+    const conn = r.connection("cam1", undefined, "grid");
+    const { l, log } = listener();
+    conn.attach(l);
+    FakeSocket.all[0]!.onclose?.(); // e.g. 409: profiles not known yet
+    expect(log.at(-1)).toBe("state connecting");
+    expect(r.connection("cam1", undefined, "grid")).toBe(conn);
+    vi.advanceTimersByTime(RETRY_MS[0]!);
+    expect(FakeSocket.all).toHaveLength(2);
+    FakeSocket.all[1]!.text({ type: "state", state: "running", message: null });
+    expect(log.at(-1)).toBe("state running");
+  });
+
   it("reports a lost connection as stopped and opens a fresh one next time", () => {
     const r = registry();
     const conn = r.connection("cam1", "grid");
     const { l, log } = listener();
     conn.attach(l);
+    FakeSocket.all[0]!.text({ type: "state", state: "running", message: null });
     FakeSocket.all[0]!.onclose?.();
     expect(log.at(-1)).toBe("state stopped");
     expect(r.connection("cam1", "grid")).not.toBe(conn);
