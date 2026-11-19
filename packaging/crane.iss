@@ -28,6 +28,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\crane.exe
+SetupIconFile=crane.ico
 
 [Tasks]
 Name: "service"; Description: "Run as a Windows service that starts with Windows (recommended)"
@@ -40,7 +41,7 @@ Source: "..\config.example.toml"; DestDir: "{app}"; Flags: ignoreversion
 Name: "{commonappdata}\CraneCamera"
 
 [Icons]
-Name: "{group}\Open CCANH"; Filename: "http://127.0.0.1:8080/"
+Name: "{group}\Open CCANH"; Filename: "http://127.0.0.1:8080/"; IconFilename: "{app}\crane.exe"
 Name: "{group}\Data folder"; Filename: "{commonappdata}\CraneCamera"
 Name: "{group}\Run CCANH in a console"; Filename: "{app}\crane.exe"; Parameters: "--data-dir ""{commonappdata}\CraneCamera"""; Tasks: not service
 Name: "{group}\Uninstall CCANH"; Filename: "{uninstallexe}"

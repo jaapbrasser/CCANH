@@ -32,3 +32,12 @@ foreach ($dll in $dlls) {
 Write-Host "crane.exe imports: $($dlls -join ', ')"
 if ($bad) { throw "crane.exe depends on DLLs a clean Windows 11 lacks:`n  $($bad -join "`n  ")" }
 Write-Host 'OK: only Windows system DLLs'
+
+# The icon and version information are embedded by backend/build.rs (issue #20).
+$info = (Get-Item $Exe).VersionInfo
+if ($info.ProductName -ne 'Crane Camera Automated Navigation Hub') {
+    throw "crane.exe has no embedded version information (ProductName '$($info.ProductName)')"
+}
+$headers = & $dumpbin /nologo /headers (Resolve-Path $Exe).Path
+if (-not ($headers -match '\.rsrc')) { throw 'crane.exe has no resource section (icon missing)' }
+Write-Host "OK: icon and version info embedded ($($info.ProductName) $($info.FileVersion))"
