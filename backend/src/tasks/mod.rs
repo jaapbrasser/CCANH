@@ -26,8 +26,6 @@ use crate::providers::{ErrorCategory, ProviderError};
 
 /// Tasks running at the same time; others wait as `queued`.
 pub const MAX_RUNNING: usize = 4;
-/// Finished tasks are kept this long.
-pub const RETENTION_DAYS: i64 = 30;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
@@ -496,18 +494,6 @@ pub async fn list(
     .fetch_all(db)
     .await?;
     Ok((rows.into_iter().map(Task::from).collect(), total))
-}
-
-/// Delete finished tasks older than the retention period.
-pub async fn purge_old(db: &SqlitePool) -> Result<u64, sqlx::Error> {
-    let cutoff = OffsetDateTime::now_utc() - time::Duration::days(RETENTION_DAYS);
-    let r = sqlx::query!(
-        "DELETE FROM tasks WHERE status IN ('succeeded', 'failed', 'cancelled') AND completed_at < ?1",
-        cutoff
-    )
-    .execute(db)
-    .await?;
-    Ok(r.rows_affected())
 }
 
 #[cfg(test)]

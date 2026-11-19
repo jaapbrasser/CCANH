@@ -31,6 +31,7 @@ pub mod action {
     pub const STREAM_FORCE_STOP: &str = "stream.force_stop";
     pub const CAMERA_BULK_UPDATE: &str = "camera.bulk_update";
     pub const DISCOVERY_START: &str = "discovery.start";
+    pub const AUDIT_PURGE: &str = "audit.purge";
     pub const GROUP_CREATE: &str = "group.create";
     pub const GROUP_UPDATE: &str = "group.update";
     pub const GROUP_DELETE: &str = "group.delete";
