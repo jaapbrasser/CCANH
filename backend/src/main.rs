@@ -57,6 +57,17 @@ struct Cli {
     /// then exit. Also the recovery path if every admin password is lost.
     #[arg(long, value_name = "USERNAME")]
     create_admin: Option<String>,
+    /// Windows: register crane as a service that starts with Windows, then
+    /// exit. Run as administrator; other options given here (data dir, config,
+    /// bind, port, demo) become the service's options.
+    #[arg(long, conflicts_with_all = ["uninstall_service", "service", "create_admin"])]
+    install_service: bool,
+    /// Windows: stop and remove the service, then exit. Data is kept.
+    #[arg(long, conflicts_with_all = ["service", "create_admin"])]
+    uninstall_service: bool,
+    /// Run under the Windows service manager (set by --install-service).
+    #[arg(long, hide = true)]
+    service: bool,
 }
 
 fn main() -> ExitCode {
@@ -75,6 +86,23 @@ fn main() -> ExitCode {
         };
     }
 
+    if cli.install_service || cli.uninstall_service || cli.service {
+        let result = if cli.install_service {
+            service::install(&cli)
+        } else if cli.uninstall_service {
+            service::uninstall()
+        } else {
+            service::run()
+        };
+        return match result {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(err) => {
+                eprintln!("error: {err:#}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -86,7 +114,7 @@ fn main() -> ExitCode {
         }
     };
 
-    match runtime.block_on(run(cli)) {
+    match runtime.block_on(run_with(cli, CancellationToken::new(), true)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             // Logging may not be initialised yet, so always print to stderr too.
@@ -97,7 +125,13 @@ fn main() -> ExitCode {
     }
 }
 
-async fn run(cli: Cli) -> anyhow::Result<()> {
+/// Run the server until `shutdown` is cancelled (or, with `listen_for_signals`,
+/// until Ctrl+C / SIGTERM).
+async fn run_with(
+    cli: Cli,
+    shutdown: CancellationToken,
+    listen_for_signals: bool,
+) -> anyhow::Result<()> {
     let overrides = Overrides {
         data_dir: cli.data_dir,
         bind: cli.bind,
@@ -192,8 +226,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         );
     }
 
-    let shutdown = CancellationToken::new();
-    tokio::spawn(wait_for_signal(shutdown.clone()));
+    if listen_for_signals {
+        tokio::spawn(wait_for_signal(shutdown.clone()));
+    }
 
     crane::serve(listener, state, tls.map(|t| t.config), shutdown).await?;
     tracing::info!("shutdown complete");
@@ -254,4 +289,209 @@ async fn wait_for_signal(token: CancellationToken) {
     }
     tracing::info!("shutdown signal received");
     token.cancel();
+}
+
+/// Windows service mode (SPEC §16, ADR 0010): runs as LocalSystem, which
+/// matches the DPAPI machine-scope credential store (ADR 0003).
+#[cfg(windows)]
+mod service {
+    use std::ffi::OsString;
+    use std::time::Duration;
+
+    use anyhow::Context;
+    use clap::Parser;
+    use tokio_util::sync::CancellationToken;
+    use windows_service::service::{
+        ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode,
+        ServiceInfo, ServiceStartType, ServiceState, ServiceStatus, ServiceType,
+    };
+    use windows_service::service_control_handler::{self, ServiceControlHandlerResult};
+    use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
+    use windows_service::{define_windows_service, service_dispatcher};
+
+    use super::{run_with, Cli};
+
+    pub const NAME: &str = "CraneCameraHub";
+    const DISPLAY_NAME: &str = "Crane Camera Automated Navigation Hub";
+    const DESCRIPTION: &str = "Manages AXIS IP cameras and serves the CCANH web interface.";
+
+    fn absolute(p: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+        std::path::absolute(p).with_context(|| format!("resolving {}", p.display()))
+    }
+
+    pub fn install(cli: &Cli) -> anyhow::Result<()> {
+        let exe = std::env::current_exe().context("finding this executable")?;
+        // Services start in System32, so every path is made absolute now.
+        let data_dir = match &cli.data_dir {
+            Some(d) => absolute(d)?,
+            None => crane::config::default_data_dir(),
+        };
+        std::fs::create_dir_all(&data_dir)
+            .with_context(|| format!("creating data directory {}", data_dir.display()))?;
+        let mut args: Vec<OsString> = vec![
+            "--service".into(),
+            "--data-dir".into(),
+            data_dir.clone().into(),
+        ];
+        if let Some(c) = &cli.config {
+            args.extend(["--config".into(), absolute(c)?.into()]);
+        }
+        if let Some(b) = cli.bind {
+            args.extend(["--bind".into(), b.to_string().into()]);
+        }
+        if let Some(p) = cli.port {
+            args.extend(["--port".into(), p.to_string().into()]);
+        }
+        if let Some(l) = &cli.log_level {
+            args.extend(["--log-level".into(), l.into()]);
+        }
+        if cli.demo {
+            args.push("--demo".into());
+        }
+        let manager = ServiceManager::local_computer(
+            None::<&str>,
+            ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE,
+        )
+        .context("connecting to the Windows service manager (run this as administrator)")?;
+        let info = ServiceInfo {
+            name: NAME.into(),
+            display_name: DISPLAY_NAME.into(),
+            service_type: ServiceType::OWN_PROCESS,
+            start_type: ServiceStartType::AutoStart,
+            error_control: ServiceErrorControl::Normal,
+            executable_path: exe,
+            launch_arguments: args,
+            dependencies: Vec::new(),
+            account_name: None, // LocalSystem
+            account_password: None,
+        };
+        let service = manager
+            .create_service(&info, ServiceAccess::CHANGE_CONFIG)
+            .context("creating the service (is it already installed? run as administrator)")?;
+        service
+            .set_description(DESCRIPTION)
+            .context("setting the service description")?;
+        println!(
+            "Installed the \"{DISPLAY_NAME}\" service ({NAME}); it starts with Windows.\n\
+             Data directory: {}\nStart it now with: sc start {NAME}",
+            data_dir.display()
+        );
+        Ok(())
+    }
+
+    pub fn uninstall() -> anyhow::Result<()> {
+        let manager =
+            ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+                .context("connecting to the Windows service manager (run this as administrator)")?;
+        let service = manager
+            .open_service(
+                NAME,
+                ServiceAccess::QUERY_STATUS | ServiceAccess::STOP | ServiceAccess::DELETE,
+            )
+            .context("opening the service (is it installed? run as administrator)")?;
+        if service.query_status()?.current_state != ServiceState::Stopped {
+            // Already stopping is fine; wait below either way.
+            let _ = service.stop();
+            for _ in 0..120 {
+                if service.query_status()?.current_state == ServiceState::Stopped {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(500));
+            }
+        }
+        service.delete().context("removing the service")?;
+        println!("Removed the {NAME} service. The data directory was kept.");
+        Ok(())
+    }
+
+    define_windows_service!(ffi_service_main, service_main);
+
+    pub fn run() -> anyhow::Result<()> {
+        service_dispatcher::start(NAME, ffi_service_main)
+            .context("connecting to the service manager; --service is only for use by Windows (see --install-service)")
+    }
+
+    fn service_main(_args: Vec<OsString>) {
+        if let Err(err) = run_service() {
+            tracing::error!(error = format!("{err:#}"), "service stopped with an error");
+        }
+    }
+
+    fn status(
+        state: ServiceState,
+        accept: ServiceControlAccept,
+        exit: ServiceExitCode,
+        wait: Duration,
+    ) -> ServiceStatus {
+        ServiceStatus {
+            service_type: ServiceType::OWN_PROCESS,
+            current_state: state,
+            controls_accepted: accept,
+            exit_code: exit,
+            checkpoint: 0,
+            wait_hint: wait,
+            process_id: None,
+        }
+    }
+
+    fn run_service() -> anyhow::Result<()> {
+        let shutdown = CancellationToken::new();
+        let stop = shutdown.clone();
+        let handle = service_control_handler::register(NAME, move |control| match control {
+            ServiceControl::Stop | ServiceControl::Shutdown => {
+                stop.cancel();
+                ServiceControlHandlerResult::NoError
+            }
+            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+            _ => ServiceControlHandlerResult::NotImplemented,
+        })
+        .context("registering the service control handler")?;
+        let none = ServiceControlAccept::empty();
+        handle.set_service_status(status(
+            ServiceState::StartPending,
+            none,
+            ServiceExitCode::NO_ERROR,
+            Duration::from_secs(30),
+        ))?;
+        // The options set at install time are on this process's command line.
+        let cli = Cli::parse();
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .context("starting the async runtime")?;
+        handle.set_service_status(status(
+            ServiceState::Running,
+            ServiceControlAccept::STOP | ServiceControlAccept::SHUTDOWN,
+            ServiceExitCode::NO_ERROR,
+            Duration::ZERO,
+        ))?;
+        let result = runtime.block_on(run_with(cli, shutdown, false));
+        let exit = match &result {
+            Ok(()) => ServiceExitCode::NO_ERROR,
+            Err(_) => ServiceExitCode::ServiceSpecific(1),
+        };
+        handle.set_service_status(status(ServiceState::Stopped, none, exit, Duration::ZERO))?;
+        result
+    }
+}
+
+#[cfg(not(windows))]
+mod service {
+    use super::Cli;
+
+    fn windows_only() -> anyhow::Result<()> {
+        anyhow::bail!("service mode is only available on Windows; run crane directly (or under systemd/launchd)")
+    }
+
+    pub fn install(_: &Cli) -> anyhow::Result<()> {
+        windows_only()
+    }
+
+    pub fn uninstall() -> anyhow::Result<()> {
+        windows_only()
+    }
+
+    pub fn run() -> anyhow::Result<()> {
+        windows_only()
+    }
 }
