@@ -124,6 +124,17 @@ installer (Inno Setup 6 needed): `pwsh scripts/build.ps1`, then
 `scripts/service-test.ps1` and `scripts/installer-test.ps1` are what CI runs.
 See ADR 0010.
 
+## Offline deployment package
+
+`pwsh scripts/package-offline.ps1` (Windows, after `build.ps1` and
+`build-installer.ps1`) writes `dist\ccanh-offline-<version>.zip`: installer,
+portable exe, README, `TEST-PLAN.html` (83 site test cases; records results in
+the browser and exports CSV), `tools\Test-Ccanh.ps1`,
+`tools\Collect-Diagnostics.ps1` and SHA-256 checksums. CI builds it in the
+Windows job (artifact `ccanh-offline-windows-x64`), checks the exe imports only
+Windows DLLs, and runs the pre-flight check from the extracted zip. Sources are
+in `packaging/offline/`.
+
 ## Load test
 
 `cargo test --release -p crane --test perf -- --ignored --nocapture` runs the

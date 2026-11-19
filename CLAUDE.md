@@ -55,6 +55,7 @@ pwsh scripts/build.ps1                    # release binary with embedded UI
 pwsh scripts/smoke-test.ps1 -Exe target/release/crane
 pwsh scripts/rtsp-test-source.ps1         # local RTSP H.264 source (needs ffmpeg + mediamtx)
 pwsh scripts/build-installer.ps1          # Windows: dist\crane-setup-<v>.exe (Inno Setup 6)
+pwsh scripts/package-offline.ps1          # Windows: dist\ccanh-offline-<v>.zip (after the two above)
 pwsh scripts/service-test.ps1 -Exe target/release/crane.exe   # Windows, admin
 cargo test --release -p crane --test perf -- --ignored --nocapture   # load test
 ```
@@ -105,7 +106,8 @@ frontend/e2e/          Playwright specs (run against the release binary)
 frontend/src/          App (routes), pages/, components/, auth/ (guards),
                        streaming/ (shared media sockets, MSE player),
                        api/ (client.ts, hooks, generated schema.d.ts), test/ (MSW)
-packaging/             Inno Setup script (crane.iss)
+packaging/             Inno Setup script (crane.iss); offline/ = README, TEST-PLAN.html,
+                       tools/ (Test-Ccanh.ps1, Collect-Diagnostics.ps1) for the offline zip
 scripts/               build, dev, gen-api-types, smoke-test, service/installer tests
 docs/                  SPEC.md, adr/, development.md, dependencies.md
 .github/workflows/ci.yml
@@ -174,6 +176,10 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
   read (against current cameras), so registering one result updates the rest.
 - Fresh demo cameras answer 409 on the media socket until their profiles
   load; the stream registry retries refused sockets with backoff.
+- Windows builds link the C runtime statically (`.cargo/config.toml`, which
+  `.gitignore` explicitly allows); CI's check-windows-deps.ps1 fails if
+  crane.exe imports anything outside Windows itself. The offline zip is the
+  `ccanh-offline-windows-x64` CI artifact.
 - Service mode code is `#[cfg(windows)]` in `main.rs`; it only compiles on
   Windows (CI). The service runs as LocalSystem from `System32`, so paths it
   gets must be absolute (`--install-service` makes them so).
