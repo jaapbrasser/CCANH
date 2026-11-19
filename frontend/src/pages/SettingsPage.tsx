@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { errorMessage } from "../api/client";
 import {
+  useResetRetention,
+  useUpdateRetention,
+  type RetentionSettings,
   useResetDiscovery,
   useUpdateDiscovery,
   type DiscoverySettings,
@@ -86,6 +89,16 @@ export function SettingsPage() {
           defaults={settings.data.defaults.discovery}
         />
       )}
+
+      <h2 className="mb-1 mt-10 text-lg font-semibold">History retention</h2>
+      <p className="mb-4 text-sm text-slate-400">Older history is removed by a daily cleanup.</p>
+      {settings.data && (
+        <RetentionForm
+          key={JSON.stringify(settings.data.current.retention)}
+          current={settings.data.current.retention}
+          defaults={settings.data.defaults.retention}
+        />
+      )}
     </div>
   );
 }
@@ -140,7 +153,13 @@ function MonitoringForm({ current, defaults }: { current: MonitoringSettings; de
   );
 }
 
-type SKey = "grace_period_secs" | "stream_buffer_mb" | "global_buffer_mb";
+type SKey =
+  | "grace_period_secs"
+  | "stream_buffer_mb"
+  | "global_buffer_mb"
+  | "max_upstreams"
+  | "detail_reserve"
+  | "max_inbound_mbps";
 type NameKey = "default_grid_profile" | "default_detail_profile";
 const NAME_FIELDS: { key: NameKey; label: string; hint: string }[] = [
   {
@@ -158,6 +177,21 @@ const STREAM_FIELDS: { key: SKey; label: string; hint: string }[] = [
   { key: "grace_period_secs", label: "Grace period (seconds)", hint: "How long a camera stream stays connected after its last viewer leaves (0–300)." },
   { key: "stream_buffer_mb", label: "Buffer per stream (MB)", hint: "Memory for the latest keyframe group, so new viewers start instantly (1–64)." },
   { key: "global_buffer_mb", label: "Total buffer (MB)", hint: "Memory cap across all streams (16–4096)." },
+  {
+    key: "max_upstreams",
+    label: "Camera connection limit",
+    hint: "Most camera streams open at once; 0 means no limit (0–1000).",
+  },
+  {
+    key: "detail_reserve",
+    label: "Kept for detail views",
+    hint: "With a limit set, this many connections are only for detail views, never grid tiles (0–100).",
+  },
+  {
+    key: "max_inbound_mbps",
+    label: "Inbound video limit (Mbit/s)",
+    hint: "No new camera streams while video from cameras is above this; 0 means no limit.",
+  },
 ];
 
 function StreamingForm({ current, defaults }: { current: StreamingSettings; defaults: StreamingSettings }) {
@@ -272,6 +306,59 @@ function DiscoveryForm({ current, defaults }: { current: DiscoverySettings; defa
           variant="secondary"
           disabled={reset.isPending}
           onClick={() => reset.mutate(undefined, { onSuccess: () => showToast("success", "Discovery settings reset.") })}
+        >
+          Reset
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+type RKey = keyof RetentionSettings;
+const RETENTION_FIELDS: { key: RKey; label: string; hint: string }[] = [
+  { key: "status_history_days", label: "Status history (days)", hint: "Camera online/offline changes (1–3650)." },
+  { key: "tasks_days", label: "Tasks and scans (days)", hint: "Finished tasks, including discovery scans and their results (1–3650)." },
+  { key: "audit_days", label: "Audit log (days)", hint: "0 keeps it forever; otherwise at least 90. Removing entries is itself audited." },
+];
+
+function RetentionForm({ current, defaults }: { current: RetentionSettings; defaults: RetentionSettings }) {
+  const update = useUpdateRetention();
+  const reset = useResetRetention();
+  const [form, setForm] = useState(
+    () => Object.fromEntries(RETENTION_FIELDS.map((f) => [f.key, String(current[f.key])])) as Record<RKey, string>,
+  );
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const patch: Partial<Record<RKey, number>> = {};
+    for (const f of RETENTION_FIELDS) {
+      const v = Number(form[f.key]);
+      if (v !== current[f.key]) patch[f.key] = v;
+    }
+    update.mutate(patch, { onSuccess: () => showToast("success", "Retention settings saved.") });
+  };
+  return (
+    <form onSubmit={onSubmit} aria-label="Retention settings" className="flex flex-col gap-4">
+      {(update.isError || reset.isError) && <Alert>{errorMessage(update.error ?? reset.error)}</Alert>}
+      <div className="grid gap-4 sm:grid-cols-3">
+        {RETENTION_FIELDS.map((f) => (
+          <Field
+            key={f.key}
+            label={f.label}
+            inputMode="numeric"
+            hint={`${f.hint}${defaults[f.key] !== Number(form[f.key]) ? ` Default: ${defaults[f.key]}.` : ""}`}
+            value={form[f.key]}
+            onChange={(e) => setForm({ ...form, [f.key]: e.target.value.replace(/\D/g, "") })}
+          />
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={update.isPending}>
+          Save retention settings
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={reset.isPending}
+          onClick={() => reset.mutate(undefined, { onSuccess: () => showToast("success", "Retention settings reset.") })}
         >
           Reset
         </Button>

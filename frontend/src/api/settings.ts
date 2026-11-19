@@ -8,6 +8,8 @@ export type StreamingSettings = components["schemas"]["StreamingSettings"];
 export type StreamingPatch = components["schemas"]["StreamingPatch"];
 export type DiscoverySettings = components["schemas"]["DiscoverySettings"];
 export type DiscoveryPatch = components["schemas"]["DiscoveryPatch"];
+export type RetentionSettings = components["schemas"]["RetentionSettings"];
+export type RetentionPatch = components["schemas"]["RetentionPatch"];
 
 const key = ["settings"] as const;
 
@@ -64,6 +66,22 @@ export function useResetDiscovery() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => unwrap(api.DELETE("/api/v1/settings/discovery")),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
+}
+
+export function useUpdateRetention() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RetentionPatch) => unwrap(api.PATCH("/api/v1/settings/retention", { body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
+}
+
+export function useResetRetention() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.DELETE("/api/v1/settings/retention")),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
 }

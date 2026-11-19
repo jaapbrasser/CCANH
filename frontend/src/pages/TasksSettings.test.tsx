@@ -22,8 +22,12 @@ const STREAMING = {
   global_buffer_mb: 256,
   default_grid_profile: null,
   default_detail_profile: null,
+  max_upstreams: 0,
+  detail_reserve: 2,
+  max_inbound_mbps: 0,
 };
 
+const RETENTION = { status_history_days: 30, tasks_days: 30, audit_days: 0 };
 const DISCOVERY = { max_addresses: 4096, concurrency: 32, connect_timeout_ms: 1000, http_timeout_ms: 3000 };
 
 function task(over: Record<string, unknown> = {}) {
@@ -48,8 +52,8 @@ describe("settings page", () => {
     server.use(
       http.get("/api/v1/settings", () =>
         HttpResponse.json({
-          current: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY },
-          defaults: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY },
+          current: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION },
+          defaults: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION },
           monitor: {
             checks_total: 120,
             failures_total: 7,
@@ -116,6 +120,41 @@ describe("settings page", () => {
     await userEvent.type(within(form).getByLabelText("Grid profile name"), "grid");
     await userEvent.click(within(form).getByRole("button", { name: "Save live video settings" }));
     await waitFor(() => expect(patch).toEqual({ grace_period_secs: 60, default_grid_profile: "grid" }));
+  });
+});
+
+describe("retention settings", () => {
+  it("saves changed values", async () => {
+    signedInAs(ADMIN);
+    let patch: unknown;
+    server.use(
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({
+          current: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION },
+          defaults: { monitoring: MONITORING, streaming: STREAMING, discovery: DISCOVERY, retention: RETENTION },
+          monitor: {
+            checks_total: 0,
+            failures_total: 0,
+            retries_total: 0,
+            identity_checks_total: 0,
+            checks_in_flight: 0,
+            cameras_monitored: 0,
+            last_tick_unix: 0,
+          },
+        }),
+      ),
+      http.patch("/api/v1/settings/retention", async ({ request }) => {
+        patch = await request.json();
+        return HttpResponse.json({ ...RETENTION, audit_days: 365 });
+      }),
+    );
+    renderApp("/settings");
+    const form = await screen.findByRole("form", { name: "Retention settings" });
+    const audit = within(form).getByLabelText("Audit log (days)");
+    await userEvent.clear(audit);
+    await userEvent.type(audit, "365");
+    await userEvent.click(within(form).getByRole("button", { name: "Save retention settings" }));
+    await waitFor(() => expect(patch).toEqual({ audit_days: 365 }));
   });
 });
 
