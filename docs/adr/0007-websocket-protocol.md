@@ -58,7 +58,7 @@ Server → client:
 
 Topics so far: `camera_status`, `cameras`, `tasks` (added in Phase 4b, see
 ADR 0008), `streams` (Phase 5; admin only, a viewer's subscription is accepted
-but receives nothing) and `discovery` (Phase 8; admin only). SPEC §8 names
+but receives nothing) and `discovery` (Phase 8; admin only). SPEC §13.2 names
 per-job topics (`discovery:{job_id}`). We use one `discovery` topic whose
 messages carry `job_id` instead: topics stay a closed enum, and admins usually
 watch every running scan anyway. Live video
