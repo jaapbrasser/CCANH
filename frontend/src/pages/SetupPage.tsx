@@ -4,8 +4,10 @@ import { MIN_PASSWORD_LENGTH, useCompleteSetup, useMe, useSetupStatus } from "..
 import { errorMessage } from "../api/client";
 import { Alert, Button, Field } from "../components/ui";
 import { AuthCard } from "./LoginPage";
+import { usePageTitle } from "../components/pageTitle";
 
 export function SetupPage() {
+  usePageTitle("Setup");
   const status = useSetupStatus();
   const { data: me } = useMe();
   const setup = useCompleteSetup();

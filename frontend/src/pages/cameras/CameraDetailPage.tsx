@@ -20,6 +20,7 @@ import { showToast } from "../../components/toasts";
 import { Alert, Button, Dialog } from "../../components/ui";
 import { errorCategoryLabel, relativeTime } from "../../utils/format";
 import { CameraFormDialog } from "./CameraFormDialog";
+import { usePageTitle } from "../../components/pageTitle";
 
 const GROUP_LABELS: Record<CapabilityGroup, string> = {
   device: "Device",
@@ -234,6 +235,7 @@ export function CameraDetailPage() {
   const { id = "" } = useParams();
   const camera = useCamera(id);
   const { data: me } = useMe();
+  usePageTitle("Camera", camera.data?.name);
   const isAdmin = me?.role === "admin";
 
   if (camera.isPending) return <p className="text-slate-400">Loading…</p>;

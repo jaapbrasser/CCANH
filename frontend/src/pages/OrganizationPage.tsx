@@ -19,9 +19,11 @@ import {
 import { GroupSelect } from "../components/organization";
 import { showToast } from "../components/toasts";
 import { Alert, Button, Dialog, Field, PageHeader } from "../components/ui";
+import { usePageTitle } from "../components/pageTitle";
 
 /** Admin page: the group tree and the tag list (SPEC §9). */
 export function OrganizationPage() {
+  usePageTitle("Organization");
   return (
     <div>
       <PageHeader title="Groups & tags" />

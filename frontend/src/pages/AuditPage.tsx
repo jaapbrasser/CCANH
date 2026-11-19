@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAudit, type AuditQuery } from "../api/audit";
 import { errorMessage } from "../api/client";
 import { Alert, PageHeader, Pagination } from "../components/ui";
+import { usePageTitle } from "../components/pageTitle";
 
 const PAGE_SIZE = 50;
 
@@ -14,6 +15,7 @@ const ACTIONS = [
 ];
 
 export function AuditPage() {
+  usePageTitle("Audit log");
   const [page, setPage] = useState(1);
   const [action, setAction] = useState("");
   const [outcome, setOutcome] = useState<"" | "success" | "failure">("");

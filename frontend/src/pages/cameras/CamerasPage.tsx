@@ -10,6 +10,7 @@ import { Alert, Button, PageHeader, Pagination } from "../../components/ui";
 import { relativeTime } from "../../utils/format";
 import { BulkBar } from "./BulkBar";
 import { CameraFormDialog } from "./CameraFormDialog";
+import { usePageTitle } from "../../components/pageTitle";
 
 const PAGE_SIZE = 50;
 type Sort = NonNullable<CameraListQuery["sort"]>;
@@ -29,6 +30,7 @@ const filterClass = "rounded border border-slate-700 bg-slate-900 px-3 py-2";
 
 /** The camera list; `favoritesOnly` makes it the Favorites view. */
 export function CamerasPage({ favoritesOnly = false }: { favoritesOnly?: boolean }) {
+  usePageTitle(favoritesOnly ? "Favorites" : "Cameras");
   const { data: me } = useMe();
   const isAdmin = me?.role === "admin";
   const navigate = useNavigate();

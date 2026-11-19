@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router";
 import { RequireAdmin, RequireAuth } from "./auth/guards";
 import { useUnauthorizedListener } from "./auth/session";
 import { Layout } from "./components/Layout";
+import { usePageTitle } from "./components/pageTitle";
 import { AccountPage } from "./pages/AccountPage";
 import { AuditPage } from "./pages/AuditPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -101,6 +102,7 @@ export default function App() {
 }
 
 function NotFound() {
+  usePageTitle("Page not found");
   return (
     <div>
       <h1 className="text-xl font-semibold">Page not found</h1>

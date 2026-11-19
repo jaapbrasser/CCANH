@@ -2,8 +2,10 @@ import { useState, type FormEvent } from "react";
 import { MIN_PASSWORD_LENGTH, useChangePassword, useMe } from "../api/auth";
 import { errorMessage } from "../api/client";
 import { Alert, Button, Field, PageHeader } from "../components/ui";
+import { usePageTitle } from "../components/pageTitle";
 
 export function AccountPage() {
+  usePageTitle("Account");
   const { data: me } = useMe();
   const change = useChangePassword();
   const [current, setCurrent] = useState("");

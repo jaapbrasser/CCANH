@@ -3,6 +3,7 @@ import { useCameras } from "../api/cameras";
 import { errorMessage } from "../api/client";
 import { useStopStream, useStreams, type StreamInfo } from "../api/streams";
 import { Alert, Button, PageHeader } from "../components/ui";
+import { usePageTitle } from "../components/pageTitle";
 
 function rate(bytesPerSec: number): string {
   const bits = bytesPerSec * 8;
@@ -25,6 +26,7 @@ const STATE_STYLE: Record<StreamInfo["state"], string> = {
 };
 
 export function StreamsPage() {
+  usePageTitle("Streams");
   const streams = useStreams();
   const cameras = useCameras({ page_size: 200 });
   const stop = useStopStream();

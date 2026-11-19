@@ -10,10 +10,12 @@ import {
   type User,
 } from "../api/users";
 import { Alert, Button, Dialog, Field, PageHeader, Pagination } from "../components/ui";
+import { usePageTitle } from "../components/pageTitle";
 
 const PAGE_SIZE = 25;
 
 export function UsersPage() {
+  usePageTitle("Users");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
