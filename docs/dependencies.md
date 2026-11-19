@@ -32,6 +32,7 @@ One line per non-trivial dependency and why it's here. See ADR 0001 for the base
 | rpassword | Hidden password prompt for `--create-admin` |
 | async-trait | `dyn CameraProvider` with async methods (SPEC §4.3) |
 | bytes | Cheaply cloned media buffers shared by all viewers of a stream (ADR 0002) |
+| windows-service (Windows only) | Windows service mode: control dispatcher, status, install/uninstall (ADR 0010) |
 | retina | RTSP client for AXIS live video: Digest auth, RTP over TCP, H.264 depacketizing and MP4 sample entries; pure Rust (ADR 0002) |
 | url | RTSP URLs for retina, with query values encoded |
 | reqwest (`rustls-no-provider`, `json`) | VAPIX HTTP client; TLS via our rustls config (ring), no aws-lc |
@@ -65,6 +66,9 @@ One line per non-trivial dependency and why it's here. See ADR 0001 for the base
 - `sqlx-cli` (`cargo install sqlx-cli --no-default-features --features sqlite,rustls`):
   regenerates `.sqlx/` via `scripts/sqlx-prepare.ps1`.
 - `cargo-deny`: supply-chain checks (`cargo deny check`).
+- Inno Setup 6: builds the Windows installer (`scripts/build-installer.ps1`,
+  ADR 0010); CI installs it with Chocolatey when missing.
+- Playwright's Chromium (`npx playwright install chromium`): end-to-end tests.
 
 ## Known advisories
 
