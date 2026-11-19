@@ -37,6 +37,11 @@ export const RETRY_MS = [1000, 2000, 5000, 10000, 30000];
 /** Cap for the cached current GOP (bytes) used to start late players. */
 const MAX_GOP_BYTES = 8 * 1024 * 1024;
 
+/** A server shutting down (restart, service stop) isn't a deliberate stop. */
+function isRestart(message: string | null): boolean {
+  return /shutting down/i.test(message ?? "");
+}
+
 export class StreamConnection {
   readonly key: string;
   private socket: WebSocket | null = null;
@@ -73,16 +78,23 @@ export class StreamConnection {
     };
     ws.onclose = () => {
       if (this.closed) return;
-      // Refused before anything arrived (the browser hides the status): the
-      // stream may simply not be available yet, so try again with backoff.
-      if (!received && this.listeners.size > 0) {
+      const retry = (state: StreamState, message: string) => {
         const delay = RETRY_MS[Math.min(this.retries, RETRY_MS.length - 1)]!;
         this.retries += 1;
-        this.setState("connecting", "Waiting for the camera's stream…");
+        this.setState(state, message);
         this.retryTimer = setTimeout(() => {
           if (!this.closed) this.open();
         }, delay);
-        return;
+      };
+      if (this.listeners.size > 0) {
+        // Refused before anything arrived (the browser hides the status): the
+        // stream may simply not be available yet (or the server is starting).
+        if (!received) return retry("connecting", "Waiting for the camera's stream…");
+        // Lost mid-stream (network blip, server restart): reconnect, unless the
+        // server ended the stream on purpose (admin stop, camera removed, or a
+        // permanent failure such as rejected credentials).
+        const deliberate = this.state === "failed" || (this.state === "stopped" && !isRestart(this.message));
+        if (!deliberate) return retry("reconnecting", "Connection to the server lost; reconnecting…");
       }
       if (this.state !== "failed" && this.state !== "stopped") this.setState("stopped", "connection lost");
       this.close();

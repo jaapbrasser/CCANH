@@ -386,6 +386,8 @@ impl StreamManager {
         self.inner.root.cancel();
         let hubs: Vec<_> = lock(&self.inner.hubs).drain().map(|(_, h)| h).collect();
         for hub in hubs {
+            // Players reconnect when the reason says "shutting down" (a restart),
+            // unlike a deliberate stop; keep the wording (frontend registry.ts).
             hub.stop(Some("server shutting down".into()));
         }
     }
