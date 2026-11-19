@@ -116,6 +116,9 @@ jobs:
       - name: Build embedded binary
         shell: pwsh
         run: ./scripts/build.ps1
+      - name: No runtime dependencies beyond Windows
+        shell: pwsh
+        run: ./scripts/check-windows-deps.ps1 -Exe target/release/crane.exe
       - name: Smoke test
         shell: pwsh
         run: ./scripts/smoke-test.ps1 -Exe target/release/crane.exe
@@ -138,6 +141,27 @@ jobs:
         with:
           name: crane-setup-windows-x64
           path: dist/crane-setup-*.exe
+          if-no-files-found: error
+      - name: Build offline package
+        shell: pwsh
+        run: ./scripts/package-offline.ps1
+      - name: Check the extracted package (Windows PowerShell 5.1)
+        shell: pwsh
+        run: |
+          $zip = (Get-ChildItem dist/ccanh-offline-*.zip).FullName
+          $dest = Join-Path $env:RUNNER_TEMP 'pkg'
+          Expand-Archive $zip -DestinationPath $dest
+          $pkg = (Get-ChildItem $dest -Directory | Select-Object -First 1).FullName
+          & "$pkg\portable\crane.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'portable crane.exe failed' }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$pkg\tools\Test-Ccanh.ps1" -Preflight
+          if ($LASTEXITCODE -ne 0) { throw 'pre-flight check failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ccanh-offline-windows-x64
+          path: |
+            dist/ccanh-offline-*.zip
+            dist/ccanh-offline-*.zip.sha256
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
