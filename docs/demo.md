@@ -37,10 +37,12 @@ or `mode = "demo"` in `config.toml`. The UI shows a **DEMO MODE** banner.
   `198.51.100.41–46`; `.42` and `.44` answer on HTTP only (to try Basic over
   HTTP), the rest on HTTPS.
 - The SPEC §9 group tree (Site A → Building 1/2 → Crane 1–4, Yard; Site B →
-  Loading Area, Storage Area, Perimeter), tags (Hook, Cabin, Gate, Outdoor,
-  Critical) and a few favorites for each demo account.
+  Loading Area, Storage Area, Perimeter) and a few favorites for each demo
+  account.
 - Two sample dashboards for each demo account: "Site A cranes" (3×3, the
-  default) and "Gates and docks" (2×3).
+  default) and "Gates and docks" (3×3). The PTZ pad beside the grid moves
+  the two hook cameras (AXIS Q6135-LE); the demo video doesn't actually move.
+- Restarting a demo camera makes it unreachable for 20 s.
 - Cameras an admin adds in demo mode are simulated too: demo mode never opens a
   connection to a camera.
 - Live video: every online camera with an H.264 profile plays one of four

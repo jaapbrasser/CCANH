@@ -19,8 +19,12 @@ feedback", issues #14–#21: camera defaults with ADR 0011, optional names,
 discovery credential test, bulk settings, icons, tab titles; versioned dist
 with diff packages), and Phase 11 (0.3.0, milestone "Phase 11: navigation",
 issues #23–#26: settings cog with a sidebar, user menu, favorites from the
-camera selection, discovery under Cameras; ADR 0012). Next: gather feedback
-from the 0.3.0 site test as issues; review the §18 answers with the owner. Don't build ahead of the current phase,
+camera selection, discovery under Cameras; ADR 0012), and Phase 12 (0.4.0,
+milestone "Phase 12: site feedback", issues #28–#35: wide dialogs, blue/teal
+theme, 2×2/3×3 dashboards only, PTZ controls, top-bar camera count, camera
+restart, "Cranes" filter label, tags removed; ADR 0013). Backlog: #36 (PoE
+power cycle, admin only). Next: gather feedback from the 0.4.0 site test as
+issues; review the §18 answers with the owner. Don't build ahead of the current phase,
 and post a plan before starting one.
 
 ## Commands
@@ -91,10 +95,11 @@ backend/
   src/events/          typed broadcast event bus
   src/demo/            demo seeding and demo.db reset
   src/supervisor.rs    restart background services with backoff; health
+  src/ptz.rs           interactive PTZ: move/stop, watchdog, rate limit (ADR 0013)
   src/retention.rs     daily cleanup of history, tasks/scans and (opt-in) audit
   src/settings/        admin-editable runtime settings (watch channel, DB overrides)
   src/tasks/           background task manager (persisted, cancellable, `tasks` topic)
-  src/organization/    groups (tree, cycle checks), tags, favorites, memberships
+  src/organization/    groups (tree, cycle checks), favorites, memberships
   src/dashboards/      per-user dashboards (grid, tiles, default)
   src/discovery/       range parsing, HostProber (AXIS: TCP check + one anonymous
                        probe; demo: simulated), scan runner, duplicate rules
@@ -206,6 +211,16 @@ docs/                  SPEC.md, adr/, development.md, dependencies.md
   top-level addresses only redirect. New admin pages go in `SETTINGS_PAGES`,
   not the top bar. Every user can select cameras; viewers' bulk bar only has
   the favorite actions.
+- Tags were removed in 0.4.0 (migration 0011); don't reintroduce them.
+  Dashboards are 2×2 or 3×3 only; `dashboards::normalize_layouts` converts
+  older ones at startup (ADR 0005 amendment).
+- Camera control (ADR 0013): restart is a `restart_camera` task; PTZ is
+  synchronous via `state.ptz` (`ptz::PtzControl`), which repeats/stops
+  moves, runs a 1.5 s watchdog and rate-limits per user. A held control is
+  one `camera.ptz` audit entry. PTZ UI goes beside video, never over it.
+  `CameraSummary.ptz` comes from stored capabilities (group `ptz`).
+- Demo restart state is global per host (`RESTARTING` in demo/mod.rs): tests
+  that restart must use hosts no other test uses (e.g. 203.0.113.x).
 - AXIS RTSP tests use the in-process fake server in
   `providers/axis/rtsp_tests.rs` (`FakeCamera::start_with`); the AXIS contract
   suite needs it too, since `open_stream` really connects.
