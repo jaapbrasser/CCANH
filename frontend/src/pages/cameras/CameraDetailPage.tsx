@@ -362,7 +362,7 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
                     Not applicable (HTTP)
                   </span>
                 ) : camera.tls_mode === "insecure_skip_verify" ? (
-                  <span key="t" className="text-amber-300">
+                  <span key="t" className="text-yellow-300">
                     Not verified (insecure)
                   </span>
                 ) : camera.tls_mode === "pinned" ? (

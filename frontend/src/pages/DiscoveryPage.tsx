@@ -126,7 +126,7 @@ function StartForm({ onStarted }: { onStarted: (id: string) => void }) {
       </p>
       {p?.too_large && <Alert>That's more than one scan can cover. Split it into smaller ranges.</Alert>}
       {p?.needs_confirmation && !p.too_large && (
-        <label className="flex items-start gap-2 text-sm text-amber-200">
+        <label className="flex items-start gap-2 text-sm text-yellow-200">
           <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />
           Scan {p.address_count.toLocaleString()} addresses, more than the usual limit of{" "}
           {p.max_addresses.toLocaleString()}
@@ -151,7 +151,7 @@ function statusOf(d: DiscoveredDevice, all: DiscoveredDevice[]) {
   const dup = d.duplicate_of;
   if (dup?.camera_id) {
     return (
-      <span className="text-amber-300">
+      <span className="text-yellow-300">
         Already registered as{" "}
         <Link to={`/cameras/${dup.camera_id}`} className="underline">
           {dup.camera_name}
@@ -162,7 +162,7 @@ function statusOf(d: DiscoveredDevice, all: DiscoveredDevice[]) {
   }
   if (dup?.result_id) {
     const other = all.find((r) => r.id === dup.result_id);
-    return <span className="text-amber-300">Same device as {other?.ip ?? "another result"}</span>;
+    return <span className="text-yellow-300">Same device as {other?.ip ?? "another result"}</span>;
   }
   return <span className="text-sky-300">New</span>;
 }
@@ -200,7 +200,7 @@ function JobPanel({ id }: { id: string }) {
           aria-valuemax={j.address_count}
           className="h-2 overflow-hidden rounded bg-slate-800"
         >
-          <div className="h-full bg-amber-500 transition-all" style={{ width: `${pct}%` }} />
+          <div className="h-full bg-teal-500 transition-all" style={{ width: `${pct}%` }} />
         </div>
         <p className="mt-2 text-sm text-slate-300">
           {j.task.status === "cancelled"
@@ -500,7 +500,7 @@ function CredentialResults({ result }: { result: CredentialTestResult }) {
   const passed = result.results.filter((r) => r.ok).length;
   return (
     <div role="region" aria-label="Credential test result" className="rounded border border-slate-700 p-3">
-      <p className={`mb-2 font-medium ${passed === result.results.length ? "text-emerald-300" : "text-amber-300"}`}>
+      <p className={`mb-2 font-medium ${passed === result.results.length ? "text-emerald-300" : "text-yellow-300"}`}>
         Credentials accepted by {passed} of {result.results.length} device{result.results.length === 1 ? "" : "s"}
       </p>
       <ul className="flex flex-col gap-1">

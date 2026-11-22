@@ -113,7 +113,7 @@ function TestResult({
 }) {
   return (
     <div role="region" aria-label="Connection test result" className="rounded border border-slate-700 p-3 text-sm">
-      <p className={`mb-2 font-medium ${result.ok ? "text-emerald-300" : "text-amber-300"}`}>
+      <p className={`mb-2 font-medium ${result.ok ? "text-emerald-300" : "text-yellow-300"}`}>
         {result.ok ? "Connection test passed" : "Connection test found problems"}
       </p>
       <ul className="mb-2 flex flex-col gap-1">

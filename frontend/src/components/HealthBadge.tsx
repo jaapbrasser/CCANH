@@ -21,7 +21,7 @@ export function HealthBadge() {
       className={
         ok
           ? "rounded bg-emerald-900/60 px-2 py-1 text-sm text-emerald-200"
-          : "rounded bg-amber-900/60 px-2 py-1 text-sm text-amber-200"
+          : "rounded bg-yellow-900/60 px-2 py-1 text-sm text-yellow-200"
       }
     >
       {ok ? "Server healthy" : "Server degraded"} · v{data.version}

@@ -65,13 +65,13 @@ export function LoginPage() {
         </Button>
       </form>
       {demoAccounts && demoAccounts.length > 0 && (
-        <div role="note" className="mt-6 rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-100">
+        <div role="note" className="mt-6 rounded border border-sky-700 bg-sky-950/40 p-3 text-sm text-sky-100">
           <p className="mb-1 font-semibold">Demo mode accounts</p>
           <ul>
             {demoAccounts.map((a) => (
               <li key={a.username}>
                 <code>{a.username}</code> / <code>{a.password}</code>{" "}
-                <span className="text-amber-300/70">({a.role})</span>
+                <span className="text-sky-300/70">({a.role})</span>
               </li>
             ))}
           </ul>
@@ -86,16 +86,16 @@ export function AuthCard({ title, children }: { title: string; children: React.R
     <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100">
       <DemoBanner />
       <div className="flex flex-1 items-center justify-center p-4">
-      <div className="w-full max-w-sm rounded-lg border border-slate-800 bg-slate-900/60 p-6">
-        <div className="mb-6 flex items-center gap-3">
-          <img src="/favicon.svg" alt="" className="h-8 w-8" />
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500">Crane Camera Hub</p>
-            <h1 className="text-xl font-semibold">{title}</h1>
+        <div className="w-full max-w-sm rounded-lg border border-slate-800 bg-slate-900/60 p-6">
+          <div className="mb-6 flex items-center gap-3">
+            <img src="/favicon.svg" alt="" className="h-8 w-8" />
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500">Crane Camera Hub</p>
+              <h1 className="text-xl font-semibold">{title}</h1>
+            </div>
           </div>
+          {children}
         </div>
-        {children}
-      </div>
       </div>
     </div>
   );
