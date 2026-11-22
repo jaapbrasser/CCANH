@@ -74,13 +74,15 @@ export default function App() {
             }
           />
           <Route
-            path="groups-tags"
+            path="groups"
             element={
               <RequireAdmin>
                 <OrganizationPage />
               </RequireAdmin>
             }
           />
+          {/* 0.3.0 address, from when the page also had tags. */}
+          <Route path="groups-tags" element={<Navigate to="/settings/groups" replace />} />
           <Route
             path="streams"
             element={
@@ -104,7 +106,7 @@ export default function App() {
         <Route path="activity" element={<Navigate to="/settings/activity" replace />} />
         <Route path="credentials" element={<Navigate to="/settings/credentials" replace />} />
         <Route path="users" element={<KeepQuery to="/settings/users" />} />
-        <Route path="organization" element={<Navigate to="/settings/groups-tags" replace />} />
+        <Route path="organization" element={<Navigate to="/settings/groups" replace />} />
         <Route path="streams" element={<Navigate to="/settings/streams" replace />} />
         <Route path="audit" element={<KeepQuery to="/settings/audit" />} />
         <Route path="*" element={<NotFound />} />

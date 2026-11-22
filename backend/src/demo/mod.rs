@@ -115,15 +115,6 @@ const GROUP_OF: [(&str, &str); 8] = [
     ("B Perimeter", "Perimeter"),
 ];
 
-/// Tag → camera name substrings that get it.
-const TAGS: [(&str, &[&str]); 5] = [
-    ("Hook", &["Hook"]),
-    ("Cabin", &["Cabin"]),
-    ("Gate", &["Gate", "Entrance"]),
-    ("Outdoor", &["Yard", "Perimeter", "Loading"]),
-    ("Critical", &["Hook", "Gate North", "Entrance"]),
-];
-
 /// Each demo user's favorites.
 const FAVORITES: [(&str, &[&str]); 2] = [
     ("admin", &["A Yard – Gate North", "A Yard – Overview"]),
@@ -138,7 +129,7 @@ const FAVORITES: [(&str, &[&str]); 2] = [
 ];
 
 async fn seed_organization(db: &SqlitePool) -> Result<usize, DemoError> {
-    use crate::organization::{favorites, groups, tags, NewGroup};
+    use crate::organization::{favorites, groups, NewGroup};
     use std::collections::HashMap;
 
     let mut ids: HashMap<&str, uuid::Uuid> = HashMap::new();
@@ -161,18 +152,9 @@ async fn seed_organization(db: &SqlitePool) -> Result<usize, DemoError> {
         },
     )
     .await?;
-    let mut tag_ids = Vec::new();
-    for (tag, _) in TAGS {
-        tag_ids.push(tags::create(db, tag).await?.id);
-    }
     for cam in &cams {
         if let Some((_, group)) = GROUP_OF.iter().find(|(p, _)| cam.name.starts_with(p)) {
             groups::add_cameras(db, &[cam.id], &[ids[group]]).await?;
-        }
-        for ((_, matches), tag) in TAGS.iter().zip(&tag_ids) {
-            if matches.iter().any(|m| cam.name.contains(m)) {
-                tags::add_cameras(db, &[cam.id], &[*tag]).await?;
-            }
         }
     }
     for (username, names) in FAVORITES {

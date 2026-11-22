@@ -5,7 +5,7 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::organization::{GroupRef, TagRef};
+use crate::organization::GroupRef;
 use crate::providers::{Capability, ErrorCategory, NetworkInfo, StreamProfile};
 use crate::secret::SecretString;
 
@@ -108,8 +108,6 @@ pub struct CameraSummary {
     pub status: CameraStatusView,
     /// Groups the camera is directly in, by name.
     pub groups: Vec<GroupRef>,
-    /// Tags, by name.
-    pub tags: Vec<TagRef>,
 }
 
 /// A reference to a shared credential set (never contains secrets).
@@ -224,9 +222,6 @@ pub struct NewCamera {
     /// Groups to put the camera in.
     #[serde(default)]
     pub group_ids: Vec<Uuid>,
-    /// Tags to give the camera.
-    #[serde(default)]
-    pub tag_ids: Vec<Uuid>,
 }
 
 fn default_true() -> bool {
@@ -274,8 +269,6 @@ pub struct CameraPatch {
     pub allow_basic_over_http: Option<bool>,
     /// Replace the camera's groups.
     pub group_ids: Option<Vec<Uuid>>,
-    /// Replace the camera's tags.
-    pub tag_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

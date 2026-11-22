@@ -35,9 +35,6 @@ pub mod action {
     pub const GROUP_CREATE: &str = "group.create";
     pub const GROUP_UPDATE: &str = "group.update";
     pub const GROUP_DELETE: &str = "group.delete";
-    pub const TAG_CREATE: &str = "tag.create";
-    pub const TAG_UPDATE: &str = "tag.update";
-    pub const TAG_DELETE: &str = "tag.delete";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize, ToSchema)]

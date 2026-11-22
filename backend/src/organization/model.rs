@@ -27,25 +27,6 @@ pub struct GroupRef {
     pub name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
-pub struct TagRef {
-    pub id: Uuid,
-    pub name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
-pub struct Tag {
-    pub id: Uuid,
-    pub name: String,
-    pub camera_count: i64,
-    #[serde(with = "time::serde::rfc3339")]
-    #[schema(value_type = String, format = DateTime)]
-    pub created_at: OffsetDateTime,
-    #[serde(with = "time::serde::rfc3339")]
-    #[schema(value_type = String, format = DateTime)]
-    pub updated_at: OffsetDateTime,
-}
-
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct NewGroup {
     pub name: String,
@@ -90,9 +71,4 @@ pub struct DeleteGroupQuery {
     /// Required: what happens to subgroups and cameras.
     #[param(inline)]
     pub mode: DeleteMode,
-}
-
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct TagInput {
-    pub name: String,
 }

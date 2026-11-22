@@ -17,7 +17,7 @@ settings cog, and sign-out tucked under the user's name.
   user menu and a ⚙ Settings cog at the far right.
 - **Settings area** (`/settings/*`, `SettingsLayout`): a sidebar with General
   (the former Settings page, `/settings/general`), Activity, Credentials,
-  Users, Groups & tags (`/settings/groups-tags`), Streams, Audit log and an
+  Users, Groups (`/settings/groups`; "Groups & tags" at `/settings/groups-tags` until tags were removed in 0.4.0), Streams, Audit log and an
   API docs link. Everyone gets the cog; the sidebar lists only pages the role
   may open (viewers: Activity), and `/settings` opens the first of them.
   Admin pages keep `RequireAdmin`, so a typed address still says "Admins only".

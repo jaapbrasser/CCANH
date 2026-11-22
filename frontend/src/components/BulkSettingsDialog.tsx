@@ -37,7 +37,7 @@ function Row({
 
 /**
  * Change connection and security settings on many cameras at once (issue
- * #19): a selection, a group (with subgroups) or a tag. Only ticked settings
+ * #19): a selection or a group (with subgroups). Only ticked settings
  * change; cameras that can't take a change are skipped with a reason.
  */
 export function BulkSettingsDialog({
@@ -68,7 +68,11 @@ export function BulkSettingsDialog({
   const [port, setPort] = useState("");
 
   const credentials = (): CredentialInput =>
-    mode === "set" ? { type: "set", id: setId } : mode === "inline" ? { type: "inline", username, password } : { type: "none" };
+    mode === "set"
+      ? { type: "set", id: setId }
+      : mode === "inline"
+        ? { type: "inline", username, password }
+        : { type: "none" };
   const settings: BulkSettings = {
     ...(creds ? { credentials: credentials() } : {}),
     ...(basic ? { allow_basic_over_http: allowBasic } : {}),
@@ -131,7 +135,12 @@ export function BulkSettingsDialog({
             )}
             {mode === "inline" && (
               <div className="grid gap-2 sm:grid-cols-2">
-                <Field label="Username" required={creds} value={username} onChange={(e) => setUsername(e.target.value)} />
+                <Field
+                  label="Username"
+                  required={creds}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
                 <Field
                   label="Password"
                   type="password"
@@ -147,10 +156,17 @@ export function BulkSettingsDialog({
 
         <Row label="Basic authentication over HTTP" on={basic} onToggle={setBasic}>
           <label className="flex items-start gap-2">
-            <input type="checkbox" className="mt-1" checked={allowBasic} onChange={(e) => setAllowBasic(e.target.checked)} />
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={allowBasic}
+              onChange={(e) => setAllowBasic(e.target.checked)}
+            />
             <span>
               Allow Basic authentication over HTTP
-              <span className="block text-xs text-slate-500">Only affects HTTP cameras. The password then crosses the network readable.</span>
+              <span className="block text-xs text-slate-500">
+                Only affects HTTP cameras. The password then crosses the network readable.
+              </span>
             </span>
           </label>
         </Row>
@@ -165,12 +181,19 @@ export function BulkSettingsDialog({
             <option value="insecure_skip_verify">Don't verify (insecure)</option>
             <option value="strict">Strict</option>
           </select>
-          <p className="mt-1 text-xs text-slate-500">Only HTTPS cameras have a certificate; HTTP cameras are left as they are.</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Only HTTPS cameras have a certificate; HTTP cameras are left as they are.
+          </p>
         </Row>
 
         <Row label="Protocol and port" on={conn} onToggle={setConn}>
           <div className="grid grid-cols-[1fr_7rem] gap-2">
-            <select aria-label="Protocol" className={select} value={scheme} onChange={(e) => setScheme(e.target.value as typeof scheme)}>
+            <select
+              aria-label="Protocol"
+              className={select}
+              value={scheme}
+              onChange={(e) => setScheme(e.target.value as typeof scheme)}
+            >
               <option value="http">HTTP</option>
               <option value="https">HTTPS</option>
             </select>

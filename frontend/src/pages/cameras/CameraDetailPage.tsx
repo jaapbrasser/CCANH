@@ -117,8 +117,8 @@ function LiveView({ camera }: { camera: CameraDetail }) {
       ) : playable.length === 0 ? (
         <div className="flex aspect-video items-center justify-center rounded bg-slate-900 p-4 text-center text-sm text-slate-400">
           Live view needs an H.264 stream profile. This camera only offers{" "}
-          {[...new Set(camera.stream_profiles.map((p) => p.codec?.toUpperCase()))].join(", ")}, which browsers can't play
-          live here.
+          {[...new Set(camera.stream_profiles.map((p) => p.codec?.toUpperCase()))].join(", ")}, which browsers can't
+          play live here.
         </div>
       ) : (
         <LivePlayer cameraId={camera.id} profile={profile} purpose="detail" label={camera.name} />
@@ -127,7 +127,7 @@ function LiveView({ camera }: { camera: CameraDetail }) {
   );
 }
 
-/** The camera's groups (as full paths) and tags. */
+/** The camera's groups, as full paths. */
 function Organization({ camera }: { camera: CameraDetail }) {
   const groups = useGroups();
   const paths = new Map(groupTree(groups.data ?? []).map((g) => [g.id, g.path]));
@@ -139,10 +139,6 @@ function Organization({ camera }: { camera: CameraDetail }) {
           items={camera.groups.map((g) => ({ id: g.id, name: paths.get(g.id) ?? g.name }))}
           label="Camera groups"
         />
-      </dd>
-      <dt className="text-slate-400">Tags</dt>
-      <dd>
-        <Chips items={camera.tags} label="Camera tags" />
       </dd>
     </dl>
   );
@@ -322,7 +318,7 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
             ]}
           />
         </Section>
-        <Section title="Groups and tags">
+        <Section title="Groups">
           <Organization camera={camera} />
         </Section>
         <Section title="Identity">
@@ -342,15 +338,24 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
         <Section title="Connection">
           <Facts
             rows={[
-              ["Address", <span key="a" className="font-mono">{`${camera.scheme}://${camera.host}:${camera.port}`}</span>],
+              [
+                "Address",
+                <span key="a" className="font-mono">{`${camera.scheme}://${camera.host}:${camera.port}`}</span>,
+              ],
               [
                 "Certificate check",
                 camera.tls_mode == null ? (
-                  <span key="t" className="text-slate-500">Not applicable (HTTP)</span>
+                  <span key="t" className="text-slate-500">
+                    Not applicable (HTTP)
+                  </span>
                 ) : camera.tls_mode === "insecure_skip_verify" ? (
-                  <span key="t" className="text-amber-300">Not verified (insecure)</span>
+                  <span key="t" className="text-amber-300">
+                    Not verified (insecure)
+                  </span>
                 ) : camera.tls_mode === "pinned" ? (
-                  <span key="t">Pinned · <span className="font-mono text-xs">{camera.tls_pinned_sha256}</span></span>
+                  <span key="t">
+                    Pinned · <span className="font-mono text-xs">{camera.tls_pinned_sha256}</span>
+                  </span>
                 ) : (
                   "Strict"
                 ),
@@ -364,7 +369,10 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
                     : "None",
               ],
               ...(camera.scheme === "http"
-                ? ([["Basic over HTTP", camera.allow_basic_over_http ? "Allowed" : "Not allowed"]] as [string, string][])
+                ? ([["Basic over HTTP", camera.allow_basic_over_http ? "Allowed" : "Not allowed"]] as [
+                    string,
+                    string,
+                  ][])
                 : []),
               ["IPv4", net?.ipv4_address],
               ["Subnet mask", net?.subnet_mask],
@@ -400,11 +408,7 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
           )}
           {camera.stream_profiles.length > 0 && (
             // Re-key on server values so a save or live update re-initializes the form.
-            <ProfileChoices
-              key={`${camera.grid_profile}|${camera.detail_profile}`}
-              camera={camera}
-              isAdmin={isAdmin}
-            />
+            <ProfileChoices key={`${camera.grid_profile}|${camera.detail_profile}`} camera={camera} isAdmin={isAdmin} />
           )}
         </Section>
         <CapabilitySections capabilities={camera.capabilities} />

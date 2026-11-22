@@ -1,6 +1,6 @@
-//! Groups, tags, favorites and bulk operations (SPEC §9, Phase 6 acceptance:
-//! parent-group filters include descendants, bulk tagging works, favorites
-//! are per user).
+//! Groups, favorites and bulk operations (SPEC §9, Phase 6 acceptance:
+//! parent-group filters include descendants, bulk group changes work,
+//! favorites are per user). Tags were removed in 0.4.0.
 
 mod common;
 
@@ -211,95 +211,37 @@ async fn deleting_a_group_moves_up_or_detaches() {
 }
 
 #[tokio::test]
-async fn bulk_tagging_and_tag_rules() {
+async fn tags_are_gone() {
+    // Tags were removed in 0.4.0 (issue #35): no endpoints, no bulk actions,
+    // and cameras no longer carry them.
     let app = TestApp::new().await;
     let (_, admin) = app.signed_in("admin", Role::Admin).await;
-    let outdoor = id_of(&app, &admin, "/api/v1/tags", json!({ "name": "Outdoor" })).await;
-    assert_eq!(
-        post(&app, &admin, "/api/v1/tags", json!({ "name": "OUTDOOR" }))
-            .await
-            .status,
-        StatusCode::CONFLICT,
-        "tag names ignore case"
-    );
-    let ids = [
-        camera(&app, &admin, 1, json!({})).await,
-        camera(&app, &admin, 2, json!({})).await,
-        camera(&app, &admin, 3, json!({})).await,
-    ];
-
-    let started = post(
+    let id = camera(
         &app,
         &admin,
-        "/api/v1/cameras/bulk",
-        json!({ "camera_ids": ids, "action": { "type": "add_tags", "tag_ids": [outdoor] } }),
+        1,
+        json!({ "tag_ids": [uuid::Uuid::now_v7()] }),
     )
     .await;
-    assert_eq!(started.status, StatusCode::ACCEPTED, "{}", started.text());
-    let task = app
-        .wait_task(&admin, started.json()["id"].as_str().unwrap())
-        .await;
-    assert_eq!(task["status"], "succeeded", "{task}");
-    assert_eq!(task["result"]["processed"], 3);
-    assert_eq!(
-        names(&app, &admin, &format!("tag_id={outdoor}")).await,
-        ["Camera 1", "Camera 2", "Camera 3"]
-    );
-    let tags = app
-        .send(req(Method::GET, "/api/v1/tags").cookie(&admin))
+    let cam = app
+        .send(req(Method::GET, &format!("/api/v1/cameras/{id}")).cookie(&admin))
         .await
         .json();
-    assert_eq!(tags[0]["camera_count"], 3);
-
-    let started = post(
-        &app,
-        &admin,
-        "/api/v1/cameras/bulk",
-        json!({ "camera_ids": [ids[0]], "action": { "type": "remove_tags", "tag_ids": [outdoor] } }),
-    )
-    .await;
-    app.wait_task(&admin, started.json()["id"].as_str().unwrap())
-        .await;
+    assert!(cam.get("tags").is_none(), "{cam}");
     assert_eq!(
-        names(&app, &admin, &format!("tag_id={outdoor}")).await,
-        ["Camera 2", "Camera 3"]
+        app.send(req(Method::GET, "/api/v1/tags").cookie(&admin))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
     );
-
-    // Unknown tags or cameras are rejected before any work starts.
     let bad = post(
         &app,
         &admin,
         "/api/v1/cameras/bulk",
-        json!({ "camera_ids": ids, "action": { "type": "add_tags", "tag_ids": [uuid::Uuid::now_v7()] } }),
+        json!({ "camera_ids": [id], "action": { "type": "add_tags", "tag_ids": [] } }),
     )
     .await;
-    assert_eq!(bad.status, StatusCode::BAD_REQUEST);
-    let audit = app
-        .send(req(Method::GET, "/api/v1/audit?action=camera.bulk_update").cookie(&admin))
-        .await;
-    assert_eq!(audit.json()["total"], 2);
-
-    // Renaming keeps assignments; deleting removes the tag from cameras.
-    let renamed = app
-        .send(
-            req(Method::PATCH, &format!("/api/v1/tags/{outdoor}"))
-                .cookie(&admin)
-                .json(json!({ "name": "Exterior" })),
-        )
-        .await;
-    assert_eq!(renamed.json()["name"], "Exterior");
-    let cam = app
-        .send(req(Method::GET, &format!("/api/v1/cameras/{}", ids[1])).cookie(&admin))
-        .await
-        .json();
-    assert_eq!(cam["tags"][0]["name"], "Exterior");
-    app.send(req(Method::DELETE, &format!("/api/v1/tags/{outdoor}")).cookie(&admin))
-        .await;
-    let cam = app
-        .send(req(Method::GET, &format!("/api/v1/cameras/{}", ids[1])).cookie(&admin))
-        .await
-        .json();
-    assert_eq!(cam["tags"], json!([]));
+    assert!(bad.status.is_client_error(), "{}", bad.status);
 }
 
 #[tokio::test]
@@ -412,7 +354,7 @@ async fn favorites_are_per_user() {
 }
 
 #[tokio::test]
-async fn bulk_settings_by_group_and_tag() {
+async fn bulk_settings_by_group_and_ids() {
     let app = TestApp::new().await;
     let (_, admin) = app.signed_in("admin", Role::Admin).await;
     let site = id_of(&app, &admin, "/api/v1/groups", json!({ "name": "Site" })).await;
@@ -423,20 +365,13 @@ async fn bulk_settings_by_group_and_tag() {
         json!({ "name": "Crane", "parent_id": site }),
     )
     .await;
-    let old = id_of(
-        &app,
-        &admin,
-        "/api/v1/tags",
-        json!({ "name": "Old firmware" }),
-    )
-    .await;
     let in_site = camera(&app, &admin, 1, json!({ "group_ids": [site] })).await;
     let in_crane = camera(&app, &admin, 2, json!({ "group_ids": [crane] })).await;
-    let tagged = camera(
+    let https = camera(
         &app,
         &admin,
         3,
-        json!({ "tag_ids": [old], "scheme": "https", "tls_mode": "strict" }),
+        json!({ "scheme": "https", "tls_mode": "strict" }),
     )
     .await;
     let untouched = camera(&app, &admin, 4, json!({})).await;
@@ -448,14 +383,14 @@ async fn bulk_settings_by_group_and_tag() {
     )
     .await;
 
-    // The group (with its subgroup) plus the tag: three cameras.
+    // The group (with its subgroup) plus one camera by id: three cameras.
     let started = post(
         &app,
         &admin,
         "/api/v1/cameras/bulk",
         json!({
             "group_id": site,
-            "tag_id": old,
+            "camera_ids": [https],
             "action": { "type": "update_settings", "settings": {
                 "credentials": { "type": "set", "id": set },
                 "allow_basic_over_http": false,
@@ -481,13 +416,13 @@ async fn bulk_settings_by_group_and_tag() {
                 .json()
         }
     };
-    for id in [&in_site, &in_crane, &tagged] {
+    for id in [&in_site, &in_crane, &https] {
         let c = get(id).await;
         assert_eq!(c["credential_set"]["id"], set.as_str(), "{c}");
         assert_eq!(c["allow_basic_over_http"], false);
     }
     // Only the HTTPS camera gets a certificate mode; HTTP ones still have none.
-    assert_eq!(get(&tagged).await["tls_mode"], "insecure_skip_verify");
+    assert_eq!(get(&https).await["tls_mode"], "insecure_skip_verify");
     assert_eq!(get(&in_site).await["tls_mode"], Value::Null);
     let u = get(&untouched).await;
     assert_eq!(u["has_credentials"], false);

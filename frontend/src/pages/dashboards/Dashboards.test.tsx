@@ -38,7 +38,6 @@ function cam(id: string, name: string): CameraSummary {
       identity_error_message: null,
     },
     groups: [],
-    tags: [],
   };
 }
 
@@ -94,9 +93,19 @@ describe("dashboards page", () => {
     patches = [];
     failSave = false;
     server.use(
-      http.get("/api/v1/dashboards", () => HttpResponse.json([dash(), dash({ id: "00000000-0000-7000-8000-0000000000d2", name: "Gates", is_default: false, tiles: [] })])),
+      http.get("/api/v1/dashboards", () =>
+        HttpResponse.json([
+          dash(),
+          dash({ id: "00000000-0000-7000-8000-0000000000d2", name: "Gates", is_default: false, tiles: [] }),
+        ]),
+      ),
       http.get("/api/v1/cameras", () =>
-        HttpResponse.json({ items: [cam(A, "Hook 1"), cam(B, "Hook 2"), cam(C, "Gate North")], total: 3, page: 1, page_size: 200 }),
+        HttpResponse.json({
+          items: [cam(A, "Hook 1"), cam(B, "Hook 2"), cam(C, "Gate North")],
+          total: 3,
+          page: 1,
+          page_size: 200,
+        }),
       ),
       http.patch("/api/v1/dashboards/:id", async ({ request }) => {
         const body = (await request.json()) as Partial<Dashboard>;

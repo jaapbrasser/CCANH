@@ -49,7 +49,7 @@ Server → client:
 | `camera_changed` | `camera` (summary) | camera added/edited/identity refreshed (topic `cameras`) |
 | `camera_deleted` | `camera_id` | camera removed (topic `cameras`) |
 | `task_updated` | `task` | task created, progressed or finished (topic `tasks`; own tasks only, admins see all) |
-| `organization_changed` | `kind` (`groups` or `tags`) | a group or tag was created, renamed, moved or deleted; refetch the list (topic `cameras`; memberships arrive as `camera_changed`, ADR 0009) |
+| `organization_changed` | `kind` (`groups`; `tags` until 0.4.0) | a group was created, renamed, moved or deleted; refetch the list (topic `cameras`; memberships arrive as `camera_changed`, ADR 0009) |
 | `discovery_found` | `job_id`, `result` | a scan identified a device (topic `discovery`, admins only) |
 | `discovery_progress` | `job_id`, `scanned`, `total`, `responsive`, `found` | while a scan runs, at most 4 per second (topic `discovery`) |
 | `streams_updated` | `streams` (list as in `GET /api/v1/streams`) | every second while any stream exists, once more after the last ends (topic `streams`, admins only) |

@@ -1,8 +1,16 @@
 # ADR 0009: Groups, tags and favorites
 
-- Status: accepted
+- Status: accepted; amended 2026-11-22 (0.4.0): tags removed
 - Date: 2026-11-19
 - Phase: 6
+
+> **Amendment (0.4.0, issue #35):** the site didn't use tags, so they were
+> removed completely: the `tags` and `camera_tags` tables (migration
+> `0011_drop_tags.sql`, after the usual pre-migration backup), the `/tags`
+> endpoints, `tag_id` filters and selections, the `add_tags`/`remove_tags`
+> bulk actions and every tag control in the UI. `organization_changed` now
+> only has `kind: "groups"`. Old `tag.*` audit entries stay as they were.
+> The rest of this ADR (groups, favorites, bulk operations) still applies.
 
 ## Context
 

@@ -418,6 +418,8 @@ Live stream (detail profile), name, status, IP, model, firmware, device info, ca
 
 ## 9. Groups, tags and favorites (Phase 6)
 
+> **0.4.0:** tags were removed (issue #35, ADR 0009 amendment). Mentions of tags elsewhere in this spec no longer apply.
+
 - **Groups** (global, admin-managed): hierarchical with unlimited depth (store as adjacency list; prevent cycles). Create, rename, delete, move. Deleting a group requires choosing what happens to children and cameras (move up or detach). A camera can be in **multiple groups** (assumed; see §18 Q4). Filtering by a group includes its descendants.
 - **Tags** (global, admin-managed): create, rename, delete, assign many per camera, add and remove in bulk, filter by tag. Tag names are unique and case-insensitive.
 - **Favorites** (per user): add or remove, filter, dedicated view, persisted. Never visible to or affecting other users.

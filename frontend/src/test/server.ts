@@ -58,7 +58,6 @@ export const server = setupServer(
   http.get("/api/v1/cameras", () => HttpResponse.json({ items: [], total: 0, page: 1, page_size: 50 })),
   http.get("/api/v1/credential-sets", () => HttpResponse.json([])),
   http.get("/api/v1/groups", () => HttpResponse.json([])),
-  http.get("/api/v1/tags", () => HttpResponse.json([])),
   http.get("/api/v1/favorites", () => HttpResponse.json([])),
   http.get("/api/v1/dashboards", () => HttpResponse.json([])),
   http.get("/api/v1/health", () =>

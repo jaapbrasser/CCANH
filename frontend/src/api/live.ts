@@ -50,11 +50,13 @@ function notifyTaskFinished(task: Task, myId: string | undefined) {
 export function applyLiveMessage(qc: QueryClient, msg: ServerMessage, myId?: string): void {
   switch (msg.type) {
     case "camera_status": {
-      qc.setQueriesData<CameraList>({ queryKey: cameraKeys.lists() }, (list) =>
-        list && {
-          ...list,
-          items: list.items.map((c) => (c.id === msg.camera_id ? { ...c, status: msg.status } : c)),
-        },
+      qc.setQueriesData<CameraList>(
+        { queryKey: cameraKeys.lists() },
+        (list) =>
+          list && {
+            ...list,
+            items: list.items.map((c) => (c.id === msg.camera_id ? { ...c, status: msg.status } : c)),
+          },
       );
       const prev = qc.getQueryData<CameraDetail>(cameraKeys.detail(msg.camera_id));
       if (prev) {
@@ -90,7 +92,7 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage, myId?: str
       applyProgress(qc, msg.job_id, msg);
       break;
     case "organization_changed":
-      qc.invalidateQueries({ queryKey: msg.kind === "groups" ? orgKeys.groups : orgKeys.tags });
+      qc.invalidateQueries({ queryKey: orgKeys.groups });
       break;
     case "streams_updated":
       qc.setQueryData(streamsKey, msg.streams);

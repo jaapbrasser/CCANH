@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useCameras } from "../../api/cameras";
 import { errorMessage } from "../../api/client";
-import { useGroups, useTags } from "../../api/organization";
+import { useGroups } from "../../api/organization";
 import { GroupSelect } from "../../components/organization";
 import { StatusBadge } from "../../components/StatusBadge";
 import { Alert, Button, Dialog } from "../../components/ui";
@@ -19,16 +19,13 @@ export function CameraPicker({
   onClose: () => void;
 }) {
   const groups = useGroups();
-  const tags = useTags();
   const [q, setQ] = useState("");
   const [group, setGroup] = useState("");
-  const [tag, setTag] = useState("");
   const [favorites, setFavorites] = useState(false);
   const cameras = useCameras({
     page_size: 50,
     q: q.trim() || undefined,
     group_id: group || undefined,
-    tag_id: tag || undefined,
     favorites: favorites || undefined,
   });
 
@@ -45,22 +42,23 @@ export function CameraPicker({
           onChange={(e) => setQ(e.target.value)}
         />
         <div className="flex flex-wrap gap-2">
-          <GroupSelect label="Filter by group" groups={groups.data ?? []} value={group} onChange={setGroup} emptyLabel="Cranes" />
-          <select aria-label="Filter by tag" className={inputClass} value={tag} onChange={(e) => setTag(e.target.value)}>
-            <option value="">Any tag</option>
-            {tags.data?.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+          <GroupSelect
+            label="Filter by group"
+            groups={groups.data ?? []}
+            value={group}
+            onChange={setGroup}
+            emptyLabel="Cranes"
+          />
           <label className="flex items-center gap-2 text-sm text-slate-300">
             <input type="checkbox" checked={favorites} onChange={(e) => setFavorites(e.target.checked)} />
             Favorites
           </label>
         </div>
         {cameras.isError && <Alert>{errorMessage(cameras.error)}</Alert>}
-        <ul aria-label="Cameras" className="max-h-80 divide-y divide-slate-800 overflow-y-auto rounded border border-slate-800">
+        <ul
+          aria-label="Cameras"
+          className="max-h-80 divide-y divide-slate-800 overflow-y-auto rounded border border-slate-800"
+        >
           {cameras.data?.items.map((c) => {
             const there = onDashboard.has(c.id);
             return (
@@ -81,7 +79,9 @@ export function CameraPicker({
               </li>
             );
           })}
-          {cameras.data?.items.length === 0 && <li className="px-3 py-6 text-center text-sm text-slate-500">No cameras match.</li>}
+          {cameras.data?.items.length === 0 && (
+            <li className="px-3 py-6 text-center text-sm text-slate-500">No cameras match.</li>
+          )}
         </ul>
       </div>
     </Dialog>

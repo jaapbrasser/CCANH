@@ -187,9 +187,9 @@ async fn caps_need_confirmation_and_cancel_stops_the_scan() {
 #[tokio::test]
 async fn registering_approved_results() {
     let (app, admin) = demo_app().await;
-    let tag = app
+    let group = app
         .send(
-            req(Method::POST, "/api/v1/tags")
+            req(Method::POST, "/api/v1/groups")
                 .cookie(&admin)
                 .json(json!({ "name": "Discovered" })),
         )
@@ -226,14 +226,14 @@ async fn registering_approved_results() {
         .send(
             req(Method::POST, &format!("/api/v1/discovery/jobs/{id}/register"))
                 .cookie(&admin)
-                .json(json!({ "result_ids": [new1, new2, dup], "tag_ids": [tag], "monitoring_enabled": false })),
+                .json(json!({ "result_ids": [new1, new2, dup], "group_ids": [group], "monitoring_enabled": false })),
         )
         .await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.text());
     let out = r.json();
     assert_eq!(out["registered"].as_array().unwrap().len(), 2);
     assert_eq!(
-        out["registered"][0]["camera"]["tags"][0]["name"],
+        out["registered"][0]["camera"]["groups"][0]["name"],
         "Discovered"
     );
     assert_eq!(out["registered"][0]["camera"]["host"], "192.0.2.41");

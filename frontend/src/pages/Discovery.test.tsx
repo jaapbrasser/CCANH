@@ -104,7 +104,9 @@ describe("discovery page", () => {
     const panel = await screen.findByRole("region", { name: "Scan results" });
     expect(await within(panel).findByText("https://192.0.2.41")).toBeInTheDocument();
     expect(within(panel).getByText("New")).toBeInTheDocument();
-    expect(within(panel).getByText(/Already registered as/)).toHaveTextContent("A1 Crane 1 – Hook (same serial number)");
+    expect(within(panel).getByText(/Already registered as/)).toHaveTextContent(
+      "A1 Crane 1 – Hook (same serial number)",
+    );
     expect(within(panel).queryByLabelText("Select 192.0.2.11")).not.toBeInTheDocument();
 
     await screen.findByText("Live");
@@ -115,7 +117,9 @@ describe("discovery page", () => {
       );
     });
     expect(await within(panel).findByText("https://192.0.2.42")).toBeInTheDocument();
-    expect(within(panel).getByText(/200 of 254 addresses checked, 3 responding, 3 AXIS devices found/)).toBeInTheDocument();
+    expect(
+      within(panel).getByText(/200 of 254 addresses checked, 3 responding, 3 AXIS devices found/),
+    ).toBeInTheDocument();
   });
 
   it("cancels a running scan", async () => {
@@ -131,13 +135,20 @@ describe("discovery page", () => {
     await waitFor(() => expect(cancelled).toBe(true));
   });
 
-  it("registers selected new devices with groups and tags", async () => {
+  it("registers selected new devices with groups", async () => {
     detail = job("succeeded", detail.results);
     let body: unknown;
     server.use(
-      http.get("/api/v1/tags", () =>
+      http.get("/api/v1/groups", () =>
         HttpResponse.json([
-          { id: "00000000-0000-7000-8000-0000000000c1", name: "New site", camera_count: 0, created_at: NOW, updated_at: NOW },
+          {
+            id: "00000000-0000-7000-8000-0000000000c1",
+            name: "New site",
+            parent_id: null,
+            camera_count: 0,
+            created_at: NOW,
+            updated_at: NOW,
+          },
         ]),
       ),
       http.post("/api/v1/discovery/jobs/:id/register", async ({ request }) => {
@@ -157,27 +168,40 @@ describe("discovery page", () => {
       expect(body).toEqual({
         result_ids: [device(41).id],
         credentials: { type: "none" },
-        group_ids: [],
-        tag_ids: ["00000000-0000-7000-8000-0000000000c1"],
+        group_ids: ["00000000-0000-7000-8000-0000000000c1"],
         monitoring_enabled: true,
         allow_basic_over_http: true,
       }),
     );
   });
 
-  it("tests credentials, allows Basic over HTTP and creates a tag inline", async () => {
+  it("tests credentials, allows Basic over HTTP and creates a group inline", async () => {
     detail = job("succeeded", [device(41), device(42, { scheme: "http", port: 80, tls_fingerprint_sha256: null })]);
     let tested: unknown;
     let registered: unknown;
-    const tags: { id: string; name: string; camera_count: number; created_at: string; updated_at: string }[] = [];
+    const groups: {
+      id: string;
+      name: string;
+      parent_id: null;
+      camera_count: number;
+      created_at: string;
+      updated_at: string;
+    }[] = [];
     const TASK = "00000000-0000-7000-8000-0000000000f9";
     server.use(
-      http.get("/api/v1/tags", () => HttpResponse.json(tags)),
-      http.post("/api/v1/tags", async ({ request }) => {
+      http.get("/api/v1/groups", () => HttpResponse.json(groups)),
+      http.post("/api/v1/groups", async ({ request }) => {
         const { name } = (await request.json()) as { name: string };
-        const tag = { id: "00000000-0000-7000-8000-0000000000c2", name, camera_count: 0, created_at: NOW, updated_at: NOW };
-        tags.push(tag);
-        return HttpResponse.json(tag, { status: 201 });
+        const group = {
+          id: "00000000-0000-7000-8000-0000000000c2",
+          name,
+          parent_id: null,
+          camera_count: 0,
+          created_at: NOW,
+          updated_at: NOW,
+        };
+        groups.push(group);
+        return HttpResponse.json(group, { status: 201 });
       }),
       http.post("/api/v1/discovery/jobs/:id/test-credentials", async ({ request }) => {
         tested = await request.json();
@@ -233,13 +257,13 @@ describe("discovery page", () => {
       allow_basic_over_http: true,
     });
 
-    await userEvent.type(within(dialog).getByLabelText("New tag name"), "Site B{Enter}");
+    await userEvent.type(within(dialog).getByLabelText("New group name"), "Site B{Enter}");
     expect(await within(dialog).findByRole("checkbox", { name: "Site B" })).toBeChecked();
 
     await userEvent.click(within(dialog).getByRole("button", { name: "Register 2" }));
     await waitFor(() =>
       expect(registered).toMatchObject({
-        tag_ids: ["00000000-0000-7000-8000-0000000000c2"],
+        group_ids: ["00000000-0000-7000-8000-0000000000c2"],
         allow_basic_over_http: true,
       }),
     );

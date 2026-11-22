@@ -127,8 +127,6 @@ fn v1_routes() -> OpenApiRouter<AppState> {
             organization::update_group,
             organization::delete_group
         ))
-        .routes(routes!(organization::list_tags, organization::create_tag))
-        .routes(routes!(organization::update_tag, organization::delete_tag))
         .routes(routes!(organization::list_favorites))
         .routes(routes!(
             organization::add_favorite,
