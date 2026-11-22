@@ -12,7 +12,7 @@ import {
 import type { components } from "../../api/schema";
 import { SHIPPED_CAMERA_DEFAULTS, useSettings, type CameraDefaults } from "../../api/settings";
 import { isTerminal, useCancelTask, useTask } from "../../api/tasks";
-import { Alert, Button, Dialog, Field } from "../../components/ui";
+import { Alert, Button, Dialog, DialogFooter, Field } from "../../components/ui";
 import { errorCategoryLabel } from "../../utils/format";
 
 type Scheme = components["schemas"]["Scheme"];
@@ -169,7 +169,7 @@ export function CameraFormDialog({
   const settings = useSettings();
   if (!camera && settings.isPending) {
     return (
-      <Dialog title="Add camera" onClose={onClose}>
+      <Dialog title="Add camera" onClose={onClose} size="lg">
         <p className="text-slate-400">Loading…</p>
       </Dialog>
     );
@@ -231,7 +231,7 @@ function CameraForm({
   const https = form.scheme === "https";
 
   return (
-    <Dialog title={camera ? `Edit ${camera.name}` : "Add camera"} onClose={onClose}>
+    <Dialog title={camera ? `Edit ${camera.name}` : "Add camera"} onClose={onClose} size="lg">
       <form onSubmit={onSubmit} className="flex max-h-[75vh] flex-col gap-4 overflow-y-auto pr-1">
         {mutation.isError && <Alert>{errorMessage(mutation.error)}</Alert>}
         <Field
@@ -436,7 +436,7 @@ function CameraForm({
           />
         )}
 
-        <div className="flex justify-between gap-2">
+        <DialogFooter between>
           <Button variant="secondary" disabled={!form.host.trim() || test.isPending || testRunning} onClick={runTest}>
             {test.isPending || testRunning ? "Testing…" : "Test connection"}
           </Button>
@@ -448,7 +448,7 @@ function CameraForm({
               {camera ? "Save" : "Add camera"}
             </Button>
           </div>
-        </div>
+        </DialogFooter>
       </form>
     </Dialog>
   );

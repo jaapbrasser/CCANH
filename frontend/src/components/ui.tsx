@@ -86,14 +86,19 @@ export function Pagination({
 }
 
 /** A minimal modal. Escape or the backdrop cancels. */
+const DIALOG_WIDTH = { md: "max-w-md", lg: "max-w-2xl", xl: "max-w-4xl" } as const;
+
 export function Dialog({
   title,
   children,
   onClose,
+  size = "md",
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
+  /** Width: `md` for confirmations, `lg`/`xl` for long forms (issue #28). */
+  size?: keyof typeof DIALOG_WIDTH;
 }) {
   const id = useId();
   return (
@@ -106,13 +111,29 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={id}
-        className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl"
+        className={`w-full ${DIALOG_WIDTH[size]} rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl`}
       >
         <h2 id={id} className="mb-4 text-lg font-semibold">
           {title}
         </h2>
         {children}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The buttons at the bottom of a long dialog form: they stay in view while the
+ * form scrolls (the form must be the scroll container) and wrap when narrow.
+ */
+export function DialogFooter({ children, between = false }: { children: ReactNode; between?: boolean }) {
+  return (
+    <div
+      className={`sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-slate-800 bg-slate-900 pt-3 ${
+        between ? "justify-between" : "justify-end"
+      }`}
+    >
+      {children}
     </div>
   );
 }

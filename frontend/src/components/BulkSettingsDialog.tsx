@@ -3,7 +3,7 @@ import { errorMessage } from "../api/client";
 import { useCredentialSets, type CredentialInput } from "../api/credentials";
 import { useBulkCameras, type BulkSelection, type BulkSettings } from "../api/organization";
 import { showToast } from "./toasts";
-import { Alert, Button, Dialog, Field } from "./ui";
+import { Alert, Button, Dialog, DialogFooter, Field } from "./ui";
 
 type CredMode = "none" | "set" | "inline";
 const select = "rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 disabled:opacity-50";
@@ -96,7 +96,7 @@ export function BulkSettingsDialog({
   };
 
   return (
-    <Dialog title="Edit camera settings" onClose={onClose}>
+    <Dialog title="Edit camera settings" onClose={onClose} size="lg">
       <form onSubmit={onSubmit} className="flex max-h-[75vh] flex-col gap-3 overflow-y-auto pr-1 text-sm">
         <p className="text-slate-400">
           Applies to {description}. Only the settings you tick change; everything else stays as it is.
@@ -208,14 +208,14 @@ export function BulkSettingsDialog({
           <p className="mt-1 text-xs text-slate-500">Changing the address resets the cameras' status and identity.</p>
         </Row>
 
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" disabled={nothing || bulk.isPending}>
             Apply to {description}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
     </Dialog>
   );
