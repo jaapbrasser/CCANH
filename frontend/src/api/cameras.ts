@@ -20,6 +20,7 @@ export const cameraKeys = {
   list: (q: CameraListQuery) => [...cameraKeys.lists(), q] as const,
   detail: (id: string) => [...cameraKeys.all, "detail", id] as const,
   history: (id: string) => [...cameraKeys.all, "history", id] as const,
+  summary: () => [...cameraKeys.all, "summary"] as const,
 };
 
 export function useCameras(query: CameraListQuery) {
@@ -27,6 +28,15 @@ export function useCameras(query: CameraListQuery) {
     queryKey: cameraKeys.list(query),
     queryFn: () => unwrap(api.GET("/api/v1/cameras", { params: { query } })),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** Status counts of the monitored cameras; live updates refresh it. */
+export function useCameraSummary(enabled = true) {
+  return useQuery({
+    queryKey: cameraKeys.summary(),
+    queryFn: () => unwrap(api.GET("/api/v1/cameras/summary")),
+    enabled,
   });
 }
 
@@ -60,8 +70,7 @@ export function useCreateCamera() {
 export function useUpdateCamera(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: CameraPatch) =>
-      unwrap(api.PATCH("/api/v1/cameras/{id}", { params: { path: { id } }, body })),
+    mutationFn: (body: CameraPatch) => unwrap(api.PATCH("/api/v1/cameras/{id}", { params: { path: { id } }, body })),
     onSuccess: (camera) => {
       qc.setQueryData(cameraKeys.detail(id), camera);
       qc.invalidateQueries({ queryKey: cameraKeys.lists() });
@@ -84,8 +93,7 @@ export function useSetStreamProfiles(id: string) {
 export function useDeleteCamera() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      unwrap(api.DELETE("/api/v1/cameras/{id}", { params: { path: { id } } })),
+    mutationFn: (id: string) => unwrap(api.DELETE("/api/v1/cameras/{id}", { params: { path: { id } } })),
     onSuccess: (_, id) => {
       qc.removeQueries({ queryKey: cameraKeys.detail(id) });
       qc.invalidateQueries({ queryKey: cameraKeys.lists() });
@@ -96,8 +104,7 @@ export function useDeleteCamera() {
 export function useRefreshCamera(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () =>
-      unwrap(api.POST("/api/v1/cameras/{id}/refresh", { params: { path: { id } } })),
+    mutationFn: () => unwrap(api.POST("/api/v1/cameras/{id}/refresh", { params: { path: { id } } })),
     onSuccess: (camera) => qc.setQueryData(cameraKeys.detail(id), camera),
   });
 }

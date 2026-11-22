@@ -1,0 +1,35 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COALESCE(SUM(s.state = 'online'), 0) AS \"online!: i64\",\n                  COALESCE(SUM(s.state = 'offline'), 0) AS \"offline!: i64\",\n                  COALESCE(SUM(s.state = 'unknown'), 0) AS \"unknown!: i64\"\n             FROM cameras c JOIN camera_status s ON s.camera_id = c.id\n            WHERE c.monitoring_enabled = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "online!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "offline!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "unknown!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "22395c8c27a46a3b6c7fe5b3cb3659cb776edc19c83b63fe98dd85201e755354"
+}

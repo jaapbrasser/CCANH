@@ -56,6 +56,16 @@ pub enum CameraState {
     Offline,
 }
 
+/// How many monitored cameras are in each state (monitoring off: not counted).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+pub struct StatusSummary {
+    pub online: u32,
+    pub offline: u32,
+    /// Not checked yet, or the last check was inconclusive. The UI counts
+    /// these as offline.
+    pub unknown: u32,
+}
+
 impl CameraState {
     pub fn as_str(self) -> &'static str {
         match self {

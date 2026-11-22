@@ -46,10 +46,30 @@ function notifyTaskFinished(task: Task, myId: string | undefined) {
   }
 }
 
+/** Per query client: last state seen per camera, so the top-bar counts refetch only on changes. */
+const seen = new WeakMap<QueryClient, { states: Map<string, string>; timer?: ReturnType<typeof setTimeout> }>();
+function tracker(qc: QueryClient) {
+  let t = seen.get(qc);
+  if (!t) seen.set(qc, (t = { states: new Map() }));
+  return t;
+}
+/** Refetch the status counts once things settle (status events come in bursts). */
+function refreshSummary(qc: QueryClient) {
+  const t = tracker(qc);
+  clearTimeout(t.timer);
+  t.timer = setTimeout(() => qc.invalidateQueries({ queryKey: cameraKeys.summary() }), 500);
+}
+
 /** Apply one server message to the query cache. Exported for tests. */
 export function applyLiveMessage(qc: QueryClient, msg: ServerMessage, myId?: string): void {
   switch (msg.type) {
     case "camera_status": {
+      // Every check sends one; only a changed (or first seen) state matters.
+      const states = tracker(qc).states;
+      if (states.get(msg.camera_id) !== msg.status.state) {
+        states.set(msg.camera_id, msg.status.state);
+        refreshSummary(qc);
+      }
       qc.setQueriesData<CameraList>(
         { queryKey: cameraKeys.lists() },
         (list) =>
@@ -70,8 +90,12 @@ export function applyLiveMessage(qc: QueryClient, msg: ServerMessage, myId?: str
     case "camera_changed":
       qc.invalidateQueries({ queryKey: cameraKeys.lists() });
       qc.invalidateQueries({ queryKey: cameraKeys.detail(msg.camera.id) });
+      // Monitoring may have been turned on or off.
+      refreshSummary(qc);
       break;
     case "camera_deleted":
+      tracker(qc).states.delete(msg.camera_id);
+      refreshSummary(qc);
       qc.invalidateQueries({ queryKey: cameraKeys.lists() });
       qc.removeQueries({ queryKey: cameraKeys.detail(msg.camera_id) });
       break;

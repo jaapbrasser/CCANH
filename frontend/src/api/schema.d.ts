@@ -158,6 +158,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cameras/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status counts of the monitored cameras (cameras with monitoring off are
+         *     left out).
+         * @description Required role: viewer. The UI refreshes it on `camera_status` events.
+         */
+        get: operations["camera_status_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cameras/test-connection": {
         parameters: {
             query?: never;
@@ -1858,6 +1879,19 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
+        /** @description How many monitored cameras are in each state (monitoring off: not counted). */
+        StatusSummary: {
+            /** Format: int32 */
+            offline: number;
+            /** Format: int32 */
+            online: number;
+            /**
+             * Format: int32
+             * @description Not checked yet, or the last check was inconclusive. The UI counts
+             *     these as offline.
+             */
+            unknown: number;
+        };
         /** @description A recorded status transition. */
         StatusTransition: {
             error_category?: components["schemas"]["ErrorCategory"] | null;
@@ -2589,6 +2623,35 @@ export interface operations {
             };
             /** @description Not an admin */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    camera_status_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Counts per state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusSummary"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

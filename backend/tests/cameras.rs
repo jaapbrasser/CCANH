@@ -415,3 +415,45 @@ async fn disabled_monitoring_is_not_checked() {
     shutdown.cancel();
     server.await.unwrap().unwrap();
 }
+
+#[tokio::test]
+async fn status_summary_counts_monitored_cameras() {
+    let app = TestApp::new().await;
+    let (_, admin) = app.signed_in("admin", Role::Admin).await;
+    let (_, viewer) = app.signed_in("viewer", Role::Viewer).await;
+    let mut ids = Vec::new();
+    for (n, monitored) in [(1, true), (2, true), (3, true), (4, false)] {
+        let r = app
+            .send(
+                req(Method::POST, "/api/v1/cameras").cookie(&admin).json(
+                    json!({ "host": format!("192.0.2.{n}"), "monitoring_enabled": monitored }),
+                ),
+            )
+            .await;
+        ids.push(r.json()["id"].as_str().unwrap().to_owned());
+    }
+    for (id, state) in [
+        (&ids[0], "online"),
+        (&ids[1], "offline"),
+        (&ids[3], "online"),
+    ] {
+        sqlx::query("UPDATE camera_status SET state = ?1 WHERE camera_id = ?2")
+            .bind(state)
+            .bind(id)
+            .execute(&app.state.db)
+            .await
+            .unwrap();
+    }
+    let r = app
+        .send(req(Method::GET, "/api/v1/cameras/summary").cookie(&viewer))
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    // Camera 4 has monitoring off, so it isn't counted even though it's online.
+    assert_eq!(r.json(), json!({ "online": 1, "offline": 1, "unknown": 1 }));
+    assert_eq!(
+        app.send(req(Method::GET, "/api/v1/cameras/summary"))
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+}
