@@ -302,6 +302,36 @@ describe("camera detail", () => {
     await screen.findByRole("heading", { name: "Cameras" });
     expect(removed).toBe(true);
   });
+
+  it("lets a viewer restart the camera after confirming", async () => {
+    signedInAs(VIEWER);
+    let restarted: string | undefined;
+    server.use(
+      http.post("/api/v1/cameras/:id/restart", ({ params }) => {
+        restarted = params.id as string;
+        return HttpResponse.json(
+          {
+            id: "00000000-0000-7000-8000-0000000000fb",
+            kind: "restart_camera",
+            status: "queued",
+            progress_current: 0,
+            created_at: NOW,
+          },
+          { status: 202 },
+        );
+      }),
+    );
+    renderApp(`/cameras/${HOOK.id}`);
+    await userEvent.click(await screen.findByRole("button", { name: "Restart camera" }));
+    expect(restarted).toBeUndefined();
+    const dialog = screen.getByRole("dialog", { name: `Restart ${HOOK.name}?` });
+    expect(dialog).toHaveTextContent("audit log");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Restart camera" }));
+    await waitFor(() => expect(restarted).toBe(HOOK.id));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // Viewers get no admin actions.
+    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+  });
 });
 
 describe("adding a camera", () => {

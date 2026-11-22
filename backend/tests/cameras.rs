@@ -457,3 +457,84 @@ async fn status_summary_counts_monitored_cameras() {
         StatusCode::UNAUTHORIZED
     );
 }
+
+#[tokio::test]
+async fn any_user_can_restart_a_camera_and_it_is_audited() {
+    let app = TestApp::with_config(demo_config()).await;
+    let (_, admin) = app.signed_in("admin", Role::Admin).await;
+    let (_, viewer) = app.signed_in("viewer", Role::Viewer).await;
+    // Hosts outside the demo fleet's, so other tests' cameras stay up.
+    let add = |host: &'static str| {
+        let (app, admin) = (&app, &admin);
+        async move {
+            app.send(
+                req(Method::POST, "/api/v1/cameras")
+                    .cookie(admin)
+                    .json(json!({ "host": host })),
+            )
+            .await
+            .json()["id"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        }
+    };
+    let id = add("203.0.113.50").await;
+
+    let started = app
+        .send(req(Method::POST, &format!("/api/v1/cameras/{id}/restart")).cookie(&viewer))
+        .await;
+    assert_eq!(started.status, StatusCode::ACCEPTED, "{}", started.text());
+    let task = app
+        .wait_task(&viewer, started.json()["id"].as_str().unwrap())
+        .await;
+    assert_eq!(task["status"], "succeeded", "{task}");
+    assert_eq!(task["kind"], "restart_camera");
+    assert_eq!(task["result"], json!({ "restarted": true }));
+
+    // While it reboots, the simulated camera doesn't answer, so a restart fails.
+    let again = app
+        .send(req(Method::POST, &format!("/api/v1/cameras/{id}/restart")).cookie(&viewer))
+        .await;
+    let task = app
+        .wait_task(&viewer, again.json()["id"].as_str().unwrap())
+        .await;
+    assert_eq!(task["status"], "failed", "{task}");
+    assert_eq!(task["error_category"], "unreachable", "{task}");
+
+    let audit = app
+        .send(req(Method::GET, "/api/v1/audit?action=camera.restart").cookie(&admin))
+        .await
+        .json();
+    assert_eq!(audit["total"], 2, "{audit}");
+    let outcomes: Vec<&str> = audit["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["outcome"].as_str().unwrap())
+        .collect();
+    assert!(
+        outcomes.contains(&"success") && outcomes.contains(&"failure"),
+        "{audit}"
+    );
+    assert_eq!(audit["items"][0]["actor_username"], "viewer");
+
+    assert_eq!(
+        app.send(
+            req(
+                Method::POST,
+                &format!("/api/v1/cameras/{}/restart", uuid::Uuid::now_v7())
+            )
+            .cookie(&viewer)
+        )
+        .await
+        .status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        app.send(req(Method::POST, &format!("/api/v1/cameras/{id}/restart")))
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+}

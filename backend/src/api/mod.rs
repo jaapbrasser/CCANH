@@ -105,6 +105,7 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(audit::list))
         .routes(routes!(cameras::list, cameras::create))
         .routes(routes!(cameras::summary))
+        .routes(routes!(cameras::restart))
         .routes(routes!(cameras::get, cameras::update, cameras::delete))
         .routes(routes!(cameras::status_history))
         .routes(routes!(cameras::set_stream_profiles))

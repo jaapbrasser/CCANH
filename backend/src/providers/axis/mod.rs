@@ -29,6 +29,7 @@ pub const API_DISCOVERY: &str = "/axis-cgi/apidiscovery.cgi";
 pub const SYSTEM_READY: &str = "/axis-cgi/systemready.cgi";
 pub const STREAM_PROFILES: &str = "/axis-cgi/streamprofile.cgi";
 pub const NETWORK_SETTINGS: &str = "/axis-cgi/network_settings.cgi";
+pub const FIRMWARE_MANAGEMENT: &str = "/axis-cgi/firmwaremanagement.cgi";
 /// RTSP media path (VAPIX "Video streaming"); see `docs/vapix.md`.
 pub const RTSP_MEDIA: &str = "/axis-media/media.amp";
 /// Default RTSP server port on AXIS devices.
@@ -531,6 +532,17 @@ impl CameraProvider for AxisProvider {
             cancel,
         )
         .await
+    }
+
+    async fn restart(&self) -> Result<(), ProviderError> {
+        // Firmware management API `reboot` (replaces the obsolete restart.cgi).
+        self.call(
+            FIRMWARE_MANAGEMENT,
+            json!({ "apiVersion": "1.0", "method": "reboot" }),
+            Access::Authenticated,
+        )
+        .await?;
+        Ok(())
     }
 
     fn tls_fingerprint(&self) -> Option<String> {

@@ -20,6 +20,7 @@ import { showToast } from "../../components/toasts";
 import { Alert, Button, Dialog } from "../../components/ui";
 import { errorCategoryLabel, relativeTime } from "../../utils/format";
 import { CameraFormDialog } from "./CameraFormDialog";
+import { RestartCameraButton } from "../../components/RestartCamera";
 import { usePageTitle } from "../../components/pageTitle";
 
 const GROUP_LABELS: Record<CapabilityGroup, string> = {
@@ -273,19 +274,22 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
             <span className="text-xs text-slate-500">Name will be filled in from the camera when it connects</span>
           )}
         </div>
-        {isAdmin && (
-          <div className="flex gap-2">
-            <Button variant="secondary" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
-              {refresh.isPending ? "Refreshing…" : "Refresh details"}
-            </Button>
-            <Button variant="secondary" onClick={() => setEditing(true)}>
-              Edit
-            </Button>
-            <Button variant="danger" onClick={() => setDeleting(true)}>
-              Remove
-            </Button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <RestartCameraButton cameraId={camera.id} name={camera.name} />
+          {isAdmin && (
+            <>
+              <Button variant="secondary" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+                {refresh.isPending ? "Refreshing…" : "Refresh details"}
+              </Button>
+              <Button variant="secondary" onClick={() => setEditing(true)}>
+                Edit
+              </Button>
+              <Button variant="danger" onClick={() => setDeleting(true)}>
+                Remove
+              </Button>
+            </>
+          )}
+        </div>
       </div>
       {refresh.isError && <Alert>{errorMessage(refresh.error)}</Alert>}
       {s.identity_error_category && (

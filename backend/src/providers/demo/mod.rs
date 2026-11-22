@@ -8,7 +8,8 @@
 pub mod catalog;
 pub mod models;
 
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -24,6 +25,26 @@ use super::{
 
 /// How long a simulated unreachable camera takes to fail (like a connect timeout).
 pub const OFFLINE_DELAY: Duration = Duration::from_millis(800);
+
+/// How long a restarted demo camera stays unreachable.
+pub const RESTART_DOWNTIME: Duration = Duration::from_secs(20);
+
+/// Restarting demo cameras by host, until when. Shared because the monitor and
+/// the API each create their own provider for a camera.
+static RESTARTING: LazyLock<Mutex<HashMap<String, Instant>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn restarting(host: &str) -> bool {
+    let mut map = RESTARTING.lock().unwrap_or_else(|e| e.into_inner());
+    match map.get(host) {
+        Some(until) if Instant::now() < *until => true,
+        Some(_) => {
+            map.remove(host);
+            false
+        }
+        None => false,
+    }
+}
 
 /// SplitMix64: tiny, fast, good enough for simulated jitter.
 #[derive(Debug)]
@@ -114,6 +135,9 @@ impl DemoProvider {
     }
 
     fn is_online_now(&self) -> bool {
+        if restarting(&self.host) {
+            return false;
+        }
         match self.scenario {
             Scenario::Offline => false,
             Scenario::Flapping { period_secs } => {
@@ -237,6 +261,16 @@ impl CameraProvider for DemoProvider {
     async fn get_stream_info(&self) -> Result<Vec<StreamProfile>, ProviderError> {
         self.request_as(true).await?;
         Ok(self.model.profile().stream_profiles())
+    }
+
+    async fn restart(&self) -> Result<(), ProviderError> {
+        // Needs the camera account, like the real reboot call.
+        self.request_as(true).await?;
+        RESTARTING
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(self.host.clone(), Instant::now() + RESTART_DOWNTIME);
+        Ok(())
     }
 
     async fn open_stream(

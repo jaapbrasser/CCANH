@@ -101,6 +101,13 @@ export function useDeleteCamera() {
   });
 }
 
+/** Ask a camera to restart (issue #33); returns the task to follow. */
+export function useRestartCamera() {
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.POST("/api/v1/cameras/{id}/restart", { params: { path: { id } } })),
+  });
+}
+
 export function useRefreshCamera(id: string) {
   const qc = useQueryClient();
   return useMutation({

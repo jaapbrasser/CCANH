@@ -17,7 +17,7 @@ without credentials. On `401` the scheme comes from `WWW-Authenticate`.
 Digest (MD5/SHA-256, `qop=auth`) is preferred; Basic is used over HTTPS only,
 unless an admin enables it per camera.
 
-Verified 2026-11-19. **No physical camera was available** (SPEC §18 Q1). Test
+Verified 2026-11-19; restart and PTZ verified 2026-11-22. **No physical camera was available** (SPEC §18 Q1). Test
 fixtures are built from the documented examples (see
 `backend/tests/fixtures/vapix/README.md`) and should be re-recorded against a
 real device.
@@ -29,6 +29,7 @@ real device.
 | Capabilities: list of supported APIs and versions | `POST /axis-cgi/apidiscovery.cgi` `{"apiVersion":"1.0","method":"getApiList"}` | Anonymous (AXIS OS 9.80 and 10.12 require auth; the client retries with credentials on 401) | [API Discovery service](https://developer.axis.com/vapix/network-video/api-discovery-service/) | AXIS OS 8.50+; missing → only "relied-on APIs unsupported" reported | `apidiscovery_getapilist*.json` |
 | Stream profiles; also verifies credentials | `POST /axis-cgi/streamprofile.cgi` `{"apiVersion":"1.0","method":"list","params":{"streamProfileName":[]}}` | Viewer | [Stream profiles](https://developer.axis.com/vapix/network-video/stream-profiles/) | API 1.0; `parameters` is `key=value&…` (`resolution`, `fps`, `videocodec` as used in [Video streaming](https://developer.axis.com/vapix/network-video/video-streaming/)) | `streamprofile_list.json`, `error_unsupported_method.json` |
 | Network details: hostname, MAC, IPv4, gateway, DHCP | `POST /axis-cgi/network_settings.cgi` `{"apiVersion":"1.0","method":"getNetworkInfo"}` | **Administrator**; best-effort (skipped on 401/403) | [Network settings API](https://developer.axis.com/vapix/network-video/network-settings-api/) | AXIS OS 8.50+ | `network_getnetworkinfo.json` |
+| Restart (0.4.0, issue #33) | `POST /axis-cgi/firmwaremanagement.cgi` `{"apiVersion":"1.0","method":"reboot"}` → `{"data":{}}` | Administrator (the camera's linked account) | [Firmware management API](https://developer.axis.com/vapix/network-video/firmware-management-api/) (`reboot`; the page lists `restart.cgi` as obsolete) | API 1.x, `id=fwmgr`; AXIS OS 7.40+ | `firmwaremanagement_reboot.json` |
 | Live video (Phase 5b) | RTSP `DESCRIBE`/`SETUP`/`PLAY` on `rtsp://<host>:554/axis-media/media.amp?videocodec=h264&audio=0[&streamprofile=<name>]`; RTP over the RTSP TCP connection (`RTP/AVP/TCP;unicast`) | Viewer (RTSP Digest, or whatever the camera challenges with) | [Video streaming](https://developer.axis.com/vapix/network-video/video-streaming/) (RTSP URL, `videocodec`, `streamprofile`, `audio`, port 554, TCP transport) | RTSP API (`Properties.API.RTSP.RTSPAuth=yes` for auth) | `rtsp_describe_h264.sdp` (fake RTSP server in `providers/axis/rtsp_tests.rs`) |
 
 Live video notes:

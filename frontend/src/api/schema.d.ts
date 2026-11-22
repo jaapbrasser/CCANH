@@ -254,6 +254,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cameras/{id}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart (or try to turn on) a camera through its own API (issue #33).
+         * @description Required role: viewer. Every signed-in user may restart cameras; each
+         *     request is audited (`camera.restart`, with the outcome). Runs as a
+         *     `restart_camera` task whose result is `{"restarted": true}`; a camera that
+         *     can't be reached or refuses fails the task with the error category. The
+         *     camera then goes offline while it reboots. 409 if a restart of this camera
+         *     is already under way.
+         */
+        post: operations["restart_camera"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cameras/{id}/status-history": {
         parameters: {
             query?: never;
@@ -2932,6 +2957,56 @@ export interface operations {
             };
             /** @description Camera error (see detail) */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    restart_camera: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Task started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such camera */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Already restarting */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
