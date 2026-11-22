@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 use self::client::{Access, VapixClient};
 use super::{
     CameraCapabilities, CameraProvider, CameraStatus, Capability, CapabilityGroup, DeviceInfo,
-    ErrorCategory, MediaSource, NetworkInfo, ProbeResult, ProviderError, ProviderTarget,
+    ErrorCategory, MediaSource, NetworkInfo, ProbeResult, ProviderError, ProviderTarget, PtzMove,
     StreamProfile, StreamProfileId, VideoCodec,
 };
 use crate::credentials::Credentials;
@@ -30,6 +30,7 @@ pub const SYSTEM_READY: &str = "/axis-cgi/systemready.cgi";
 pub const STREAM_PROFILES: &str = "/axis-cgi/streamprofile.cgi";
 pub const NETWORK_SETTINGS: &str = "/axis-cgi/network_settings.cgi";
 pub const FIRMWARE_MANAGEMENT: &str = "/axis-cgi/firmwaremanagement.cgi";
+pub const PTZ: &str = "/axis-cgi/com/ptz.cgi";
 /// RTSP media path (VAPIX "Video streaming"); see `docs/vapix.md`.
 pub const RTSP_MEDIA: &str = "/axis-media/media.amp";
 /// Default RTSP server port on AXIS devices.
@@ -542,6 +543,25 @@ impl CameraProvider for AxisProvider {
             Access::Authenticated,
         )
         .await?;
+        Ok(())
+    }
+
+    async fn ptz_move(&self, mv: PtzMove) -> Result<(), ProviderError> {
+        // PTZ API: continuous moves on the default channel; 0,0 / 0 stop.
+        // Success is 204 No Content; errors are 200 with "Error:<message>".
+        let path = format!(
+            "{PTZ}?continuouspantiltmove={},{}&continuouszoommove={}",
+            mv.pan, mv.tilt, mv.zoom
+        );
+        let body = self
+            .client()?
+            .get_text(&path, Access::Authenticated)
+            .await?;
+        let body = body.trim();
+        if let Some(message) = body.strip_prefix("Error:") {
+            let message: String = message.trim().chars().take(200).collect();
+            return Err(ProviderError::Protocol(format!("{PTZ}: {message}")));
+        }
         Ok(())
     }
 

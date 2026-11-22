@@ -14,6 +14,7 @@ pub mod events;
 pub mod monitoring;
 pub mod organization;
 pub mod providers;
+pub mod ptz;
 pub mod retention;
 pub mod secret;
 pub mod settings;
@@ -65,6 +66,8 @@ pub struct AppState {
     pub streams: StreamManager,
     /// Encrypts camera credentials at rest (ADR 0003).
     pub credentials: Arc<dyn CredentialStore>,
+    /// Interactive pan/tilt/zoom: watchdog and rate limits (ADR 0013).
+    pub ptz: crate::ptz::PtzControl,
 }
 
 impl AppState {
@@ -88,6 +91,7 @@ impl AppState {
             services: ServiceHealth::default(),
             settings,
             monitor_stats: Arc::default(),
+            ptz: crate::ptz::PtzControl::default(),
             credentials,
             config: Arc::new(config),
             db,

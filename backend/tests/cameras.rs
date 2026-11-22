@@ -538,3 +538,120 @@ async fn any_user_can_restart_a_camera_and_it_is_audited() {
         StatusCode::UNAUTHORIZED
     );
 }
+
+#[tokio::test]
+async fn ptz_moves_dashboard_cameras_and_audits_each_gesture_once() {
+    let app = TestApp::with_config(demo_config()).await;
+    let (_, admin) = app.signed_in("admin", Role::Admin).await;
+    let (_, viewer) = app.signed_in("viewer", Role::Viewer).await;
+    let (_, other) = app.signed_in("other", Role::Viewer).await;
+    let add = |host: &'static str| {
+        let (app, admin) = (&app, &admin);
+        async move {
+            let id = app
+                .send(
+                    req(Method::POST, "/api/v1/cameras")
+                        .cookie(admin)
+                        .json(json!({ "host": host })),
+                )
+                .await
+                .json()["id"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            // Store capabilities now instead of waiting for the monitor.
+            let r = app
+                .send(req(Method::POST, &format!("/api/v1/cameras/{id}/refresh")).cookie(admin))
+                .await;
+            assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+            (id, r.json()["ptz"].as_bool().unwrap())
+        }
+    };
+    // 192.0.2.11 is the demo fleet's PTZ hook camera; .33 a fixed overview.
+    let (hook, hook_ptz) = add("192.0.2.11").await;
+    let (fixed, fixed_ptz) = add("192.0.2.33").await;
+    assert!(hook_ptz && !fixed_ptz);
+
+    let dash = app
+        .send(
+            req(Method::POST, "/api/v1/dashboards")
+                .cookie(&viewer)
+                .json(json!({ "name": "Cranes", "tiles": [
+                    { "position": 0, "camera_id": hook },
+                    { "position": 1, "camera_id": fixed },
+                ] })),
+        )
+        .await
+        .json()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let send = |path: String, cookie: &str, body: serde_json::Value| {
+        let app = &app;
+        let cookie = cookie.to_owned();
+        async move {
+            app.send(req(Method::POST, &path).cookie(&cookie).json(body))
+                .await
+        }
+    };
+    let dash_ptz = format!("/api/v1/dashboards/{dash}/ptz");
+    let left = json!({ "pan": -50, "tilt": 0, "zoom": 0 });
+
+    // Press, hold (repeats), release: only the PTZ camera moves, one audit entry.
+    for _ in 0..3 {
+        let r = send(dash_ptz.clone(), &viewer, left.clone()).await;
+        assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+        assert_eq!(
+            r.json()["results"],
+            json!([{ "camera_id": hook, "ok": true, "error_category": null, "message": null }])
+        );
+    }
+    let stop = send(
+        dash_ptz.clone(),
+        &viewer,
+        json!({ "pan": 0, "tilt": 0, "zoom": 0 }),
+    )
+    .await;
+    assert_eq!(stop.status, StatusCode::OK);
+    let audit = app
+        .send(req(Method::GET, "/api/v1/audit?action=camera.ptz").cookie(&admin))
+        .await
+        .json();
+    assert_eq!(audit["total"], 1, "{audit}");
+    let entry = &audit["items"][0];
+    assert_eq!(entry["actor_username"], "viewer");
+    assert_eq!(entry["details"]["action"], "pan left");
+    assert_eq!(entry["details"]["cameras"][0]["id"], hook.as_str());
+
+    // One camera directly; a camera without PTZ is refused.
+    let r = send(
+        format!("/api/v1/cameras/{hook}/ptz"),
+        &viewer,
+        json!({ "pan": 0, "tilt": 0, "zoom": 40 }),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let r = send(
+        format!("/api/v1/cameras/{fixed}/ptz"),
+        &viewer,
+        left.clone(),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    let r = send(
+        format!("/api/v1/cameras/{hook}/ptz"),
+        &viewer,
+        json!({ "pan": 101, "tilt": 0, "zoom": 0 }),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    // Someone else's dashboard doesn't exist for you.
+    let r = send(dash_ptz.clone(), &other, left.clone()).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+    send(
+        format!("/api/v1/cameras/{hook}/ptz"),
+        &viewer,
+        json!({ "pan": 0, "tilt": 0, "zoom": 0 }),
+    )
+    .await;
+}

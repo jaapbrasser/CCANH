@@ -13,6 +13,8 @@ import {
   type Dashboard,
 } from "../../api/dashboards";
 import { showToast } from "../../components/toasts";
+import { PtzPad } from "../../components/PtzPad";
+import { moveDashboard } from "../../api/ptz";
 import { Alert, Button, Dialog, Field } from "../../components/ui";
 import { CameraPicker } from "./CameraPicker";
 import { DashboardGrid } from "./DashboardGrid";
@@ -121,6 +123,7 @@ function DashboardView({
     change({ rows, cols, tiles });
   };
   const onDashboard = new Set(layout.tiles.map((t) => t.camera_id));
+  const ptzCount = layout.tiles.filter((t) => byId.get(t.camera_id)?.ptz).length;
 
   return (
     <>
@@ -200,7 +203,26 @@ function DashboardView({
             Exit fullscreen
           </button>
         )}
-        <DashboardGrid layout={layout} cameras={byId} onChange={change} onExpand={setExpanded} onPick={setPicking} />
+        <div className="flex h-full min-h-0 gap-3">
+          <div className="h-full min-w-0 flex-1">
+            <DashboardGrid
+              layout={layout}
+              cameras={byId}
+              onChange={change}
+              onExpand={setExpanded}
+              onPick={setPicking}
+            />
+          </div>
+          {/* Beside the grid, never over the video (issue #31). */}
+          {ptzCount > 0 && (
+            <aside className="w-44 shrink-0">
+              <PtzPad
+                title={`Moves ${ptzCount === 1 ? "the PTZ camera" : `all ${ptzCount} PTZ cameras`} on this dashboard`}
+                send={(mv) => moveDashboard(dashboard.id, mv)}
+              />
+            </aside>
+          )}
+        </div>
       </div>
 
       {picking !== null && (

@@ -199,6 +199,36 @@ pub struct StreamProfile {
 /// See [`crate::streaming::media`].
 pub use crate::streaming::media::MediaSource;
 
+/// Continuous pan/tilt/zoom speeds (issue #31), each -100..=100: positive pans
+/// right, tilts up and zooms in. All zero stops. Cameras keep moving until
+/// they get a stop.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+pub struct PtzMove {
+    pub pan: i8,
+    pub tilt: i8,
+    pub zoom: i8,
+}
+
+impl PtzMove {
+    pub const STOP: PtzMove = PtzMove {
+        pan: 0,
+        tilt: 0,
+        zoom: 0,
+    };
+    pub const MAX_SPEED: i8 = 100;
+
+    pub fn is_stop(&self) -> bool {
+        *self == Self::STOP
+    }
+
+    /// Whether every speed is within -100..=100.
+    pub fn in_range(&self) -> bool {
+        [self.pan, self.tilt, self.zoom]
+            .iter()
+            .all(|v| (-Self::MAX_SPEED..=Self::MAX_SPEED).contains(v))
+    }
+}
+
 /// The interface every camera integration implements (SPEC §4.3).
 ///
 /// `async_trait` is used because providers are held as `dyn CameraProvider`.
@@ -223,6 +253,11 @@ pub trait CameraProvider: Send + Sync {
     /// request; it then goes offline while it reboots, which the status
     /// monitor sees as usual.
     async fn restart(&self) -> Result<(), ProviderError>;
+
+    /// Start, change or stop continuous pan/tilt/zoom movement (issue #31).
+    /// Cameras without PTZ answer `Unsupported`. Speeds are within range
+    /// (callers check [`PtzMove::in_range`]).
+    async fn ptz_move(&self, mv: PtzMove) -> Result<(), ProviderError>;
 
     /// SHA-256 fingerprint of the certificate the camera presented on the last
     /// HTTPS connection, for "test connection" and pinning. `None` when not

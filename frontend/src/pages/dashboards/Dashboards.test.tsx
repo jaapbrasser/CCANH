@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import type { CameraSummary } from "../../api/cameras";
@@ -13,7 +13,7 @@ const A = "00000000-0000-7000-8000-000000000011";
 const B = "00000000-0000-7000-8000-000000000012";
 const C = "00000000-0000-7000-8000-000000000013";
 
-function cam(id: string, name: string, state: CameraSummary["status"]["state"] = "online"): CameraSummary {
+function cam(id: string, name: string, state: CameraSummary["status"]["state"] = "online", ptz = false): CameraSummary {
   return {
     id,
     name,
@@ -38,6 +38,7 @@ function cam(id: string, name: string, state: CameraSummary["status"]["state"] =
       identity_error_message: null,
     },
     groups: [],
+    ptz,
   };
 }
 
@@ -206,6 +207,46 @@ describe("dashboards page", () => {
     const dialog = screen.getByRole("dialog", { name: "Restart Hook 2?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Restart camera" }));
     await waitFor(() => expect(restarted).toBe(B));
+  });
+
+  it("moves the dashboard's PTZ cameras while a control is held", async () => {
+    const moves: unknown[] = [];
+    server.use(
+      http.get("/api/v1/cameras", () =>
+        HttpResponse.json({
+          items: [cam(A, "Hook 1", "online", true), cam(B, "Hook 2", "online", true), cam(C, "Gate North")],
+          total: 3,
+          page: 1,
+          page_size: 200,
+        }),
+      ),
+      http.post("/api/v1/dashboards/:id/ptz", async ({ request }) => {
+        moves.push(await request.json());
+        return HttpResponse.json({
+          results: [
+            { camera_id: A, ok: true, error_category: null, message: null },
+            { camera_id: B, ok: false, error_category: "unreachable", message: "unreachable: no response" },
+          ],
+        });
+      }),
+    );
+    renderApp("/dashboards");
+    const pad = await screen.findByRole("region", { name: "Camera controls" });
+    expect(pad).toHaveTextContent("Moves all 2 PTZ cameras on this dashboard");
+    // The controls sit beside the grid, not inside a tile.
+    expect(within(screen.getByRole("grid")).queryByRole("region", { name: "Camera controls" })).toBeNull();
+    const left = within(pad).getByRole("button", { name: "Pan left" });
+    fireEvent.pointerDown(left, { pointerId: 1 });
+    await waitFor(() => expect(moves[0]).toEqual({ pan: -50, tilt: 0, zoom: 0 }));
+    fireEvent.pointerUp(left, { pointerId: 1 });
+    await waitFor(() => expect(moves.at(-1)).toEqual({ pan: 0, tilt: 0, zoom: 0 }));
+    expect(await within(pad).findByRole("alert")).toHaveTextContent("1 of 2 cameras didn't move");
+  });
+
+  it("shows no camera controls without PTZ cameras", async () => {
+    renderApp("/dashboards");
+    await screen.findByRole("gridcell", { name: "Tile 1: Hook 1" });
+    expect(screen.queryByRole("region", { name: "Camera controls" })).not.toBeInTheDocument();
   });
 
   it("expands a tile and returns with Esc", async () => {

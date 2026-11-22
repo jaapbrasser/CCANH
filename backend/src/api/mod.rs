@@ -11,6 +11,7 @@ mod extract;
 pub mod health;
 mod organization;
 mod pagination;
+mod ptz;
 mod settings;
 mod setup;
 mod static_files;
@@ -106,6 +107,8 @@ fn v1_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(cameras::list, cameras::create))
         .routes(routes!(cameras::summary))
         .routes(routes!(cameras::restart))
+        .routes(routes!(ptz::move_camera))
+        .routes(routes!(ptz::move_dashboard))
         .routes(routes!(cameras::get, cameras::update, cameras::delete))
         .routes(routes!(cameras::status_history))
         .routes(routes!(cameras::set_stream_profiles))

@@ -1,4 +1,6 @@
 import { useEffect, type ReactNode } from "react";
+import { PtzPad } from "../../components/PtzPad";
+import { moveCamera } from "../../api/ptz";
 import { Link } from "react-router";
 import { useCamera } from "../../api/cameras";
 import { LivePlayer } from "../../components/LivePlayer";
@@ -56,6 +58,11 @@ export function ExpandedCamera({ cameraId, onClose }: { cameraId: string; onClos
         </div>
         {c && (
           <aside aria-label="Camera details" className="overflow-y-auto rounded border border-slate-800 p-4 text-sm">
+            {c.ptz && (
+              <div className="mb-4">
+                <PtzPad title="Moves this camera" send={(mv) => moveCamera(c.id, mv)} />
+              </div>
+            )}
             <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1.5">
               <Fact label="Address">
                 {c.host}:{c.port}

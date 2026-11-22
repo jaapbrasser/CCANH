@@ -109,7 +109,15 @@ impl Respond for DigestGate {
             qop_auth: true,
         };
         let nc = u32::from_str_radix(nc, 16).unwrap_or(0);
-        let expected = digest_authorization(&ch, USER, self.password, "POST", uri, nc, cnonce);
+        let expected = digest_authorization(
+            &ch,
+            USER,
+            self.password,
+            req.method.as_str(),
+            uri,
+            nc,
+            cnonce,
+        );
         if user == USER && param(&expected, "response") == Some(response) {
             self.ok.clone()
         } else {
@@ -187,6 +195,11 @@ async fn mount_camera(server: &MockServer, full_api_list: bool) {
         .respond_with(DigestGate::new(json_reply(fixture!(
             "firmwaremanagement_reboot.json"
         ))))
+        .mount(server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(PTZ))
+        .respond_with(DigestGate::new(ResponseTemplate::new(204)))
         .mount(server)
         .await;
     Mock::given(method("POST"))
@@ -600,4 +613,57 @@ fn prefix_masks_and_versions() {
     assert_eq!(prefix_to_mask(33), None);
     assert!(version_gt("1.10", "1.9"));
     assert!(!version_gt("1.0", "2.0"));
+}
+
+#[tokio::test]
+async fn ptz_moves_are_continuous_get_requests() {
+    let server = MockServer::start().await;
+    mount_camera(&server, true).await;
+    let p = provider_for(&server, creds(PASS));
+    p.ptz_move(PtzMove {
+        pan: -40,
+        tilt: 25,
+        zoom: 0,
+    })
+    .await
+    .unwrap();
+    p.ptz_move(PtzMove::STOP).await.unwrap();
+    let queries: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.url.path() == PTZ && r.headers.contains_key("authorization"))
+        .map(|r| r.url.query().unwrap_or_default().to_owned())
+        .collect();
+    assert_eq!(
+        queries,
+        [
+            "continuouspantiltmove=-40,25&continuouszoommove=0",
+            "continuouspantiltmove=0,0&continuouszoommove=0"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn ptz_error_text_and_missing_cgi_are_mapped() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(PTZ))
+        .respond_with(ResponseTemplate::new(200).set_body_string("Error: PTZ is not available"))
+        .mount(&server)
+        .await;
+    let err = provider_for(&server, creds(PASS))
+        .ptz_move(PtzMove::STOP)
+        .await
+        .unwrap_err();
+    assert_eq!(err.category(), ErrorCategory::ProtocolError, "{err}");
+    assert!(err.to_string().contains("PTZ is not available"));
+
+    let empty = MockServer::start().await;
+    let err = provider_for(&empty, creds(PASS))
+        .ptz_move(PtzMove::STOP)
+        .await
+        .unwrap_err();
+    assert_eq!(err.category(), ErrorCategory::Unsupported, "{err}");
 }

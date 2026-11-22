@@ -274,6 +274,12 @@ impl VapixClient {
         }
     }
 
+    /// GET a CGI that answers in plain text (e.g. `ptz.cgi`). `path` includes
+    /// the query string, which must not contain secrets.
+    pub async fn get_text(&self, path: &str, access: Access) -> Result<String, ProviderError> {
+        Ok(self.request(Method::GET, path, None, access).await?.body)
+    }
+
     /// POST a VAPIX JSON-RPC style request and return the parsed body.
     pub async fn post_json(
         &self,

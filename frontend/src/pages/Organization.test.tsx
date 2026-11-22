@@ -43,6 +43,7 @@ function cam(id: string, name: string, extra: Partial<CameraSummary> = {}): Came
       identity_error_message: null,
     },
     groups: [],
+    ptz: false,
     ...extra,
   };
 }

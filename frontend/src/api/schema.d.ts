@@ -233,6 +233,30 @@ export interface paths {
         patch: operations["update_camera"];
         trace?: never;
     };
+    "/api/v1/cameras/{id}/ptz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move one camera: start, change or stop continuous pan/tilt/zoom.
+         * @description Required role: viewer. Send the move when a control is pressed, repeat it
+         *     about every 400 ms while it's held, and send all zeros on release; a move
+         *     not repeated within 1.5 s is stopped by the server. Each new or changed
+         *     move is audited once (`camera.ptz`); repeats and stops aren't. 400 if the
+         *     camera can't pan, tilt or zoom; 429 when sending too fast.
+         */
+        post: operations["move_camera"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cameras/{id}/refresh": {
         parameters: {
             query?: never;
@@ -424,6 +448,29 @@ export interface paths {
          *     once, positions inside the grid.
          */
         patch: operations["update_dashboard"];
+        trace?: never;
+    };
+    "/api/v1/dashboards/{id}/ptz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move every PTZ camera on one of your dashboards at once.
+         * @description Required role: viewer; only your own dashboards. Same protocol as
+         *     `move_camera`; cameras without PTZ are left out, and each gesture is one
+         *     audit entry listing the cameras. `results` is empty when the dashboard
+         *     has no PTZ camera.
+         */
+        post: operations["move_dashboard_cameras"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/discovery/jobs": {
@@ -1258,6 +1305,8 @@ export interface components {
             name: string;
             /** Format: int32 */
             port: number;
+            /** @description The camera reports pan/tilt/zoom control, so it can be moved. */
+            ptz: boolean;
             scheme: components["schemas"]["Scheme"];
             status: components["schemas"]["CameraStatusView"];
         };
@@ -1791,6 +1840,31 @@ export interface components {
             title: string;
             /** @description URI identifying the problem type, e.g. `urn:crane:problem:not_found`. */
             type: string;
+        };
+        /** @description What happened for one camera. */
+        PtzCameraResult: {
+            /** Format: uuid */
+            camera_id: string;
+            error_category?: components["schemas"]["ErrorCategory"] | null;
+            /** @description Short, non-sensitive description of the error. */
+            message?: string | null;
+            ok: boolean;
+        };
+        /**
+         * @description Continuous pan/tilt/zoom speeds (issue #31), each -100..=100: positive pans
+         *     right, tilts up and zooms in. All zero stops. Cameras keep moving until
+         *     they get a stop.
+         */
+        PtzMove: {
+            /** Format: int32 */
+            pan: number;
+            /** Format: int32 */
+            tilt: number;
+            /** Format: int32 */
+            zoom: number;
+        };
+        PtzOutcome: {
+            results: components["schemas"]["PtzCameraResult"][];
         };
         RegisterDiscovered: {
             /**
@@ -2907,6 +2981,69 @@ export interface operations {
             };
         };
     };
+    move_camera: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Camera ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzMove"];
+            };
+        };
+        responses: {
+            /** @description Per-camera result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PtzOutcome"];
+                };
+            };
+            /** @description Not a PTZ camera, or speeds out of range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such camera */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many commands */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     refresh_camera: {
         parameters: {
             query?: never;
@@ -3546,6 +3683,69 @@ export interface operations {
             };
             /** @description No such dashboard of yours */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    move_dashboard_cameras: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Dashboard ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PtzMove"];
+            };
+        };
+        responses: {
+            /** @description Per-camera result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PtzOutcome"];
+                };
+            };
+            /** @description Speeds out of range */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description No such dashboard of yours */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many commands */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
