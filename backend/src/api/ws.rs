@@ -90,7 +90,7 @@ pub enum WsServerMessage {
     StreamsUpdated {
         streams: Vec<StreamInfo>,
     },
-    /// Groups or tags were created, renamed, moved or deleted; refetch them
+    /// Groups were created, renamed, moved or deleted; refetch them
     /// (topic `cameras`). Camera memberships arrive as `camera_changed`.
     OrganizationChanged {
         kind: OrganizationKind,

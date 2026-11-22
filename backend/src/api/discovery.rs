@@ -17,7 +17,7 @@ use crate::cameras::{
 };
 use crate::discovery::{self, prober, ranges::Ranges, DiscoveryJob, DiscoveryJobDetail};
 use crate::events::Event;
-use crate::organization::{groups, tags};
+use crate::organization::groups;
 use crate::secret::{ExposeSecret, SecretString};
 use crate::settings::MAX_SCAN_ADDRESSES;
 use crate::tasks::Creator;
@@ -236,8 +236,6 @@ pub struct RegisterDiscovered {
     pub credentials: Option<CredentialInput>,
     #[serde(default)]
     pub group_ids: Vec<Uuid>,
-    #[serde(default)]
-    pub tag_ids: Vec<Uuid>,
     #[serde(default = "default_true")]
     pub monitoring_enabled: bool,
     /// Allow Basic authentication over plain HTTP for the results found on
@@ -290,7 +288,7 @@ fn copy_credentials(c: &Option<CredentialInput>) -> Option<CredentialInput> {
     request_body = RegisterDiscovered,
     responses(
         (status = 200, description = "What was registered and what was skipped", body = RegisterOutcome),
-        (status = 400, description = "Invalid selection, groups or tags", body = Problem),
+        (status = 400, description = "Invalid selection or groups", body = Problem),
         (status = 401, description = "Not signed in", body = Problem),
         (status = 403, description = "Not an admin", body = Problem),
         (status = 404, description = "No such job", body = Problem),
@@ -310,9 +308,6 @@ pub async fn register(
     }
     let org = super::organization::org_error;
     groups::ensure_exist(&state.db, &body.group_ids)
-        .await
-        .map_err(org)?;
-    tags::ensure_exist(&state.db, &body.tag_ids)
         .await
         .map_err(org)?;
     if discovery::get_job(&state.db, id).await?.is_none() {
@@ -374,7 +369,6 @@ pub async fn register(
             credentials: copy_credentials(&body.credentials),
             allow_basic_over_http: Some(!https && allow_basic),
             group_ids: Vec::new(),
-            tag_ids: Vec::new(),
         };
         let (settings, credentials) = match CameraSettings::from_new(new, &defaults) {
             Ok(v) => v,
@@ -397,11 +391,6 @@ pub async fn register(
         let cid = created.summary.id;
         if !body.group_ids.is_empty() {
             groups::set_for_camera(&state.db, cid, &body.group_ids)
-                .await
-                .map_err(org)?;
-        }
-        if !body.tag_ids.is_empty() {
-            tags::set_for_camera(&state.db, cid, &body.tag_ids)
                 .await
                 .map_err(org)?;
         }

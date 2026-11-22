@@ -142,10 +142,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Apply one action to many cameras (tag, group, monitoring, settings, delete).
+         * Apply one action to many cameras (group, monitoring, settings, delete).
          * @description Required role: admin. Select cameras by id, by group (optionally with its
-         *     subgroups) and/or by tag. Validated up front (400 for unknown cameras,
-         *     tags or groups, or an empty selection), then runs as a background task
+         *     subgroups). Validated up front (400 for unknown cameras or groups, or an
+         *     empty selection), then runs as a background task
          *     (`bulk_cameras`) whose result is a `BulkResult`. Follow it via the `tasks`
          *     topic. Cancelling stops between cameras; work already done stays done.
          *     Settings changes are audited per camera (`camera.update`, never secrets)
@@ -842,54 +842,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/tags": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List all tags with how many cameras have each.
-         * @description Required role: viewer.
-         */
-        get: operations["list_tags"];
-        put?: never;
-        /**
-         * Create a tag.
-         * @description Required role: admin. Names are unique, ignoring case.
-         */
-        post: operations["create_tag"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tags/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete a tag. It's removed from every camera.
-         * @description Required role: admin.
-         */
-        delete: operations["delete_tag"];
-        options?: never;
-        head?: never;
-        /**
-         * Rename a tag.
-         * @description Required role: admin.
-         */
-        patch: operations["update_tag"];
-        trace?: never;
-    };
     "/api/v1/tasks": {
         parameters: {
             query?: never;
@@ -1077,14 +1029,6 @@ export interface components {
         };
         /** @description What to do to every selected camera. */
         BulkAction: {
-            tag_ids: string[];
-            /** @enum {string} */
-            type: "add_tags";
-        } | {
-            tag_ids: string[];
-            /** @enum {string} */
-            type: "remove_tags";
-        } | {
             group_ids: string[];
             /** @enum {string} */
             type: "add_groups";
@@ -1107,7 +1051,7 @@ export interface components {
         BulkRequest: {
             action: components["schemas"]["BulkAction"];
             /**
-             * @description Cameras by id. Together with `group_id` and `tag_id` (all optional,
+             * @description Cameras by id. Together with `group_id` (both optional,
              *     combined as a union) the selection must come to 1–500 cameras.
              */
             camera_ids?: string[];
@@ -1118,11 +1062,6 @@ export interface components {
             group_id?: string | null;
             /** @description With `group_id`: include cameras in its subgroups (default true). */
             include_subgroups?: boolean;
-            /**
-             * Format: uuid
-             * @description Every camera with this tag.
-             */
-            tag_id?: string | null;
         };
         /** @description `result` of a `bulk_cameras` task. */
         BulkResult: {
@@ -1233,8 +1172,6 @@ export interface components {
             /** Format: int32 */
             port?: number | null;
             scheme?: components["schemas"]["Scheme"] | null;
-            /** @description Replace the camera's tags. */
-            tag_ids?: string[] | null;
             tls_mode?: components["schemas"]["TlsMode"] | null;
             tls_pinned_sha256?: string | null;
         };
@@ -1277,8 +1214,6 @@ export interface components {
             port: number;
             scheme: components["schemas"]["Scheme"];
             status: components["schemas"]["CameraStatusView"];
-            /** @description Tags, by name. */
-            tags: components["schemas"]["TagRef"][];
         };
         /** @description One capability (an API or feature) and whether this camera supports it. */
         Capability: {
@@ -1755,8 +1690,6 @@ export interface components {
              */
             port?: number | null;
             scheme?: components["schemas"]["Scheme"] | null;
-            /** @description Tags to give the camera. */
-            tag_ids?: string[];
             tls_mode?: components["schemas"]["TlsMode"] | null;
             /** @description SHA-256 certificate fingerprint (hex, colons optional). Required for `pinned`. */
             tls_pinned_sha256?: string | null;
@@ -1793,7 +1726,7 @@ export interface components {
          * @description Which organization list changed.
          * @enum {string}
          */
-        OrganizationKind: "groups" | "tags";
+        OrganizationKind: "groups";
         /** @enum {string} */
         Outcome: "success" | "failure";
         /** @description Problem details body (RFC 9457). */
@@ -1824,7 +1757,6 @@ export interface components {
             monitoring_enabled?: boolean;
             /** @description Results to register (up to 500). */
             result_ids: string[];
-            tag_ids?: string[];
         };
         RegisterOutcome: {
             registered: components["schemas"]["RegisteredResult"][];
@@ -2064,25 +1996,6 @@ export interface components {
              * @description GOP cache cap per stream in MiB (1–64).
              */
             stream_buffer_mb: number;
-        };
-        Tag: {
-            /** Format: int64 */
-            camera_count: number;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: uuid */
-            id: string;
-            name: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        TagInput: {
-            name: string;
-        };
-        TagRef: {
-            /** Format: uuid */
-            id: string;
-            name: string;
         };
         Task: {
             /** Format: uuid */
@@ -2536,8 +2449,6 @@ export interface operations {
                 order?: "asc" | "desc";
                 /** @description Only cameras in this group or any of its subgroups. */
                 group_id?: string;
-                /** @description Only cameras with this tag. */
-                tag_id?: string;
                 /** @description `true`: only the signed-in user's favorites. */
                 favorites?: boolean;
             };
@@ -3670,7 +3581,7 @@ export interface operations {
                     "application/json": components["schemas"]["RegisterOutcome"];
                 };
             };
-            /** @description Invalid selection, groups or tags */
+            /** @description Invalid selection or groups */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4877,215 +4788,6 @@ export interface operations {
                 };
             };
             /** @description No playable stream profile, or stream refused */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    list_tags: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description All tags, by name */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Tag"][];
-                };
-            };
-            /** @description Not signed in */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    create_tag: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TagInput"];
-            };
-        };
-        responses: {
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Tag"];
-                };
-            };
-            /** @description Invalid name */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Not signed in */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Not an admin */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Name taken */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    delete_tag: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tag ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not signed in */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Not an admin */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description No such tag */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    update_tag: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tag ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TagInput"];
-            };
-        };
-        responses: {
-            /** @description Renamed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Tag"];
-                };
-            };
-            /** @description Invalid name */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Not signed in */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Not an admin */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description No such tag */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Name taken */
             409: {
                 headers: {
                     [name: string]: unknown;

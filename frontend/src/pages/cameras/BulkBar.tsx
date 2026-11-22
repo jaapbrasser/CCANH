@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { errorMessage } from "../../api/client";
-import { useBulkCameras, useBulkFavorites, type BulkAction, type Group, type Tag } from "../../api/organization";
+import { useBulkCameras, useBulkFavorites, type BulkAction, type Group } from "../../api/organization";
 import { BulkSettingsDialog } from "../../components/BulkSettingsDialog";
 import { GroupSelect } from "../../components/organization";
 import { showToast } from "../../components/toasts";
@@ -10,8 +10,6 @@ type Choice =
   | "add_favorites"
   | "remove_favorites"
   | "edit_settings"
-  | "add_tags"
-  | "remove_tags"
   | "add_groups"
   | "remove_groups"
   | "monitoring_on"
@@ -22,8 +20,6 @@ const LABELS: Record<Choice, string> = {
   add_favorites: "Add to favorites",
   remove_favorites: "Remove from favorites",
   edit_settings: "Edit settings…",
-  add_tags: "Add tag",
-  remove_tags: "Remove tag",
   add_groups: "Add to group",
   remove_groups: "Remove from group",
   monitoring_on: "Turn monitoring on",
@@ -39,8 +35,6 @@ const ADMIN_CHOICES: Choice[] = [
   "edit_settings",
   "add_favorites",
   "remove_favorites",
-  "add_tags",
-  "remove_tags",
   "add_groups",
   "remove_groups",
   "monitoring_on",
@@ -53,14 +47,12 @@ export function BulkBar({
   cameraIds,
   admin,
   groups,
-  tags,
   onDone,
 }: {
   cameraIds: string[];
   /** Offer the admin actions too, not just favorites. */
   admin: boolean;
   groups: Group[];
-  tags: Tag[];
   onDone: () => void;
 }) {
   const bulk = useBulkCameras();
@@ -70,15 +62,11 @@ export function BulkBar({
   const [editing, setEditing] = useState(false);
   const [target, setTarget] = useState("");
   const [confirming, setConfirming] = useState(false);
-  const needsTag = choice === "add_tags" || choice === "remove_tags";
   const needsGroup = choice === "add_groups" || choice === "remove_groups";
   const n = cameraIds.length;
 
   const action = (): BulkAction | null => {
     switch (choice) {
-      case "add_tags":
-      case "remove_tags":
-        return target ? { type: choice, tag_ids: [target] } : null;
       case "add_groups":
       case "remove_groups":
         return target ? { type: choice, group_ids: [target] } : null;
@@ -131,9 +119,7 @@ export function BulkBar({
       aria-label="Bulk actions"
       className="mb-4 flex flex-wrap items-center gap-3 rounded border border-sky-900 bg-sky-950/40 p-3 text-sm"
     >
-      <span className="font-medium">
-        {n} selected
-      </span>
+      <span className="font-medium">{n} selected</span>
       <select
         aria-label="Bulk action"
         className={selectClass}
@@ -149,22 +135,12 @@ export function BulkBar({
           </option>
         ))}
       </select>
-      {needsTag && (
-        <select aria-label="Tag" className={selectClass} value={target} onChange={(e) => setTarget(e.target.value)}>
-          <option value="">Choose a tag…</option>
-          {tags.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-      )}
       {needsGroup && (
         <GroupSelect label="Group" groups={groups} value={target} onChange={setTarget} emptyLabel="Choose a group…" />
       )}
       <Button
         variant={choice === "delete" ? "danger" : "primary"}
-        disabled={bulk.isPending || favorites.isPending || ((needsTag || needsGroup) && !target)}
+        disabled={bulk.isPending || favorites.isPending || (needsGroup && !target)}
         onClick={() =>
           choice === "delete" ? setConfirming(true) : choice === "edit_settings" ? setEditing(true) : run()
         }

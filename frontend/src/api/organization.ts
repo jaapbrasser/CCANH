@@ -4,23 +4,17 @@ import { api, unwrap } from "./client";
 import type { components, operations } from "./schema";
 
 export type Group = components["schemas"]["Group"];
-export type Tag = components["schemas"]["Tag"];
 export type GroupPatch = components["schemas"]["GroupPatch"];
 export type DeleteMode = operations["delete_group"]["parameters"]["query"]["mode"];
 export type BulkAction = components["schemas"]["BulkAction"];
 
 export const orgKeys = {
   groups: ["groups"] as const,
-  tags: ["tags"] as const,
   favorites: ["favorites"] as const,
 };
 
 export function useGroups() {
   return useQuery({ queryKey: orgKeys.groups, queryFn: () => unwrap(api.GET("/api/v1/groups")) });
-}
-
-export function useTags() {
-  return useQuery({ queryKey: orgKeys.tags, queryFn: () => unwrap(api.GET("/api/v1/tags")) });
 }
 
 export function useFavorites() {
@@ -103,25 +97,6 @@ export function useDeleteGroup() {
   );
 }
 
-export function useCreateTag() {
-  return useOrgMutation((name: string) => unwrap(api.POST("/api/v1/tags", { body: { name } })), orgKeys.tags);
-}
-
-export function useRenameTag() {
-  return useOrgMutation(
-    ({ id, name }: { id: string; name: string }) =>
-      unwrap(api.PATCH("/api/v1/tags/{id}", { params: { path: { id } }, body: { name } })),
-    orgKeys.tags,
-  );
-}
-
-export function useDeleteTag() {
-  return useOrgMutation(
-    (id: string) => unwrap(api.DELETE("/api/v1/tags/{id}", { params: { path: { id } } })),
-    orgKeys.tags,
-  );
-}
-
 /** Add or remove a favorite, updating the cached list right away. */
 export function useToggleFavorite() {
   const qc = useQueryClient();
@@ -172,18 +147,16 @@ export function useBulkFavorites() {
 
 export type BulkSettings = components["schemas"]["BulkSettings"];
 export type BulkResult = components["schemas"]["BulkResult"];
-/** Which cameras a bulk operation applies to: ids, a group and/or a tag (a union). */
+/** Which cameras a bulk operation applies to: ids and/or a group (a union). */
 export interface BulkSelection {
   camera_ids?: string[];
   group_id?: string;
   include_subgroups?: boolean;
-  tag_id?: string;
 }
 
 /** Start a bulk operation; returns the task to follow. */
 export function useBulkCameras() {
   return useMutation({
-    mutationFn: (body: BulkSelection & { action: BulkAction }) =>
-      unwrap(api.POST("/api/v1/cameras/bulk", { body })),
+    mutationFn: (body: BulkSelection & { action: BulkAction }) => unwrap(api.POST("/api/v1/cameras/bulk", { body })),
   });
 }

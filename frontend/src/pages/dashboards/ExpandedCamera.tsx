@@ -29,7 +29,12 @@ export function ExpandedCamera({ cameraId, onClose }: { cameraId: string; onClos
   const c = camera.data;
 
   return (
-    <div role="dialog" aria-modal="true" aria-label={c ? c.name : "Camera"} className="fixed inset-0 z-20 flex flex-col bg-slate-950/95 p-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={c ? c.name : "Camera"}
+      className="fixed inset-0 z-20 flex flex-col bg-slate-950/95 p-4"
+    >
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <Button variant="secondary" onClick={onClose}>
           ← Back to dashboard
@@ -64,7 +69,6 @@ export function ExpandedCamera({ cameraId, onClose }: { cameraId: string; onClos
                 {c.status.response_time_ms != null ? `${c.status.response_time_ms} ms` : null}
               </Fact>
               <Fact label="Groups">{c.groups.map((g) => g.name).join(", ") || null}</Fact>
-              <Fact label="Tags">{c.tags.map((t) => t.name).join(", ") || null}</Fact>
             </dl>
             <h3 className="mb-1 mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Capabilities</h3>
             <ul className="flex flex-wrap gap-1">

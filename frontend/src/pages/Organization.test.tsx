@@ -17,7 +17,6 @@ const BUILDING = group("00000000-0000-7000-8000-0000000000a2", "Building 1", SIT
 const YARD = group("00000000-0000-7000-8000-0000000000a3", "Yard", SITE.id);
 const SITE_B = group("00000000-0000-7000-8000-0000000000b1", "Site B");
 const GROUPS = [YARD, SITE_B, BUILDING, SITE];
-const TAG = { id: "00000000-0000-7000-8000-0000000000c1", name: "Outdoor", camera_count: 1, created_at: NOW, updated_at: NOW };
 
 function cam(id: string, name: string, extra: Partial<CameraSummary> = {}): CameraSummary {
   return {
@@ -44,14 +43,12 @@ function cam(id: string, name: string, extra: Partial<CameraSummary> = {}): Came
       identity_error_message: null,
     },
     groups: [],
-    tags: [],
     ...extra,
   };
 }
 
 const HOOK = cam("00000000-0000-7000-8000-000000000011", "Crane Hook", {
   groups: [{ id: BUILDING.id, name: BUILDING.name }],
-  tags: [{ id: TAG.id, name: TAG.name }],
 });
 const GATE = cam("00000000-0000-7000-8000-000000000012", "Gate North");
 
@@ -61,7 +58,6 @@ beforeEach(() => {
   lastQuery = new URLSearchParams();
   server.use(
     http.get("/api/v1/groups", () => HttpResponse.json(GROUPS)),
-    http.get("/api/v1/tags", () => HttpResponse.json([TAG])),
     http.get("/api/v1/cameras", ({ request }) => {
       lastQuery = new URL(request.url).searchParams;
       return HttpResponse.json({ items: [HOOK, GATE], total: 2, page: 1, page_size: 50 });
@@ -79,18 +75,17 @@ describe("group tree helpers", () => {
 });
 
 describe("camera list organization", () => {
-  it("filters by group, tag and favorites and shows memberships", async () => {
+  it("filters by group and favorites and shows memberships", async () => {
     signedInAs(VIEWER);
     renderApp("/cameras");
     const table = await screen.findByRole("table");
     expect(await within(table).findByRole("list", { name: "Groups of Crane Hook" })).toHaveTextContent("Building 1");
-    expect(within(table).getByRole("list", { name: "Tags of Crane Hook" })).toHaveTextContent("Outdoor");
+    expect(within(table).queryByRole("list", { name: "Tags of Crane Hook" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Filter by tag")).not.toBeInTheDocument();
 
     await screen.findByRole("option", { name: /Building 1/ });
     await userEvent.selectOptions(screen.getByLabelText("Filter by group"), SITE.id);
     await waitFor(() => expect(lastQuery.get("group_id")).toBe(SITE.id));
-    await userEvent.selectOptions(screen.getByLabelText("Filter by tag"), TAG.id);
-    await waitFor(() => expect(lastQuery.get("tag_id")).toBe(TAG.id));
     await userEvent.click(screen.getByLabelText("Favorites only"));
     await waitFor(() => expect(lastQuery.get("favorites")).toBe("true"));
   });
@@ -164,7 +159,7 @@ describe("camera list organization", () => {
     expect(await screen.findByRole("heading", { name: "Cameras" })).toBeInTheDocument();
   });
 
-  it("bulk-tags selected cameras and confirms bulk delete", async () => {
+  it("bulk-adds selected cameras to a group and confirms bulk delete", async () => {
     signedInAs(ADMIN);
     const bodies: unknown[] = [];
     server.use(
@@ -186,11 +181,15 @@ describe("camera list organization", () => {
     await userEvent.click(await screen.findByLabelText("Select all cameras on this page"));
     const bar = screen.getByRole("region", { name: "Bulk actions" });
     expect(bar).toHaveTextContent("2 selected");
-    await userEvent.selectOptions(within(bar).getByLabelText("Bulk action"), "add_tags");
-    await userEvent.selectOptions(within(bar).getByLabelText("Tag"), TAG.id);
+    expect(within(within(bar).getByLabelText("Bulk action")).queryByRole("option", { name: "Add tag" })).toBeNull();
+    await userEvent.selectOptions(within(bar).getByLabelText("Bulk action"), "add_groups");
+    await userEvent.selectOptions(within(bar).getByLabelText("Group"), YARD.id);
     await userEvent.click(within(bar).getByRole("button", { name: "Apply" }));
     await waitFor(() =>
-      expect(bodies[0]).toEqual({ camera_ids: [HOOK.id, GATE.id], action: { type: "add_tags", tag_ids: [TAG.id] } }),
+      expect(bodies[0]).toEqual({
+        camera_ids: [HOOK.id, GATE.id],
+        action: { type: "add_groups", group_ids: [YARD.id] },
+      }),
     );
 
     await userEvent.click(screen.getByLabelText("Select Gate North"));
@@ -203,7 +202,7 @@ describe("camera list organization", () => {
     await waitFor(() => expect(bodies[1]).toEqual({ camera_ids: [GATE.id], action: { type: "delete" } }));
   });
 
-  it("assigns groups and tags when adding a camera", async () => {
+  it("assigns groups when adding a camera", async () => {
     signedInAs(ADMIN);
     let body: Record<string, unknown> | undefined;
     server.use(
@@ -219,21 +218,32 @@ describe("camera list organization", () => {
     await userEvent.type(within(dialog).getByLabelText("Name"), "New");
     await userEvent.type(within(dialog).getByLabelText(/Host/), "192.0.2.50");
     await userEvent.click(await within(dialog).findByRole("checkbox", { name: "Yard" }));
-    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Outdoor" }));
     await userEvent.click(within(dialog).getByRole("button", { name: "Add camera" }));
-    await waitFor(() => expect(body).toMatchObject({ group_ids: [YARD.id], tag_ids: [TAG.id] }));
+    await waitFor(() => expect(body).toMatchObject({ group_ids: [YARD.id] }));
   });
 });
 
 describe("bulk camera settings", () => {
-  const SET = { id: "00000000-0000-7000-8000-0000000000d1", name: "Site viewer", camera_count: 0, created_at: NOW, updated_at: NOW };
+  const SET = {
+    id: "00000000-0000-7000-8000-0000000000d1",
+    name: "Site viewer",
+    camera_count: 0,
+    created_at: NOW,
+    updated_at: NOW,
+  };
   function capture(bodies: unknown[]) {
     return [
       http.get("/api/v1/credential-sets", () => HttpResponse.json([SET])),
       http.post("/api/v1/cameras/bulk", async ({ request }) => {
         bodies.push(await request.json());
         return HttpResponse.json(
-          { id: "00000000-0000-7000-8000-0000000000fa", kind: "bulk_cameras", status: "queued", progress_current: 0, created_at: NOW },
+          {
+            id: "00000000-0000-7000-8000-0000000000fa",
+            kind: "bulk_cameras",
+            status: "queued",
+            progress_current: 0,
+            created_at: NOW,
+          },
           { status: 202 },
         );
       }),
@@ -265,13 +275,13 @@ describe("bulk camera settings", () => {
     );
   });
 
-  it("applies to a whole group or tag from the organization page", async () => {
+  it("applies to a whole group from the groups page", async () => {
     signedInAs(ADMIN);
     const bodies: unknown[] = [];
     server.use(...capture(bodies));
     renderApp("/organization");
     await userEvent.click(await screen.findByRole("button", { name: "Camera settings for Site A" }));
-    let dialog = screen.getByRole("dialog", { name: "Edit camera settings" });
+    const dialog = screen.getByRole("dialog", { name: "Edit camera settings" });
     await userEvent.click(within(dialog).getByLabelText("Change certificate check"));
     await userEvent.selectOptions(within(dialog).getByLabelText("Certificate check"), "strict");
     await userEvent.click(within(dialog).getByRole("button", { name: /^Apply to cameras in Site A/ }));
@@ -282,21 +292,10 @@ describe("bulk camera settings", () => {
         action: { type: "update_settings", settings: { tls_mode: "strict" } },
       }),
     );
-
-    await userEvent.click(await screen.findByRole("button", { name: "Camera settings for Outdoor" }));
-    dialog = screen.getByRole("dialog", { name: "Edit camera settings" });
-    await userEvent.click(within(dialog).getByLabelText("Change protocol and port"));
-    await userEvent.click(within(dialog).getByRole("button", { name: "Apply to cameras tagged Outdoor" }));
-    await waitFor(() =>
-      expect(bodies[1]).toEqual({
-        tag_id: TAG.id,
-        action: { type: "update_settings", settings: { scheme: "http", port: 80 } },
-      }),
-    );
   });
 });
 
-describe("groups and tags page", () => {
+describe("groups page", () => {
   it("creates a subgroup and deletes a group with the chosen mode", async () => {
     signedInAs(ADMIN);
     let created: unknown;
@@ -343,6 +342,6 @@ describe("groups and tags page", () => {
   it("is admin only", async () => {
     signedInAs(VIEWER);
     renderApp("/organization");
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Groups & tags" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Groups" })).not.toBeInTheDocument());
   });
 });

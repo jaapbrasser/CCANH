@@ -20,8 +20,8 @@ test("settings cog, user menu and favorites from the selection", async ({ page }
   await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
   await expect(page).toHaveTitle("[DEMO] General settings - Crane Camera Automated Navigation Hub");
   const sidebar = page.getByRole("navigation", { name: "Settings" });
-  await sidebar.getByRole("link", { name: "Groups & tags" }).click();
-  await expect(page.getByRole("heading", { name: "Groups & tags" })).toBeVisible();
+  await sidebar.getByRole("link", { name: "Groups" }).click();
+  await expect(page.getByRole("heading", { name: "Groups" })).toBeVisible();
   // Old addresses still work.
   await page.goto("/audit");
   await expect(page).toHaveURL(/\/settings\/audit$/);

@@ -71,7 +71,7 @@ export function FavoriteButton({ cameraId, name }: { cameraId: string; name: str
   );
 }
 
-/** A scrollable checkbox list for choosing several groups or tags. */
+/** A scrollable checkbox list for choosing several items (e.g. groups). */
 export function MultiPick({
   legend,
   options,
@@ -88,7 +88,7 @@ export function MultiPick({
   empty: string;
   /** Lets the user add an item inline; resolves to its id, which is then selected. */
   onCreate?: (name: string) => Promise<string>;
-  /** Accessible label of the inline "new item" field, e.g. "New tag name". */
+  /** Accessible label of the inline "new item" field, e.g. "New group name". */
   createLabel?: string;
 }) {
   const [draft, setDraft] = useState("");

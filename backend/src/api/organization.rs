@@ -1,4 +1,4 @@
-//! Groups, tags and favorites (SPEC §9).
+//! Groups and favorites (SPEC §9).
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -11,7 +11,7 @@ use crate::audit::{self, action, Event as AuditEvent, Outcome};
 use crate::auth::{AdminUser, AuthUser, ClientIp};
 use crate::events::{Event, OrganizationKind};
 use crate::organization::{
-    favorites, groups, tags, DeleteGroupQuery, Group, GroupPatch, NewGroup, OrgError, Tag, TagInput,
+    favorites, groups, DeleteGroupQuery, Group, GroupPatch, NewGroup, OrgError,
 };
 use crate::AppState;
 
@@ -198,156 +198,6 @@ pub async fn delete_group(
         kind: OrganizationKind::Groups,
     });
     announce_cameras(&state, &direct).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-// ---------------------------------------------------------------------------
-// Tags
-// ---------------------------------------------------------------------------
-
-/// List all tags with how many cameras have each.
-///
-/// Required role: viewer.
-#[utoipa::path(
-    get,
-    path = "/tags",
-    operation_id = "list_tags",
-    tag = "organization",
-    responses(
-        (status = 200, description = "All tags, by name", body = Vec<Tag>),
-        (status = 401, description = "Not signed in", body = Problem),
-    )
-)]
-pub async fn list_tags(
-    _user: AuthUser,
-    State(state): State<AppState>,
-) -> Result<Json<Vec<Tag>>, ApiError> {
-    Ok(Json(tags::list(&state.db).await?))
-}
-
-/// Create a tag.
-///
-/// Required role: admin. Names are unique, ignoring case.
-#[utoipa::path(
-    post,
-    path = "/tags",
-    operation_id = "create_tag",
-    tag = "organization",
-    request_body = TagInput,
-    responses(
-        (status = 201, description = "Created", body = Tag),
-        (status = 400, description = "Invalid name", body = Problem),
-        (status = 401, description = "Not signed in", body = Problem),
-        (status = 403, description = "Not an admin", body = Problem),
-        (status = 409, description = "Name taken", body = Problem),
-    )
-)]
-pub async fn create_tag(
-    admin: AdminUser,
-    State(state): State<AppState>,
-    ClientIp(ip): ClientIp,
-    JsonBody(body): JsonBody<TagInput>,
-) -> Result<(StatusCode, Json<Tag>), ApiError> {
-    let tag = tags::create(&state.db, &body.name)
-        .await
-        .map_err(org_error)?;
-    audit::record(
-        &state.db,
-        AuditEvent::new(action::TAG_CREATE, Outcome::Success)
-            .actor(Some(admin.id), &admin.username)
-            .target("tag", tag.id)
-            .ip(ip)
-            .details(serde_json::json!({ "name": tag.name })),
-    )
-    .await?;
-    state.events.publish(Event::OrganizationChanged {
-        kind: OrganizationKind::Tags,
-    });
-    Ok((StatusCode::CREATED, Json(tag)))
-}
-
-/// Rename a tag.
-///
-/// Required role: admin.
-#[utoipa::path(
-    patch,
-    path = "/tags/{id}",
-    operation_id = "update_tag",
-    tag = "organization",
-    params(("id" = Uuid, Path, description = "Tag ID")),
-    request_body = TagInput,
-    responses(
-        (status = 200, description = "Renamed", body = Tag),
-        (status = 400, description = "Invalid name", body = Problem),
-        (status = 401, description = "Not signed in", body = Problem),
-        (status = 403, description = "Not an admin", body = Problem),
-        (status = 404, description = "No such tag", body = Problem),
-        (status = 409, description = "Name taken", body = Problem),
-    )
-)]
-pub async fn update_tag(
-    admin: AdminUser,
-    State(state): State<AppState>,
-    ClientIp(ip): ClientIp,
-    PathParam(id): PathParam<Uuid>,
-    JsonBody(body): JsonBody<TagInput>,
-) -> Result<Json<Tag>, ApiError> {
-    let (before, after) = tags::rename(&state.db, id, &body.name)
-        .await
-        .map_err(org_error)?;
-    audit::record(
-        &state.db,
-        AuditEvent::new(action::TAG_UPDATE, Outcome::Success)
-            .actor(Some(admin.id), &admin.username)
-            .target("tag", id)
-            .ip(ip)
-            .details(serde_json::json!({ "from": before.name, "to": after.name })),
-    )
-    .await?;
-    state.events.publish(Event::OrganizationChanged {
-        kind: OrganizationKind::Tags,
-    });
-    announce_cameras(&state, &tags::members(&state.db, id).await?).await?;
-    Ok(Json(after))
-}
-
-/// Delete a tag. It's removed from every camera.
-///
-/// Required role: admin.
-#[utoipa::path(
-    delete,
-    path = "/tags/{id}",
-    operation_id = "delete_tag",
-    tag = "organization",
-    params(("id" = Uuid, Path, description = "Tag ID")),
-    responses(
-        (status = 204, description = "Deleted"),
-        (status = 401, description = "Not signed in", body = Problem),
-        (status = 403, description = "Not an admin", body = Problem),
-        (status = 404, description = "No such tag", body = Problem),
-    )
-)]
-pub async fn delete_tag(
-    admin: AdminUser,
-    State(state): State<AppState>,
-    ClientIp(ip): ClientIp,
-    PathParam(id): PathParam<Uuid>,
-) -> Result<StatusCode, ApiError> {
-    let affected = tags::members(&state.db, id).await?;
-    let tag = tags::delete(&state.db, id).await.map_err(org_error)?;
-    audit::record(
-        &state.db,
-        AuditEvent::new(action::TAG_DELETE, Outcome::Success)
-            .actor(Some(admin.id), &admin.username)
-            .target("tag", id)
-            .ip(ip)
-            .details(serde_json::json!({ "name": tag.name, "cameras": affected.len() })),
-    )
-    .await?;
-    state.events.publish(Event::OrganizationChanged {
-        kind: OrganizationKind::Tags,
-    });
-    announce_cameras(&state, &affected).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"n!: i64\"\n             FROM cameras c JOIN camera_status s ON s.camera_id = c.id\n            WHERE (?1 IS NULL OR c.name LIKE ?1 ESCAPE '\\' OR c.host LIKE ?1 ESCAPE '\\'\n                   OR c.model LIKE ?1 ESCAPE '\\')\n              AND (?2 IS NULL OR s.state = ?2)\n              AND (?3 IS NULL OR c.id IN (\n                    SELECT cg.camera_id FROM camera_groups cg\n                     WHERE cg.group_id IN (\n                       WITH RECURSIVE sub(id) AS (\n                         SELECT ?3 UNION SELECT g.id FROM groups g JOIN sub ON g.parent_id = sub.id\n                       ) SELECT id FROM sub)))\n              AND (?4 IS NULL OR c.id IN (SELECT f.camera_id FROM favorites f WHERE f.user_id = ?4))",
+  "describe": {
+    "columns": [
+      {
+        "name": "n!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0cc0ecdcfff4fe8a494d98353a275efe0c6fe5606ac574945389b853ea63f40b"
+}

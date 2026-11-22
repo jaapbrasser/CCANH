@@ -21,7 +21,7 @@ use crate::cameras::{
 };
 use crate::events::Event;
 use crate::monitoring;
-use crate::organization::{groups, tags};
+use crate::organization::groups;
 use crate::users::SortOrder;
 use crate::AppState;
 
@@ -62,8 +62,6 @@ pub struct CameraListQuery {
     pub order: Option<SortOrder>,
     /// Only cameras in this group or any of its subgroups.
     pub group_id: Option<Uuid>,
-    /// Only cameras with this tag.
-    pub tag_id: Option<Uuid>,
     /// `true`: only the signed-in user's favorites.
     pub favorites: Option<bool>,
 }
@@ -128,7 +126,6 @@ pub async fn list(
             limit: page.limit(),
             offset: page.offset(),
             group: query.group_id,
-            tag: query.tag_id,
             favorites_of: (query.favorites == Some(true)).then_some(user.id),
         },
     )
@@ -227,7 +224,6 @@ pub(super) fn settings_json(c: &CameraDetail) -> serde_json::Value {
         "credential_set": c.credential_set.as_ref().map(|s| &s.name),
         "allow_basic_over_http": c.allow_basic_over_http,
         "groups": c.summary.groups.iter().map(|g| &g.name).collect::<Vec<_>>(),
-        "tags": c.summary.tags.iter().map(|t| &t.name).collect::<Vec<_>>(),
     })
 }
 
@@ -256,14 +252,10 @@ pub async fn create(
     JsonBody(mut body): JsonBody<NewCamera>,
 ) -> Result<(StatusCode, Json<CameraDetail>), ApiError> {
     let group_ids = std::mem::take(&mut body.group_ids);
-    let tag_ids = std::mem::take(&mut body.tag_ids);
     let (settings, credentials) =
         CameraSettings::from_new(body, &state.settings.current().camera_defaults)
             .map_err(|e| camera_error(e.into()))?;
     groups::ensure_exist(&state.db, &group_ids)
-        .await
-        .map_err(super::organization::org_error)?;
-    tags::ensure_exist(&state.db, &tag_ids)
         .await
         .map_err(super::organization::org_error)?;
     let created = cameras::create(&state.db, &*state.credentials, &settings, credentials)
@@ -272,11 +264,6 @@ pub async fn create(
     let id = created.summary.id;
     if !group_ids.is_empty() {
         groups::set_for_camera(&state.db, id, &group_ids)
-            .await
-            .map_err(super::organization::org_error)?;
-    }
-    if !tag_ids.is_empty() {
-        tags::set_for_camera(&state.db, id, &tag_ids)
             .await
             .map_err(super::organization::org_error)?;
     }
@@ -327,14 +314,8 @@ pub async fn update(
     JsonBody(mut body): JsonBody<CameraPatch>,
 ) -> Result<Json<CameraDetail>, ApiError> {
     let group_ids = body.group_ids.take();
-    let tag_ids = body.tag_ids.take();
     if let Some(g) = &group_ids {
         groups::ensure_exist(&state.db, g)
-            .await
-            .map_err(super::organization::org_error)?;
-    }
-    if let Some(t) = &tag_ids {
-        tags::ensure_exist(&state.db, t)
             .await
             .map_err(super::organization::org_error)?;
     }
@@ -344,11 +325,6 @@ pub async fn update(
         .map_err(camera_error)?;
     if let Some(g) = &group_ids {
         groups::set_for_camera(&state.db, id, g)
-            .await
-            .map_err(super::organization::org_error)?;
-    }
-    if let Some(t) = &tag_ids {
-        tags::set_for_camera(&state.db, id, t)
             .await
             .map_err(super::organization::org_error)?;
     }
@@ -607,12 +583,6 @@ impl BulkSettings {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BulkAction {
-    AddTags {
-        tag_ids: Vec<Uuid>,
-    },
-    RemoveTags {
-        tag_ids: Vec<Uuid>,
-    },
     AddGroups {
         group_ids: Vec<Uuid>,
     },
@@ -633,8 +603,6 @@ pub enum BulkAction {
 impl BulkAction {
     fn name(&self) -> &'static str {
         match self {
-            BulkAction::AddTags { .. } => "add_tags",
-            BulkAction::RemoveTags { .. } => "remove_tags",
             BulkAction::AddGroups { .. } => "add_groups",
             BulkAction::RemoveGroups { .. } => "remove_groups",
             BulkAction::SetMonitoring { .. } => "set_monitoring",
@@ -646,9 +614,6 @@ impl BulkAction {
     /// For the audit log; never contains secrets.
     fn describe(&self) -> serde_json::Value {
         match self {
-            BulkAction::AddTags { tag_ids } | BulkAction::RemoveTags { tag_ids } => {
-                serde_json::json!({ "type": self.name(), "tag_ids": tag_ids })
-            }
             BulkAction::AddGroups { group_ids } | BulkAction::RemoveGroups { group_ids } => {
                 serde_json::json!({ "type": self.name(), "group_ids": group_ids })
             }
@@ -665,7 +630,7 @@ impl BulkAction {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct BulkRequest {
-    /// Cameras by id. Together with `group_id` and `tag_id` (all optional,
+    /// Cameras by id. Together with `group_id` (both optional,
     /// combined as a union) the selection must come to 1–500 cameras.
     #[serde(default)]
     pub camera_ids: Vec<Uuid>,
@@ -675,9 +640,6 @@ pub struct BulkRequest {
     /// With `group_id`: include cameras in its subgroups (default true).
     #[serde(default = "default_true")]
     pub include_subgroups: bool,
-    /// Every camera with this tag.
-    #[serde(default)]
-    pub tag_id: Option<Uuid>,
     pub action: BulkAction,
 }
 
@@ -704,7 +666,7 @@ pub struct BulkResult {
     pub skipped: Vec<BulkSkipped>,
 }
 
-/// Resolve a bulk selection (ids, group, tag) to unique camera ids.
+/// Resolve a bulk selection (ids, group) to unique camera ids.
 async fn resolve_selection(state: &AppState, body: &BulkRequest) -> Result<Vec<Uuid>, ApiError> {
     use crate::organization::{ensure_cameras_exist, unique};
     let org = super::organization::org_error;
@@ -725,18 +687,14 @@ async fn resolve_selection(state: &AppState, body: &BulkRequest) -> Result<Vec<U
             ids.extend(groups::direct_members(&state.db, g).await?);
         }
     }
-    if let Some(tag) = body.tag_id {
-        tags::ensure_exist(&state.db, &[tag]).await.map_err(org)?;
-        ids.extend(tags::members(&state.db, tag).await?);
-    }
     Ok(unique(&ids))
 }
 
-/// Apply one action to many cameras (tag, group, monitoring, settings, delete).
+/// Apply one action to many cameras (group, monitoring, settings, delete).
 ///
 /// Required role: admin. Select cameras by id, by group (optionally with its
-/// subgroups) and/or by tag. Validated up front (400 for unknown cameras,
-/// tags or groups, or an empty selection), then runs as a background task
+/// subgroups). Validated up front (400 for unknown cameras or groups, or an
+/// empty selection), then runs as a background task
 /// (`bulk_cameras`) whose result is a `BulkResult`. Follow it via the `tasks`
 /// topic. Cancelling stops between cameras; work already done stays done.
 /// Settings changes are audited per camera (`camera.update`, never secrets)
@@ -769,12 +727,6 @@ pub async fn bulk(
     }
     let org = super::organization::org_error;
     match &body.action {
-        BulkAction::AddTags { tag_ids } | BulkAction::RemoveTags { tag_ids } => {
-            if tag_ids.is_empty() {
-                return Err(ApiError::BadRequest("choose at least one tag".into()));
-            }
-            tags::ensure_exist(&state.db, tag_ids).await.map_err(org)?;
-        }
         BulkAction::AddGroups { group_ids } | BulkAction::RemoveGroups { group_ids } => {
             if group_ids.is_empty() {
                 return Err(ApiError::BadRequest("choose at least one group".into()));
@@ -820,16 +772,6 @@ pub async fn bulk(
             let mut processed: u32 = 0;
             let mut skipped: Vec<BulkSkipped> = Vec::new();
             match &action {
-                BulkAction::AddTags { tag_ids } => {
-                    tags::add_cameras(&state.db, &ids, tag_ids)
-                        .await
-                        .map_err(|e| fail(e.into()))?;
-                }
-                BulkAction::RemoveTags { tag_ids } => {
-                    tags::remove_cameras(&state.db, &ids, tag_ids)
-                        .await
-                        .map_err(|e| fail(e.into()))?;
-                }
                 BulkAction::AddGroups { group_ids } => {
                     groups::add_cameras(&state.db, &ids, group_ids)
                         .await

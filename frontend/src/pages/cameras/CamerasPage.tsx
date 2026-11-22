@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { useMe } from "../../api/auth";
 import { useCameras, type CameraListQuery, type CameraState } from "../../api/cameras";
 import { errorMessage } from "../../api/client";
-import { useGroups, useTags } from "../../api/organization";
+import { useGroups } from "../../api/organization";
 import { Chips, FavoriteButton, GroupSelect } from "../../components/organization";
 import { StatusBadge } from "../../components/StatusBadge";
 import { Alert, Button, PageHeader, Pagination } from "../../components/ui";
@@ -23,7 +23,6 @@ const COLUMNS: { key: Sort | null; label: string }[] = [
   { key: "last_success_at", label: "Last contact" },
   { key: "last_change_at", label: "Last change" },
   { key: null, label: "Groups" },
-  { key: null, label: "Tags" },
 ];
 
 const filterClass = "rounded border border-slate-700 bg-slate-900 px-3 py-2";
@@ -36,12 +35,10 @@ export function CamerasPage() {
   const isAdmin = me?.role === "admin";
   const navigate = useNavigate();
   const groups = useGroups();
-  const tags = useTags();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"" | CameraState>("");
   const [group, setGroup] = useState("");
-  const [tag, setTag] = useState("");
   const [onlyFavorites, setOnlyFavorites] = useState(() => params.get("favorites") === "1");
   const [sort, setSort] = useState<Sort>("name");
   const [order, setOrder] = useState<"asc" | "desc">("asc");
@@ -54,7 +51,6 @@ export function CamerasPage() {
     q: search.trim() || undefined,
     status: status || undefined,
     group_id: group || undefined,
-    tag_id: tag || undefined,
     favorites: onlyFavorites || undefined,
     sort,
     order,
@@ -65,10 +61,12 @@ export function CamerasPage() {
   const selection = selected.filter((id) => visible.has(id));
   const allSelected = items.length > 0 && selection.length === items.length;
 
-  const filtered = <T,>(set: (v: T) => void) => (v: T) => {
-    set(v);
-    setPage(1);
-  };
+  const filtered =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      set(v);
+      setPage(1);
+    };
   const toggleSort = (key: Sort) => {
     if (key === sort) setOrder(order === "asc" ? "desc" : "asc");
     else {
@@ -121,28 +119,18 @@ export function CamerasPage() {
           onChange={filtered(setGroup)}
           emptyLabel="Cranes"
         />
-        <select aria-label="Filter by tag" className={filterClass} value={tag} onChange={(e) => filtered(setTag)(e.target.value)}>
-          <option value="">Any tag</option>
-          {tags.data?.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
         <label className="flex items-center gap-2 text-slate-300">
-          <input type="checkbox" checked={onlyFavorites} onChange={(e) => filtered(setOnlyFavorites)(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={onlyFavorites}
+            onChange={(e) => filtered(setOnlyFavorites)(e.target.checked)}
+          />
           Favorites only
         </label>
       </div>
 
       {selection.length > 0 && (
-        <BulkBar
-          cameraIds={selection}
-          admin={isAdmin}
-          groups={groups.data ?? []}
-          tags={tags.data ?? []}
-          onDone={() => setSelected([])}
-        />
+        <BulkBar cameraIds={selection} admin={isAdmin} groups={groups.data ?? []} onDone={() => setSelected([])} />
       )}
 
       {cameras.isError && <Alert>{errorMessage(cameras.error)}</Alert>}
@@ -201,7 +189,11 @@ export function CamerasPage() {
                   <FavoriteButton cameraId={cam.id} name={cam.name} />
                 </td>
                 <td className="px-4 py-2">
-                  <Link to={`/cameras/${cam.id}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+                  <Link
+                    to={`/cameras/${cam.id}`}
+                    className="font-medium hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {cam.name}
                   </Link>
                   {!cam.monitoring_enabled && <span className="ml-2 text-xs text-slate-500">not monitored</span>}
@@ -218,15 +210,14 @@ export function CamerasPage() {
                 <td className="px-4 py-2">
                   <Chips items={cam.groups} label={`Groups of ${cam.name}`} />
                 </td>
-                <td className="px-4 py-2">
-                  <Chips items={cam.tags} label={`Tags of ${cam.name}`} />
-                </td>
               </tr>
             ))}
             {cameras.data?.items.length === 0 && (
               <tr>
                 <td colSpan={COLUMNS.length + 2} className="px-4 py-8 text-center text-slate-500">
-                  {onlyFavorites ? "No favorites match. Mark cameras with the ☆ or select them and choose Add to favorites." : "No cameras match."}
+                  {onlyFavorites
+                    ? "No favorites match. Mark cameras with the ☆ or select them and choose Add to favorites."
+                    : "No cameras match."}
                 </td>
               </tr>
             )}
@@ -236,11 +227,18 @@ export function CamerasPage() {
 
       {cameras.data && (
         <div className="mt-4">
-          <Pagination page={cameras.data.page} pageSize={cameras.data.page_size} total={cameras.data.total} onPage={setPage} />
+          <Pagination
+            page={cameras.data.page}
+            pageSize={cameras.data.page_size}
+            total={cameras.data.total}
+            onPage={setPage}
+          />
         </div>
       )}
 
-      {adding && <CameraFormDialog onClose={() => setAdding(false)} onSaved={(cam) => navigate(`/cameras/${cam.id}`)} />}
+      {adding && (
+        <CameraFormDialog onClose={() => setAdding(false)} onSaved={(cam) => navigate(`/cameras/${cam.id}`)} />
+      )}
     </div>
   );
 }

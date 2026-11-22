@@ -7,7 +7,7 @@ const SETTINGS_PAGES = [
   { path: "activity", label: "Activity", admin: false },
   { path: "credentials", label: "Credentials", admin: true },
   { path: "users", label: "Users", admin: true },
-  { path: "groups-tags", label: "Groups & tags", admin: true },
+  { path: "groups", label: "Groups", admin: true },
   { path: "streams", label: "Streams", admin: true },
   { path: "audit", label: "Audit log", admin: true },
 ] as const;

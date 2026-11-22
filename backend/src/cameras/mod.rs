@@ -95,7 +95,6 @@ impl From<SummaryRow> for CameraSummary {
                 identity_error_message: r.identity_error_message,
             },
             groups: Vec::new(),
-            tags: Vec::new(),
         }
     }
 }
@@ -135,12 +134,11 @@ pub struct ListParams<'a> {
     pub offset: i64,
     /// Cameras in this group or any of its subgroups.
     pub group: Option<Uuid>,
-    pub tag: Option<Uuid>,
     /// Only this user's favorites.
     pub favorites_of: Option<Uuid>,
 }
 
-/// Fill in each summary's groups and tags.
+/// Fill in each summary's groups.
 pub async fn attach_memberships(
     db: &SqlitePool,
     items: &mut [CameraSummary],
@@ -148,9 +146,8 @@ pub async fn attach_memberships(
     let ids: Vec<Uuid> = items.iter().map(|c| c.id).collect();
     let mut m = crate::organization::memberships(db, &ids).await?;
     for c in items {
-        if let Some((groups, tags)) = m.remove(&c.id) {
+        if let Some(groups) = m.remove(&c.id) {
             c.groups = groups;
-            c.tags = tags;
         }
     }
     Ok(())
@@ -171,7 +168,6 @@ pub async fn list(
     let pattern = p.search.map(like_pattern);
     let state = p.state;
     let group = p.group.map(Uuid::hyphenated);
-    let tag = p.tag.map(Uuid::hyphenated);
     let favorites_of = p.favorites_of.map(Uuid::hyphenated);
     let sort = p.sort.as_str();
     let order = if p.descending { "desc" } else { "asc" };
@@ -188,12 +184,10 @@ pub async fn list(
                        WITH RECURSIVE sub(id) AS (
                          SELECT ?3 UNION SELECT g.id FROM groups g JOIN sub ON g.parent_id = sub.id
                        ) SELECT id FROM sub)))
-              AND (?4 IS NULL OR c.id IN (SELECT ct.camera_id FROM camera_tags ct WHERE ct.tag_id = ?4))
-              AND (?5 IS NULL OR c.id IN (SELECT f.camera_id FROM favorites f WHERE f.user_id = ?5))"#,
+              AND (?4 IS NULL OR c.id IN (SELECT f.camera_id FROM favorites f WHERE f.user_id = ?4))"#,
         pattern,
         state,
         group,
-        tag,
         favorites_of
     )
     .fetch_one(db)
@@ -224,8 +218,7 @@ pub async fn list(
                        WITH RECURSIVE sub(id) AS (
                          SELECT ?7 UNION SELECT g.id FROM groups g JOIN sub ON g.parent_id = sub.id
                        ) SELECT id FROM sub)))
-              AND (?8 IS NULL OR c.id IN (SELECT ct.camera_id FROM camera_tags ct WHERE ct.tag_id = ?8))
-              AND (?9 IS NULL OR c.id IN (SELECT f.camera_id FROM favorites f WHERE f.user_id = ?9))
+              AND (?8 IS NULL OR c.id IN (SELECT f.camera_id FROM favorites f WHERE f.user_id = ?8))
             ORDER BY
               CASE WHEN ?3 = 'name'  AND ?4 = 'asc'  THEN c.name  COLLATE NOCASE END ASC,
               CASE WHEN ?3 = 'name'  AND ?4 = 'desc' THEN c.name  COLLATE NOCASE END DESC,
@@ -248,7 +241,6 @@ pub async fn list(
         p.limit,
         p.offset,
         group,
-        tag,
         favorites_of
     )
     .fetch_all(db)
@@ -998,7 +990,6 @@ mod tests {
                 credentials: None,
                 allow_basic_over_http: Some(false),
                 group_ids: vec![],
-                tag_ids: vec![],
             },
             &defaults(),
         )
@@ -1018,7 +1009,6 @@ mod tests {
             credentials: None,
             allow_basic_over_http: None,
             group_ids: vec![],
-            tag_ids: vec![],
         }
     }
 
@@ -1191,7 +1181,6 @@ mod tests {
             credentials: None,
             allow_basic_over_http: Some(false),
             group_ids: vec![],
-            tag_ids: vec![],
         };
         assert_eq!(
             CameraSettings::from_new(base(None), &defaults()).err(),

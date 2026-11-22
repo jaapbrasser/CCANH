@@ -14,9 +14,7 @@ describe("login", () => {
         signedInAs(ADMIN);
         return HttpResponse.json(ADMIN);
       }),
-      http.get("/api/v1/users", () =>
-        HttpResponse.json({ items: [], total: 0, page: 1, page_size: 25 }),
-      ),
+      http.get("/api/v1/users", () => HttpResponse.json({ items: [], total: 0, page: 1, page_size: 25 })),
     );
     renderApp("/users");
 
@@ -89,7 +87,11 @@ describe("authorization in the UI", () => {
     expect(main).not.toHaveTextContent("Favorites");
     // Viewers get the cog, with only the pages they may open.
     const settings = screen.getByRole("navigation", { name: "Settings" });
-    expect(within(settings).getAllByRole("link").map((l) => l.textContent)).toEqual(["Activity"]);
+    expect(
+      within(settings)
+        .getAllByRole("link")
+        .map((l) => l.textContent),
+    ).toEqual(["Activity"]);
   });
 
   it("puts the admin pages in the settings sidebar", async () => {
@@ -97,16 +99,11 @@ describe("authorization in the UI", () => {
     renderApp("/");
     await userEvent.click(await screen.findByRole("link", { name: "Settings" }));
     const settings = await screen.findByRole("navigation", { name: "Settings" });
-    expect(within(settings).getAllByRole("link").map((l) => l.textContent)).toEqual([
-      "General",
-      "Activity",
-      "Credentials",
-      "Users",
-      "Groups & tags",
-      "Streams",
-      "Audit log",
-      "API docs ↗",
-    ]);
+    expect(
+      within(settings)
+        .getAllByRole("link")
+        .map((l) => l.textContent),
+    ).toEqual(["General", "Activity", "Credentials", "Users", "Groups", "Streams", "Audit log", "API docs ↗"]);
     expect(screen.getByTestId("location")).toHaveTextContent(/^\/settings\/general$/);
     expect(await screen.findByRole("heading", { name: "General" })).toBeInTheDocument();
     await userEvent.click(within(settings).getByRole("link", { name: "Audit log" }));

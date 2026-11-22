@@ -1,13 +1,12 @@
-//! Groups, tags and favorites (SPEC §9, ADR 0009).
+//! Groups and favorites (SPEC §9, ADR 0009; tags were removed in 0.4.0).
 //!
-//! Groups and tags are global and admin-managed; favorites belong to one user
+//! Groups are global and admin-managed; favorites belong to one user
 //! and are never shown to others. Groups form a tree stored as an adjacency
 //! list; moves that would create a cycle are refused.
 
 pub mod favorites;
 pub mod groups;
 pub mod model;
-pub mod tags;
 
 use std::collections::HashMap;
 
@@ -63,12 +62,12 @@ pub(crate) fn unique(ids: &[Uuid]) -> Vec<Uuid> {
     ids.iter().copied().filter(|id| seen.insert(*id)).collect()
 }
 
-/// Groups and tags of each camera in `camera_ids`, sorted by name.
+/// Groups of each camera in `camera_ids`, sorted by name.
 pub async fn memberships(
     db: &SqlitePool,
     camera_ids: &[Uuid],
-) -> Result<HashMap<Uuid, (Vec<GroupRef>, Vec<TagRef>)>, sqlx::Error> {
-    let mut out: HashMap<Uuid, (Vec<GroupRef>, Vec<TagRef>)> = HashMap::new();
+) -> Result<HashMap<Uuid, Vec<GroupRef>>, sqlx::Error> {
+    let mut out: HashMap<Uuid, Vec<GroupRef>> = HashMap::new();
     if camera_ids.is_empty() {
         return Ok(out);
     }
@@ -85,26 +84,7 @@ pub async fn memberships(
     for r in groups {
         out.entry(r.camera_id.into_uuid())
             .or_default()
-            .0
             .push(GroupRef {
-                id: r.id.into_uuid(),
-                name: r.name,
-            });
-    }
-    let tags = sqlx::query!(
-        r#"SELECT ct.camera_id AS "camera_id: Hyphenated", t.id AS "id: Hyphenated", t.name
-             FROM camera_tags ct JOIN tags t ON t.id = ct.tag_id
-            WHERE ct.camera_id IN (SELECT value FROM json_each(?1))
-            ORDER BY t.name COLLATE NOCASE"#,
-        ids
-    )
-    .fetch_all(db)
-    .await?;
-    for r in tags {
-        out.entry(r.camera_id.into_uuid())
-            .or_default()
-            .1
-            .push(TagRef {
                 id: r.id.into_uuid(),
                 name: r.name,
             });

@@ -1,13 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { groupTree, useGroups, useTags } from "../../api/organization";
+import { groupTree, useGroups } from "../../api/organization";
 import { MultiPick } from "../../components/organization";
 import { errorMessage } from "../../api/client";
-import {
-  useCreateCamera,
-  useUpdateCamera,
-  type CameraDetail,
-  type NewCamera,
-} from "../../api/cameras";
+import { useCreateCamera, useUpdateCamera, type CameraDetail, type NewCamera } from "../../api/cameras";
 import {
   useCredentialSets,
   useTestConnection,
@@ -38,7 +33,6 @@ interface FormState {
   username: string;
   password: string;
   group_ids: string[];
-  tag_ids: string[];
 }
 
 function initial(defaults: CameraDefaults, camera?: CameraDetail): FormState {
@@ -58,7 +52,6 @@ function initial(defaults: CameraDefaults, camera?: CameraDetail): FormState {
     username: "",
     password: "",
     group_ids: camera?.groups.map((g) => g.id) ?? [],
-    tag_ids: camera?.tags.map((t) => t.id) ?? [],
   };
 }
 
@@ -99,7 +92,6 @@ function toBody(f: FormState): NewCamera {
     monitoring_enabled: f.monitoring_enabled,
     credentials: credentialInput(f) ?? null,
     group_ids: f.group_ids,
-    tag_ids: f.tag_ids,
   };
 }
 
@@ -199,7 +191,6 @@ function CameraForm({
 }) {
   const [form, setForm] = useState(() => initial(defaults, camera));
   const groups = useGroups();
-  const tags = useTags();
   const create = useCreateCamera();
   const update = useUpdateCamera(camera?.id ?? "");
   const mutation = camera ? update : create;
@@ -210,10 +201,8 @@ function CameraForm({
   const cancelTest = useCancelTask();
   const task = testTask.data;
   const testRunning = Boolean(testId) && !isTerminal(task?.status);
-  const testResult =
-    task?.status === "succeeded" ? (task.result as unknown as TestConnectionResult | null) : null;
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
-    setForm((f) => ({ ...f, [key]: value }));
+  const testResult = task?.status === "succeeded" ? (task.result as unknown as TestConnectionResult | null) : null;
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -308,8 +297,7 @@ function CameraForm({
         )}
         {form.tls_mode === "insecure_skip_verify" && https && (
           <Alert>
-            The camera's certificate won't be checked, so the connection could be intercepted. This
-            choice is logged.
+            The camera's certificate won't be checked, so the connection could be intercepted. This choice is logged.
           </Alert>
         )}
 
@@ -391,22 +379,13 @@ function CameraForm({
           )}
         </fieldset>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <MultiPick
-            legend="Groups"
-            options={groupTree(groups.data ?? []).map((g) => ({ id: g.id, label: g.name, depth: g.depth }))}
-            selected={form.group_ids}
-            onChange={(ids) => set("group_ids", ids)}
-            empty="No groups yet (Groups & tags)."
-          />
-          <MultiPick
-            legend="Tags"
-            options={(tags.data ?? []).map((t) => ({ id: t.id, label: t.name }))}
-            selected={form.tag_ids}
-            onChange={(ids) => set("tag_ids", ids)}
-            empty="No tags yet (Groups & tags)."
-          />
-        </div>
+        <MultiPick
+          legend="Groups"
+          options={groupTree(groups.data ?? []).map((g) => ({ id: g.id, label: g.name, depth: g.depth }))}
+          selected={form.group_ids}
+          onChange={(ids) => set("group_ids", ids)}
+          empty="No groups yet (Settings → Groups)."
+        />
 
         <label className="flex items-center gap-2 text-sm text-slate-300">
           <input
@@ -419,7 +398,11 @@ function CameraForm({
 
         {test.isError && <Alert>{errorMessage(test.error)}</Alert>}
         {testRunning && (
-          <div role="status" aria-label="Connection test progress" className="flex items-center justify-between gap-3 rounded border border-slate-700 p-3 text-sm">
+          <div
+            role="status"
+            aria-label="Connection test progress"
+            className="flex items-center justify-between gap-3 rounded border border-slate-700 p-3 text-sm"
+          >
             <span>
               {task?.message ?? "Starting test…"}
               {task?.progress_total ? (
@@ -429,14 +412,20 @@ function CameraForm({
                 </span>
               ) : null}
             </span>
-            <Button variant="secondary" disabled={cancelTest.isPending} onClick={() => testId && cancelTest.mutate(testId)}>
+            <Button
+              variant="secondary"
+              disabled={cancelTest.isPending}
+              onClick={() => testId && cancelTest.mutate(testId)}
+            >
               Cancel test
             </Button>
           </div>
         )}
         {task && task.status !== "succeeded" && isTerminal(task.status) && (
           <Alert>
-            {task.status === "cancelled" ? "The connection test was cancelled." : (task.error_message ?? "The connection test failed.")}
+            {task.status === "cancelled"
+              ? "The connection test was cancelled."
+              : (task.error_message ?? "The connection test failed.")}
           </Alert>
         )}
         {testResult && (

@@ -32,7 +32,6 @@ function summary(id: string, name: string, extra: Partial<CameraSummary> = {}): 
       identity_error_message: null,
     },
     groups: [],
-    tags: [],
     ...extra,
   };
 }
@@ -59,8 +58,22 @@ function detail(s: CameraSummary): CameraDetail {
     network: { ipv4_address: s.host, subnet_mask: "255.255.255.0", gateway: null, dhcp: false },
     capabilities: [
       { key: "video.h264", group: "video", label: "H.264", supported: true, version: null, detail: null },
-      { key: "ptz.control", group: "ptz", label: "Pan/tilt/zoom control", supported: true, version: "3.0", detail: null },
-      { key: "audio.input", group: "audio", label: "Audio input", supported: false, version: null, detail: "Not available on this model" },
+      {
+        key: "ptz.control",
+        group: "ptz",
+        label: "Pan/tilt/zoom control",
+        supported: true,
+        version: "3.0",
+        detail: null,
+      },
+      {
+        key: "audio.input",
+        group: "audio",
+        label: "Audio input",
+        supported: false,
+        version: null,
+        detail: "Not available on this model",
+      },
     ],
     stream_profiles: [
       { id: "main", name: "Main (1080p)", codec: "h264", width: 1920, height: 1080, fps: 30, bitrate_kbps: 4000 },
@@ -104,14 +117,10 @@ describe("camera list", () => {
     renderApp("/cameras");
     await screen.findByRole("link", { name: "A1 Crane 1 – Hook" });
     await userEvent.selectOptions(screen.getByLabelText("Filter by status"), "offline");
-    await waitFor(() =>
-      expect(screen.queryByRole("link", { name: "A1 Crane 1 – Hook" })).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByRole("link", { name: "A1 Crane 1 – Hook" })).not.toBeInTheDocument());
     await userEvent.selectOptions(screen.getByLabelText("Filter by status"), "");
     await userEvent.type(screen.getByLabelText("Search cameras"), "hook");
-    await waitFor(() =>
-      expect(screen.queryByRole("link", { name: "A Yard – Rail Spur" })).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByRole("link", { name: "A Yard – Rail Spur" })).not.toBeInTheDocument());
   });
 
   it("subscribes to live updates and applies status changes", async () => {
@@ -202,7 +211,9 @@ describe("camera detail", () => {
     await userEvent.click(within(form).getByRole("button", { name: "Save profile choices" }));
     await waitFor(() => expect(body).toEqual({ grid_profile: "grid", detail_profile: null }));
     await waitFor(() =>
-      expect(within(screen.getByRole("form", { name: "Profile choices" })).getByLabelText("Grid tiles")).toHaveValue("grid"),
+      expect(within(screen.getByRole("form", { name: "Profile choices" })).getByLabelText("Grid tiles")).toHaveValue(
+        "grid",
+      ),
     );
   });
 
@@ -212,7 +223,9 @@ describe("camera detail", () => {
       http.get("/api/v1/cameras/:id", () =>
         HttpResponse.json({
           ...detail(HOOK),
-          stream_profiles: [{ id: "main", name: "Main", codec: "h265", width: 1920, height: 1080, fps: 30, bitrate_kbps: 4000 }],
+          stream_profiles: [
+            { id: "main", name: "Main", codec: "h265", width: 1920, height: 1080, fps: 30, bitrate_kbps: 4000 },
+          ],
         }),
       ),
     );
@@ -300,7 +313,9 @@ describe("adding a camera", () => {
       // Only the camera defaults matter to the form.
       http.get("/api/v1/settings", () =>
         HttpResponse.json({
-          current: { camera_defaults: { scheme: "http", allow_basic_over_http: true, tls_mode: "insecure_skip_verify" } },
+          current: {
+            camera_defaults: { scheme: "http", allow_basic_over_http: true, tls_mode: "insecure_skip_verify" },
+          },
         }),
       ),
       http.post("/api/v1/cameras", async ({ request }) => {
@@ -342,7 +357,9 @@ describe("adding a camera", () => {
       listHandler(),
       http.get("/api/v1/settings", () =>
         HttpResponse.json({
-          current: { camera_defaults: { scheme: "http", allow_basic_over_http: true, tls_mode: "insecure_skip_verify" } },
+          current: {
+            camera_defaults: { scheme: "http", allow_basic_over_http: true, tls_mode: "insecure_skip_verify" },
+          },
         }),
       ),
       http.post("/api/v1/cameras", async ({ request }) => {

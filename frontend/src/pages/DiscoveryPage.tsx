@@ -14,7 +14,7 @@ import {
   type DiscoveredDevice,
   type DiscoveryJobDetail,
 } from "../api/discovery";
-import { groupTree, useCreateGroup, useCreateTag, useGroups, useTags } from "../api/organization";
+import { groupTree, useCreateGroup, useGroups } from "../api/organization";
 import { SHIPPED_CAMERA_DEFAULTS, useSettings } from "../api/settings";
 import { isTerminal, useCancelTask, useTask } from "../api/tasks";
 import { errorCategoryLabel } from "../utils/format";
@@ -71,7 +71,11 @@ export function DiscoveryPage() {
             </ul>
           </section>
         </div>
-        {jobId ? <JobPanel id={jobId} /> : <div className="text-sm text-slate-500">Start a scan to see results here.</div>}
+        {jobId ? (
+          <JobPanel id={jobId} />
+        ) : (
+          <div className="text-sm text-slate-500">Start a scan to see results here.</div>
+        )}
       </div>
     </div>
   );
@@ -107,7 +111,9 @@ function StartForm({ onStarted }: { onStarted: (id: string) => void }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
-        <span className="text-xs text-slate-500">CIDR blocks, single addresses or ranges; one per line or comma-separated.</span>
+        <span className="text-xs text-slate-500">
+          CIDR blocks, single addresses or ranges; one per line or comma-separated.
+        </span>
       </label>
       <p role="status" className="text-sm text-slate-300">
         {preview.isError && text.trim() ? (
@@ -122,14 +128,12 @@ function StartForm({ onStarted }: { onStarted: (id: string) => void }) {
       {p?.needs_confirmation && !p.too_large && (
         <label className="flex items-start gap-2 text-sm text-amber-200">
           <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />
-          Scan {p.address_count.toLocaleString()} addresses, more than the usual limit of {p.max_addresses.toLocaleString()}
+          Scan {p.address_count.toLocaleString()} addresses, more than the usual limit of{" "}
+          {p.max_addresses.toLocaleString()}
         </label>
       )}
       {start.isError && <Alert>{errorMessage(start.error)}</Alert>}
-      <Button
-        type="submit"
-        disabled={!p || p.too_large || (p.needs_confirmation && !confirm) || start.isPending}
-      >
+      <Button type="submit" disabled={!p || p.too_large || (p.needs_confirmation && !confirm) || start.isPending}>
         Start scan
       </Button>
     </form>
@@ -206,8 +210,8 @@ function JobPanel({ id }: { id: string }) {
               : running
                 ? "Scanning… "
                 : "Finished. "}
-          {j.scanned.toLocaleString()} of {j.address_count.toLocaleString()} addresses checked, {j.responsive} responding,{" "}
-          {j.found} AXIS device{j.found === 1 ? "" : "s"} found.
+          {j.scanned.toLocaleString()} of {j.address_count.toLocaleString()} addresses checked, {j.responsive}{" "}
+          responding, {j.found} AXIS device{j.found === 1 ? "" : "s"} found.
         </p>
       </div>
 
@@ -247,7 +251,9 @@ function JobPanel({ id }: { id: string }) {
                         type="checkbox"
                         aria-label={`Select ${r.ip}`}
                         checked={selection.includes(r.id)}
-                        onChange={(e) => setPicked(e.target.checked ? [...selection, r.id] : selection.filter((x) => x !== r.id))}
+                        onChange={(e) =>
+                          setPicked(e.target.checked ? [...selection, r.id] : selection.filter((x) => x !== r.id))
+                        }
                       />
                     )}
                   </td>
@@ -310,8 +316,6 @@ function RegisterDialog({
   const register = useRegisterDiscovered(job.id);
   const sets = useCredentialSets();
   const groups = useGroups();
-  const tags = useTags();
-  const createTag = useCreateTag();
   const createGroup = useCreateGroup();
   const settings = useSettings();
   const defaults = settings.data?.current.camera_defaults ?? SHIPPED_CAMERA_DEFAULTS;
@@ -320,7 +324,6 @@ function RegisterDialog({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [groupIds, setGroupIds] = useState<string[]>([]);
-  const [tagIds, setTagIds] = useState<string[]>([]);
   const [monitoring, setMonitoring] = useState(true);
   const [basicChoice, setBasicChoice] = useState<boolean | null>(null);
   const allowBasic = basicChoice ?? defaults.allow_basic_over_http;
@@ -336,7 +339,11 @@ function RegisterDialog({
     testTask.data?.status === "succeeded" ? (testTask.data.result as unknown as CredentialTestResult | null) : null;
 
   const credentials = (): CredentialInput =>
-    mode === "set" ? { type: "set", id: setId } : mode === "inline" ? { type: "inline", username, password } : { type: "none" };
+    mode === "set"
+      ? { type: "set", id: setId }
+      : mode === "inline"
+        ? { type: "inline", username, password }
+        : { type: "none" };
   const credentialsComplete = mode === "none" || (mode === "set" ? Boolean(setId) : Boolean(username && password));
 
   const runTest = () => {
@@ -354,14 +361,16 @@ function RegisterDialog({
         result_ids: resultIds,
         credentials: credentials(),
         group_ids: groupIds,
-        tag_ids: tagIds,
         monitoring_enabled: monitoring,
         allow_basic_over_http: allowBasic,
       },
       {
         onSuccess: (out) => {
           const skipped = out.skipped.length ? `, ${out.skipped.length} skipped (${out.skipped[0]!.reason})` : "";
-          showToast("success", `Registered ${out.registered.length} camera${out.registered.length === 1 ? "" : "s"}${skipped}.`);
+          showToast(
+            "success",
+            `Registered ${out.registered.length} camera${out.registered.length === 1 ? "" : "s"}${skipped}.`,
+          );
           onDone();
         },
       },
@@ -373,8 +382,8 @@ function RegisterDialog({
       <form onSubmit={onSubmit} className="flex max-h-[75vh] flex-col gap-4 overflow-y-auto pr-1 text-sm">
         {register.isError && <Alert>{errorMessage(register.error)}</Alert>}
         <p className="text-slate-400">
-          HTTPS devices are pinned to the certificate seen during the scan. Names come from the device; one that
-          reports none shows its address until it does.
+          HTTPS devices are pinned to the certificate seen during the scan. Names come from the device; one that reports
+          none shows its address until it does.
         </p>
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-slate-300">Credentials</legend>
@@ -461,26 +470,15 @@ function RegisterDialog({
           {testTask.data?.status === "failed" && <Alert>{testTask.data.error_message ?? "The test failed."}</Alert>}
           {testResult && <CredentialResults result={testResult} />}
         </fieldset>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <MultiPick
-            legend="Groups"
-            options={groupTree(groups.data ?? []).map((g) => ({ id: g.id, label: g.name, depth: g.depth }))}
-            selected={groupIds}
-            onChange={setGroupIds}
-            empty="No groups yet: create one below."
-            createLabel="New group name"
-            onCreate={async (name) => (await createGroup.mutateAsync({ name })).id}
-          />
-          <MultiPick
-            legend="Tags"
-            options={(tags.data ?? []).map((t) => ({ id: t.id, label: t.name }))}
-            selected={tagIds}
-            onChange={setTagIds}
-            empty="No tags yet: create one below."
-            createLabel="New tag name"
-            onCreate={async (name) => (await createTag.mutateAsync(name)).id}
-          />
-        </div>
+        <MultiPick
+          legend="Groups"
+          options={groupTree(groups.data ?? []).map((g) => ({ id: g.id, label: g.name, depth: g.depth }))}
+          selected={groupIds}
+          onChange={setGroupIds}
+          empty="No groups yet: create one below."
+          createLabel="New group name"
+          onCreate={async (name) => (await createGroup.mutateAsync({ name })).id}
+        />
         <label className="flex items-center gap-2 text-slate-300">
           <input type="checkbox" checked={monitoring} onChange={(e) => setMonitoring(e.target.checked)} />
           Monitor these cameras' status
