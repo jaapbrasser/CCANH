@@ -20,7 +20,8 @@ use self::catalog::Scenario;
 use self::models::{ModelKey, ALL_MODELS};
 use super::{
     CameraCapabilities, CameraProvider, CameraStatus, DeviceInfo, MediaSource, NetworkInfo,
-    ProbeResult, ProviderError, ProviderTarget, StreamProfile, StreamProfileId, VideoCodec,
+    ProbeResult, ProviderError, ProviderTarget, PtzMove, StreamProfile, StreamProfileId,
+    VideoCodec,
 };
 
 /// How long a simulated unreachable camera takes to fail (like a connect timeout).
@@ -270,6 +271,15 @@ impl CameraProvider for DemoProvider {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(self.host.clone(), Instant::now() + RESTART_DOWNTIME);
+        Ok(())
+    }
+
+    async fn ptz_move(&self, _mv: PtzMove) -> Result<(), ProviderError> {
+        // Accepted by the PTZ model; the demo clips don't actually move.
+        self.request_as(true).await?;
+        if !self.model.profile().supports("ptz.control") {
+            return Err(ProviderError::unsupported("pan/tilt/zoom"));
+        }
         Ok(())
     }
 

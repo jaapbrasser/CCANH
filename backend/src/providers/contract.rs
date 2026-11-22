@@ -36,8 +36,34 @@ pub async fn run(s: Subjects) {
     streams(&*s.healthy).await;
     unreachable(&*s.unreachable).await;
     auth_failure(&*s.auth_failure).await;
+    ptz(&*s.healthy).await;
     // Last: a restarted camera may stop answering for a while.
     restart(&s).await;
+}
+
+/// A camera that reports PTZ accepts moves and stops; one that doesn't either
+/// accepts them too or answers `Unsupported`, never anything else.
+async fn ptz(p: &dyn CameraProvider) {
+    use super::{CapabilityGroup, PtzMove};
+    let caps = bounded("get_capabilities", p.get_capabilities())
+        .await
+        .expect("get_capabilities failed");
+    let reports_ptz = caps
+        .items
+        .iter()
+        .any(|c| c.group == CapabilityGroup::Ptz && c.supported);
+    let left = PtzMove {
+        pan: -50,
+        tilt: 0,
+        zoom: 0,
+    };
+    for mv in [left, PtzMove::STOP] {
+        match bounded("ptz_move", p.ptz_move(mv)).await {
+            Ok(()) => {}
+            Err(e) if !reports_ptz => assert_eq!(e.category(), ErrorCategory::Unsupported, "{e}"),
+            Err(e) => panic!("a camera that reports PTZ must accept {mv:?}: {e}"),
+        }
+    }
 }
 
 /// Restart is accepted by a healthy camera and reports the usual categories

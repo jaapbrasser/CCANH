@@ -118,6 +118,8 @@ pub struct CameraSummary {
     pub status: CameraStatusView,
     /// Groups the camera is directly in, by name.
     pub groups: Vec<GroupRef>,
+    /// The camera reports pan/tilt/zoom control, so it can be moved.
+    pub ptz: bool,
 }
 
 /// A reference to a shared credential set (never contains secrets).

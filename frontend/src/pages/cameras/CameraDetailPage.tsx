@@ -21,6 +21,8 @@ import { Alert, Button, Dialog } from "../../components/ui";
 import { errorCategoryLabel, relativeTime } from "../../utils/format";
 import { CameraFormDialog } from "./CameraFormDialog";
 import { RestartCameraButton } from "../../components/RestartCamera";
+import { PtzPad } from "../../components/PtzPad";
+import { moveCamera } from "../../api/ptz";
 import { usePageTitle } from "../../components/pageTitle";
 
 const GROUP_LABELS: Record<CapabilityGroup, string> = {
@@ -298,8 +300,15 @@ function Detail({ camera, isAdmin }: { camera: CameraDetail; isAdmin: boolean })
           {s.identity_error_category === "auth_failed" && isAdmin && " Check the camera's credentials under Edit."}
         </Alert>
       )}
-      <div className="max-w-4xl">
-        <LiveView camera={camera} />
+      <div className="flex max-w-6xl flex-col gap-3 lg:flex-row lg:items-start">
+        <div className="min-w-0 max-w-4xl flex-1">
+          <LiveView camera={camera} />
+        </div>
+        {camera.ptz && (
+          <aside className="lg:w-44 lg:shrink-0">
+            <PtzPad title="Moves this camera" send={(mv) => moveCamera(camera.id, mv)} />
+          </aside>
+        )}
       </div>
       {!camera.identity_updated_at && (
         <p className="text-sm text-slate-400">

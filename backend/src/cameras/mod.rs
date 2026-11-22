@@ -67,6 +67,7 @@ struct SummaryRow {
     error_message: Option<String>,
     identity_error_category: Option<ErrorCategory>,
     identity_error_message: Option<String>,
+    ptz: bool,
 }
 
 impl From<SummaryRow> for CameraSummary {
@@ -95,6 +96,7 @@ impl From<SummaryRow> for CameraSummary {
                 identity_error_message: r.identity_error_message,
             },
             groups: Vec::new(),
+            ptz: r.ptz,
         }
     }
 }
@@ -136,6 +138,13 @@ pub struct ListParams<'a> {
     pub group: Option<Uuid>,
     /// Only this user's favorites.
     pub favorites_of: Option<Uuid>,
+}
+
+/// Whether the camera reports pan/tilt/zoom control (issue #31). Must agree
+/// with the `ptz` column of the list queries.
+pub fn has_ptz(caps: &[crate::providers::Capability]) -> bool {
+    caps.iter()
+        .any(|c| c.group == crate::providers::CapabilityGroup::Ptz && c.supported)
 }
 
 /// Fill in each summary's groups.
@@ -207,7 +216,10 @@ pub async fn list(
                   s.response_time_ms, s.consecutive_failures,
                   s.error_category AS "error_category: ErrorCategory", s.error_message,
                   s.identity_error_category AS "identity_error_category: ErrorCategory",
-                  s.identity_error_message
+                  s.identity_error_message,
+                  EXISTS (SELECT 1 FROM json_each(c.capabilities) j
+                           WHERE json_extract(j.value, '$.group') = 'ptz'
+                             AND json_extract(j.value, '$.supported') = 1) AS "ptz!: bool"
              FROM cameras c JOIN camera_status s ON s.camera_id = c.id
             WHERE (?1 IS NULL OR c.name LIKE ?1 ESCAPE '\' OR c.host LIKE ?1 ESCAPE '\'
                    OR c.model LIKE ?1 ESCAPE '\')
@@ -326,6 +338,7 @@ pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx
             error_message: r.error_message,
             identity_error_category: r.identity_error_category,
             identity_error_message: r.identity_error_message,
+            ptz: false,
         }),
         tls_mode: (r.scheme == Scheme::Https).then_some(r.tls_mode),
         tls_pinned_sha256: r.tls_pinned_sha256,
@@ -360,6 +373,7 @@ pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx
     }) else {
         return Ok(None);
     };
+    detail.summary.ptz = has_ptz(&detail.capabilities);
     attach_memberships(db, std::slice::from_mut(&mut detail.summary)).await?;
     Ok(Some(detail))
 }
