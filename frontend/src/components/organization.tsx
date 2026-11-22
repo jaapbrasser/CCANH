@@ -60,7 +60,7 @@ export function FavoriteButton({ cameraId, name }: { cameraId: string; name: str
       aria-pressed={on}
       aria-label={on ? `Remove ${name} from favorites` : `Add ${name} to favorites`}
       title={on ? "Remove from favorites" : "Add to favorites"}
-      className={`text-lg leading-none ${on ? "text-amber-300" : "text-slate-600 hover:text-slate-300"}`}
+      className={`text-lg leading-none ${on ? "text-teal-300" : "text-slate-600 hover:text-slate-300"}`}
       onClick={(e) => {
         e.stopPropagation();
         toggle.mutate({ cameraId, favorite: !on });

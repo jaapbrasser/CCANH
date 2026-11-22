@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CCANH Site Test Plan</title>
 <style>
-  :root { --bg:#fff; --fg:#14181f; --muted:#5b6472; --line:#d9dde3; --panel:#f5f7fa; --accent:#b45309;
+  :root { --bg:#fff; --fg:#14181f; --muted:#5b6472; --line:#d9dde3; --panel:#f5f7fa; --accent:#0f766e;
           --pass:#15803d; --fail:#b91c1c; --blocked:#a16207; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#0f1318; --fg:#e7eaee; --muted:#9aa3ae; --line:#2a313b; --panel:#171c23; --accent:#f59e0b;
+    :root { --bg:#0f1318; --fg:#e7eaee; --muted:#9aa3ae; --line:#2a313b; --panel:#171c23; --accent:#2dd4bf;
             --pass:#4ade80; --fail:#f87171; --blocked:#facc15; }
   }
   * { box-sizing: border-box; }
@@ -179,7 +179,7 @@ const PLAN = [
   { id: "DEMO-01", title: "Start demo mode alongside the service",
     steps: ["In an administrator PowerShell: <code>.\\portable\\crane.exe --demo --data-dir C:\\ccanh-demo --port 8081</code> (leave the window open).",
             "Edge: <code>http://127.0.0.1:8081</code>, sign in as <code>admin</code> / <code>crane-demo-admin</code>."],
-    expected: "Orange DEMO MODE banner. 24 simulated cameras; no network access to cameras is attempted." },
+    expected: "Blue DEMO MODE banner. 24 simulated cameras; no network access to cameras is attempted." },
   { id: "DEMO-02", title: "Live status and failure scenarios", steps: ["Cameras page: watch for 2 minutes."],
     expected: "Most cameras online; 'A Yard – Rail Spur' and 'B Perimeter – Fence West' offline; 'B Loading – Dock 3' flips every ~45 s without reloading; 'B Storage – Aisle 4' shows an authentication problem." },
   { id: "DEMO-03", crit: true, title: "Live video plays in Edge", steps: ["Open 'A1 Crane 1 – Hook'."],

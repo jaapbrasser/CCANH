@@ -17,13 +17,9 @@ export function StatusBadge({ status }: { status: CameraStatus }) {
       : errorCategoryLabel(status.identity_error_category);
   return (
     <span className="inline-flex items-center gap-2">
-      <span className={`rounded px-2 py-0.5 text-xs font-medium ${STYLES[status.state]}`}>
-        {LABELS[status.state]}
-      </span>
+      <span className={`rounded px-2 py-0.5 text-xs font-medium ${STYLES[status.state]}`}>{LABELS[status.state]}</span>
       {reason && (
-        <span className={`text-xs ${status.state === "online" ? "text-amber-300" : "text-slate-400"}`}>
-          {reason}
-        </span>
+        <span className={`text-xs ${status.state === "online" ? "text-yellow-300" : "text-slate-400"}`}>{reason}</span>
       )}
     </span>
   );

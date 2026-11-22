@@ -99,7 +99,7 @@ function EmptyCell({ position, cols, onPick }: { position: number; cols: number;
       role="gridcell"
       style={place(position, cols)}
       className={`flex min-h-24 items-center justify-center rounded border border-dashed ${
-        isOver ? "border-amber-400 bg-amber-400/10" : "border-slate-800"
+        isOver ? "border-sky-400 bg-sky-400/10" : "border-slate-800"
       }`}
     >
       <button
@@ -145,7 +145,7 @@ function CameraTile({
       aria-label={`Tile ${position + 1}: ${name}`}
       style={style}
       className={`relative flex min-h-24 flex-col overflow-hidden rounded border bg-black ${
-        isOver && !isDragging ? "border-amber-400" : "border-slate-800"
+        isOver && !isDragging ? "border-sky-400" : "border-slate-800"
       } ${isDragging ? "opacity-80 shadow-2xl" : ""}`}
     >
       <div

@@ -19,7 +19,7 @@ function mb(bytes: number): string {
 const STATE_STYLE: Record<StreamInfo["state"], string> = {
   starting: "text-slate-300",
   running: "text-emerald-300",
-  reconnecting: "text-amber-300",
+  reconnecting: "text-yellow-300",
   draining: "text-slate-400",
   failed: "text-red-300",
   stopped: "text-slate-500",
@@ -85,7 +85,12 @@ export function StreamsPage() {
                 </td>
                 <td className="px-4 py-2 text-slate-300">
                   {s.profile || "default"}
-                  {s.width && s.height && <span className="text-slate-500"> · {s.width}×{s.height}</span>}
+                  {s.width && s.height && (
+                    <span className="text-slate-500">
+                      {" "}
+                      · {s.width}×{s.height}
+                    </span>
+                  )}
                 </td>
                 <td className={`px-4 py-2 ${STATE_STYLE[s.state]}`} title={s.last_error ?? undefined}>
                   {s.state}

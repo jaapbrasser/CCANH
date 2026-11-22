@@ -7,7 +7,7 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" }) {
   const styles = {
-    primary: "bg-amber-500 text-slate-950 hover:bg-amber-400",
+    primary: "bg-teal-500 text-slate-950 hover:bg-teal-400",
     secondary: "border border-slate-700 text-slate-200 hover:bg-slate-800",
     danger: "bg-red-600 text-white hover:bg-red-500",
   }[variant];
@@ -33,7 +33,7 @@ export function Field({
       </label>
       <input
         id={id}
-        className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-amber-500"
+        className="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-teal-400"
         {...props}
       />
       {hint && <p className="text-xs text-slate-500">{hint}</p>}

@@ -19,7 +19,7 @@ function LiveIndicator() {
       aria-label={live ? "Live updates connected" : "Live updates reconnecting"}
       className="flex items-center gap-1.5 text-xs text-slate-400"
     >
-      <span className={`h-2 w-2 rounded-full ${live ? "bg-emerald-400" : "bg-amber-400"}`} />
+      <span className={`h-2 w-2 rounded-full ${live ? "bg-emerald-400" : "bg-yellow-400"}`} />
       {live ? "Live" : state === "reconnecting" ? "Reconnecting…" : "Connecting…"}
     </span>
   );
@@ -52,7 +52,7 @@ export function DemoBanner() {
   const { data } = useHealth();
   if (data?.mode !== "demo") return null;
   return (
-    <div role="note" className="bg-amber-500 px-4 py-1 text-center text-sm font-semibold text-slate-950">
+    <div role="note" className="bg-sky-500 px-4 py-1 text-center text-sm font-semibold text-slate-950">
       DEMO MODE · simulated cameras · data resets when the server restarts
     </div>
   );

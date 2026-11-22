@@ -46,7 +46,7 @@ export function ExpandedCamera({ cameraId, onClose }: { cameraId: string; onClos
           <>
             <h2 className="text-xl font-semibold">{c.name}</h2>
             <StatusBadge status={c.status} />
-            <Link to={`/cameras/${c.id}`} className="ml-auto text-sm text-amber-300 hover:underline">
+            <Link to={`/cameras/${c.id}`} className="ml-auto text-sm text-sky-300 hover:underline">
               Open camera page
             </Link>
           </>
