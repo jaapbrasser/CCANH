@@ -13,7 +13,7 @@ const A = "00000000-0000-7000-8000-000000000011";
 const B = "00000000-0000-7000-8000-000000000012";
 const C = "00000000-0000-7000-8000-000000000013";
 
-function cam(id: string, name: string): CameraSummary {
+function cam(id: string, name: string, state: CameraSummary["status"]["state"] = "online"): CameraSummary {
   return {
     id,
     name,
@@ -25,7 +25,7 @@ function cam(id: string, name: string): CameraSummary {
     firmware_version: null,
     monitoring_enabled: true,
     status: {
-      state: "online",
+      state,
       last_success_at: NOW,
       last_change_at: NOW,
       last_checked_at: NOW,
@@ -172,6 +172,40 @@ describe("dashboards page", () => {
     await userEvent.selectOptions(size, "9 (3×3)");
     expect(await screen.findByRole("grid", { name: "Dashboard grid, 3 by 3" })).toBeInTheDocument();
     await waitFor(() => expect(patches.at(-1)).toMatchObject({ rows: 3, cols: 3 }), { timeout: 3000 });
+  });
+
+  it("offers a restart on offline tiles only", async () => {
+    let restarted: string | undefined;
+    server.use(
+      http.get("/api/v1/cameras", () =>
+        HttpResponse.json({
+          items: [cam(A, "Hook 1"), cam(B, "Hook 2", "offline"), cam(C, "Gate North")],
+          total: 3,
+          page: 1,
+          page_size: 200,
+        }),
+      ),
+      http.post("/api/v1/cameras/:id/restart", ({ params }) => {
+        restarted = params.id as string;
+        return HttpResponse.json(
+          {
+            id: "00000000-0000-7000-8000-0000000000fb",
+            kind: "restart_camera",
+            status: "queued",
+            progress_current: 0,
+            created_at: NOW,
+          },
+          { status: 202 },
+        );
+      }),
+    );
+    renderApp("/dashboards");
+    const tile = await screen.findByRole("gridcell", { name: "Tile 2: Hook 2" });
+    expect(screen.queryByRole("button", { name: "Restart Hook 1" })).not.toBeInTheDocument();
+    await userEvent.click(within(tile).getByRole("button", { name: "Restart Hook 2" }));
+    const dialog = screen.getByRole("dialog", { name: "Restart Hook 2?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Restart camera" }));
+    await waitFor(() => expect(restarted).toBe(B));
   });
 
   it("expands a tile and returns with Esc", async () => {

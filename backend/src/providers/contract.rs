@@ -36,6 +36,30 @@ pub async fn run(s: Subjects) {
     streams(&*s.healthy).await;
     unreachable(&*s.unreachable).await;
     auth_failure(&*s.auth_failure).await;
+    // Last: a restarted camera may stop answering for a while.
+    restart(&s).await;
+}
+
+/// Restart is accepted by a healthy camera and reports the usual categories
+/// for one that can't be reached or rejects the credentials.
+async fn restart(s: &Subjects) {
+    let err = bounded("restart (unreachable)", s.unreachable.restart())
+        .await
+        .expect_err("an unreachable camera can't be restarted");
+    assert!(
+        matches!(
+            err.category(),
+            ErrorCategory::Unreachable | ErrorCategory::Timeout
+        ),
+        "{err}"
+    );
+    let err = bounded("restart (auth failure)", s.auth_failure.restart())
+        .await
+        .expect_err("restart needs valid credentials");
+    assert_eq!(err.category(), ErrorCategory::AuthFailed, "{err}");
+    bounded("restart", s.healthy.restart())
+        .await
+        .expect("a healthy camera must accept a restart");
 }
 
 async fn identity(p: &dyn CameraProvider) {
@@ -195,9 +219,11 @@ mod demo {
 
     #[tokio::test(start_paused = true)]
     async fn demo_provider_passes_contract_for_every_model() {
-        for model in ALL_MODELS {
+        for (i, model) in ALL_MODELS.into_iter().enumerate() {
+            // A host of its own per model: restart takes a demo host offline.
+            let host = format!("203.0.113.{}", 10 + i);
             let make = |scenario| -> Arc<dyn CameraProvider> {
-                Arc::new(DemoProvider::new("192.0.2.200", None, model, scenario, 42))
+                Arc::new(DemoProvider::new(&host, None, model, scenario, 42))
             };
             run(Subjects {
                 healthy: make(Scenario::Healthy),

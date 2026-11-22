@@ -438,6 +438,20 @@ impl From<TaskRow> for Task {
     }
 }
 
+/// Whether a task of `kind` for `camera` is queued or running.
+pub async fn active_for(db: &SqlitePool, kind: &str, camera: Uuid) -> Result<bool, sqlx::Error> {
+    let cam = camera.hyphenated();
+    let n = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) AS "n!: i64" FROM tasks
+            WHERE kind = ?1 AND camera_id = ?2 AND status IN ('queued', 'running')"#,
+        kind,
+        cam
+    )
+    .fetch_one(db)
+    .await?;
+    Ok(n > 0)
+}
+
 pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<Task>, sqlx::Error> {
     let hid = id.hyphenated();
     let row = sqlx::query_as!(

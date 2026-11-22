@@ -543,6 +543,92 @@ pub async fn refresh(
     Ok(Json(camera))
 }
 
+/// How long a restart request may take before the task gives up.
+const RESTART_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Restart (or try to turn on) a camera through its own API (issue #33).
+///
+/// Required role: viewer. Every signed-in user may restart cameras; each
+/// request is audited (`camera.restart`, with the outcome). Runs as a
+/// `restart_camera` task whose result is `{"restarted": true}`; a camera that
+/// can't be reached or refuses fails the task with the error category. The
+/// camera then goes offline while it reboots. 409 if a restart of this camera
+/// is already under way.
+#[utoipa::path(
+    post,
+    path = "/cameras/{id}/restart",
+    operation_id = "restart_camera",
+    tag = "cameras",
+    params(("id" = Uuid, Path, description = "Camera ID")),
+    responses(
+        (status = 202, description = "Task started", body = crate::tasks::Task),
+        (status = 401, description = "Not signed in", body = Problem),
+        (status = 404, description = "No such camera", body = Problem),
+        (status = 409, description = "Already restarting", body = Problem),
+    )
+)]
+pub async fn restart(
+    user: AuthUser,
+    State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
+    PathParam(id): PathParam<Uuid>,
+) -> Result<(StatusCode, Json<crate::tasks::Task>), ApiError> {
+    let camera = cameras::target(&state.db, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let host = camera.host.clone();
+    let target = camera
+        .provider_target(&*state.credentials)
+        .map_err(|e| ApiError::Internal(format!("cannot decrypt camera credentials: {e}")))?;
+    if crate::tasks::active_for(&state.db, "restart_camera", id).await? {
+        return Err(ApiError::Conflict(
+            "this camera is already being restarted".into(),
+        ));
+    }
+    let provider = state.providers().create(&target);
+    let creator = crate::tasks::Creator {
+        id: user.id,
+        username: user.username.clone(),
+    };
+    let db = state.db.clone();
+    let task = state
+        .tasks
+        .spawn("restart_camera", Some(id), Some(creator), move |ctx| async move {
+            ctx.progress(0, Some(1), "Asking the camera to restart…").await;
+            let outcome = tokio::select! {
+                r = tokio::time::timeout(RESTART_TIMEOUT, provider.restart()) => match r {
+                    Ok(r) => r,
+                    Err(_) => Err(crate::providers::ProviderError::Timeout(
+                        "the camera didn't answer the restart request".into(),
+                    )),
+                },
+                () = ctx.cancel.cancelled() => {
+                    return Err(crate::tasks::TaskFailure::internal("cancelled"));
+                }
+            };
+            let details = serde_json::json!({
+                "host": host,
+                "error": outcome.as_ref().err().map(ToString::to_string),
+            });
+            let event = AuditEvent::new(
+                action::CAMERA_RESTART,
+                if outcome.is_ok() { Outcome::Success } else { Outcome::Failure },
+            )
+            .actor(Some(user.id), &user.username)
+            .target("camera", id)
+            .ip(ip)
+            .details(details);
+            if let Err(e) = audit::record(&db, event).await {
+                tracing::error!(error = %e, camera_id = %id, "failed to audit a camera restart");
+            }
+            outcome?;
+            tracing::info!(camera_id = %id, by = %user.username, "camera restart requested");
+            Ok(serde_json::json!({ "restarted": true }))
+        })
+        .await?;
+    Ok((StatusCode::ACCEPTED, Json(task)))
+}
+
 /// Most cameras one bulk request may touch.
 pub const MAX_BULK: usize = 500;
 

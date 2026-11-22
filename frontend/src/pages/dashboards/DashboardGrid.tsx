@@ -11,6 +11,7 @@ import {
 import type { CameraSummary } from "../../api/cameras";
 import { moveTile, type Layout } from "../../api/dashboards";
 import { LivePlayer } from "../../components/LivePlayer";
+import { RestartCameraButton } from "../../components/RestartCamera";
 
 const cellId = (position: number) => `cell-${position}`;
 
@@ -161,6 +162,7 @@ function CameraTile({
           }`}
         />
         <span className="min-w-0 flex-1 truncate font-medium text-slate-200">{name}</span>
+        {state === "offline" && <RestartCameraButton cameraId={cameraId} name={name} compact />}
         <button
           type="button"
           className="rounded px-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"

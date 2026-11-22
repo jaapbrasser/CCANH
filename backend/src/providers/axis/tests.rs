@@ -182,6 +182,14 @@ async fn mount_camera(server: &MockServer, full_api_list: bool) {
         .mount(server)
         .await;
     Mock::given(method("POST"))
+        .and(path(FIRMWARE_MANAGEMENT))
+        .and(body_partial_json(json!({ "method": "reboot" })))
+        .respond_with(DigestGate::new(json_reply(fixture!(
+            "firmwaremanagement_reboot.json"
+        ))))
+        .mount(server)
+        .await;
+    Mock::given(method("POST"))
         .and(path(NETWORK_SETTINGS))
         .respond_with(DigestGate::new(json_reply(fixture!(
             "network_getnetworkinfo.json"

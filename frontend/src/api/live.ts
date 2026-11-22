@@ -20,6 +20,7 @@ const TASK_LABELS: Record<string, string> = {
   discovery: "Scan",
   bulk_cameras: "Bulk update",
   test_credentials: "Credential test",
+  restart_camera: "Camera restart",
 };
 
 /** Notify the user when one of their tasks finishes. */
@@ -38,6 +39,8 @@ function notifyTaskFinished(task: Task, myId: string | undefined) {
       );
     else if (task.kind === "discovery" && found !== undefined)
       showToast("success", `${label} finished: ${found} AXIS device${found === 1 ? "" : "s"} found.`);
+    else if (task.kind === "restart_camera")
+      showToast("success", "The camera accepted the restart. It's offline until it has rebooted.");
     else showToast("success", `${label} finished.`);
   } else if (task.status === "failed") {
     showToast("error", `${label} failed: ${task.error_message ?? "unknown error"}`);

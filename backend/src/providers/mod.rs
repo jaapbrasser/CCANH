@@ -219,6 +219,11 @@ pub trait CameraProvider: Send + Sync {
         cancel: CancellationToken,
     ) -> Result<Box<dyn MediaSource>, ProviderError>;
 
+    /// Restart the camera (issue #33). Returns once the camera has accepted the
+    /// request; it then goes offline while it reboots, which the status
+    /// monitor sees as usual.
+    async fn restart(&self) -> Result<(), ProviderError>;
+
     /// SHA-256 fingerprint of the certificate the camera presented on the last
     /// HTTPS connection, for "test connection" and pinning. `None` when not
     /// applicable (plain HTTP, simulated cameras).
