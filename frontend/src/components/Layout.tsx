@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router";
 import { useMe } from "../api/auth";
+import { useCameraSummary } from "../api/cameras";
 import { useHealth } from "../api/health";
 import { useLiveState, useLiveUpdates } from "../api/live";
 import { HealthBadge } from "./HealthBadge";
@@ -20,6 +21,29 @@ function LiveIndicator() {
     >
       <span className={`h-2 w-2 rounded-full ${live ? "bg-emerald-400" : "bg-amber-400"}`} />
       {live ? "Live" : state === "reconnecting" ? "Reconnecting…" : "Connecting…"}
+    </span>
+  );
+}
+
+/**
+ * `56 🟢 / 44 🔴 (56% online)` for the monitored cameras (issue #32). Unknown
+ * counts as offline; cameras with monitoring off aren't counted.
+ */
+export function CameraCount({ enabled }: { enabled: boolean }) {
+  const { data } = useCameraSummary(enabled);
+  if (!data) return null;
+  const down = data.offline + data.unknown;
+  const total = data.online + down;
+  if (total === 0) return null;
+  const pct = Math.round((data.online / total) * 100);
+  return (
+    <span
+      role="status"
+      aria-label={`${data.online} cameras online, ${down} offline or unknown, ${pct}% online`}
+      title="Monitored cameras; unknown counts as offline"
+      className="whitespace-nowrap text-xs tabular-nums text-slate-400"
+    >
+      {data.online} 🟢 / {down} 🔴 ({pct}% online)
     </span>
   );
 }
@@ -57,6 +81,7 @@ export function Layout() {
           </nav>
         </div>
         <div className="flex items-center gap-4">
+          <CameraCount enabled={Boolean(me)} />
           <LiveIndicator />
           <HealthBadge />
           <UserMenu />

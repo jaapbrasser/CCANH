@@ -251,6 +251,26 @@ pub async fn list(
     Ok((items, total))
 }
 
+/// Status counts of the monitored cameras (cameras with monitoring off are
+/// left out), for the top bar (issue #32).
+pub async fn status_summary(db: &SqlitePool) -> Result<StatusSummary, sqlx::Error> {
+    let r = sqlx::query!(
+        r#"SELECT COALESCE(SUM(s.state = 'online'), 0) AS "online!: i64",
+                  COALESCE(SUM(s.state = 'offline'), 0) AS "offline!: i64",
+                  COALESCE(SUM(s.state = 'unknown'), 0) AS "unknown!: i64"
+             FROM cameras c JOIN camera_status s ON s.camera_id = c.id
+            WHERE c.monitoring_enabled = 1"#
+    )
+    .fetch_one(db)
+    .await?;
+    let n = |v: i64| u32::try_from(v).unwrap_or(u32::MAX);
+    Ok(StatusSummary {
+        online: n(r.online),
+        offline: n(r.offline),
+        unknown: n(r.unknown),
+    })
+}
+
 pub async fn get(db: &SqlitePool, id: Uuid) -> Result<Option<CameraDetail>, sqlx::Error> {
     let hid = id.hyphenated();
     let row = sqlx::query!(

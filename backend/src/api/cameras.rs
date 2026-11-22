@@ -91,6 +91,27 @@ pub struct StatusHistory {
     pub page_size: u32,
 }
 
+/// Status counts of the monitored cameras (cameras with monitoring off are
+/// left out).
+///
+/// Required role: viewer. The UI refreshes it on `camera_status` events.
+#[utoipa::path(
+    get,
+    path = "/cameras/summary",
+    operation_id = "camera_status_summary",
+    tag = "cameras",
+    responses(
+        (status = 200, description = "Counts per state", body = cameras::StatusSummary),
+        (status = 401, description = "Not signed in", body = Problem),
+    )
+)]
+pub async fn summary(
+    _user: AuthUser,
+    State(state): State<AppState>,
+) -> Result<Json<cameras::StatusSummary>, ApiError> {
+    Ok(Json(cameras::status_summary(&state.db).await?))
+}
+
 /// List cameras with their current status.
 ///
 /// Required role: viewer.

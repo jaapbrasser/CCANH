@@ -408,3 +408,49 @@ describe("demo mode", () => {
     expect(screen.getByText("crane-demo-admin")).toBeInTheDocument();
   });
 });
+
+describe("top-bar camera count", () => {
+  it("shows online, offline and the percentage, and updates on status changes", async () => {
+    signedInAs(VIEWER);
+    let counts = { online: 56, offline: 40, unknown: 4 };
+    let fetches = 0;
+    server.use(
+      http.get("/api/v1/cameras/summary", () => {
+        fetches += 1;
+        return HttpResponse.json(counts);
+      }),
+    );
+    renderApp("/cameras");
+    const count = await screen.findByRole("status", { name: /cameras online/ });
+    // Unknown counts as offline.
+    expect(count).toHaveTextContent("56 🟢 / 44 🔴 (56% online)");
+    await screen.findByText("Live");
+    const before = fetches;
+
+    counts = { online: 55, offline: 41, unknown: 4 };
+    act(() => {
+      live.broadcast(
+        JSON.stringify({ type: "camera_status", camera_id: HOOK.id, status: { ...HOOK.status, state: "offline" } }),
+      );
+    });
+    await waitFor(() => expect(count).toHaveTextContent("55 🟢 / 45 🔴 (55% online)"));
+    const after = fetches;
+    expect(after).toBeGreaterThan(before);
+
+    // The same state again (a routine check) doesn't refetch.
+    act(() => {
+      live.broadcast(
+        JSON.stringify({ type: "camera_status", camera_id: HOOK.id, status: { ...HOOK.status, state: "offline" } }),
+      );
+    });
+    await new Promise((r) => setTimeout(r, 700));
+    expect(fetches).toBe(after);
+  });
+
+  it("is hidden when no camera is monitored", async () => {
+    signedInAs(VIEWER);
+    renderApp("/cameras");
+    await screen.findByText("Live");
+    expect(screen.queryByRole("status", { name: /cameras online/ })).not.toBeInTheDocument();
+  });
+});
