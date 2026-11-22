@@ -20,7 +20,7 @@ import { isTerminal, useCancelTask, useTask } from "../api/tasks";
 import { errorCategoryLabel } from "../utils/format";
 import { MultiPick } from "../components/organization";
 import { showToast } from "../components/toasts";
-import { Alert, Button, Dialog, Field, PageHeader } from "../components/ui";
+import { Alert, Button, Dialog, DialogFooter, Field, PageHeader } from "../components/ui";
 import { relativeTime } from "../utils/format";
 import { usePageTitle } from "../components/pageTitle";
 
@@ -378,7 +378,7 @@ function RegisterDialog({
   };
 
   return (
-    <Dialog title={`Register ${n} device${n === 1 ? "" : "s"}`} onClose={onClose}>
+    <Dialog title={`Register ${n} device${n === 1 ? "" : "s"}`} onClose={onClose} size="xl">
       <form onSubmit={onSubmit} className="flex max-h-[75vh] flex-col gap-4 overflow-y-auto pr-1 text-sm">
         {register.isError && <Alert>{errorMessage(register.error)}</Alert>}
         <p className="text-slate-400">
@@ -483,14 +483,14 @@ function RegisterDialog({
           <input type="checkbox" checked={monitoring} onChange={(e) => setMonitoring(e.target.checked)} />
           Monitor these cameras' status
         </label>
-        <div className="flex justify-end gap-2">
+        <DialogFooter>
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" disabled={register.isPending}>
             Register {n}
           </Button>
-        </div>
+        </DialogFooter>
       </form>
     </Dialog>
   );
