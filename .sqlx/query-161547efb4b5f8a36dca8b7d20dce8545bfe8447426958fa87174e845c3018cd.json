@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT d.id AS \"id: Hyphenated\", d.name, d.rows, d.cols, d.tiles, u.username\n             FROM dashboards d JOIN users u ON u.id = d.user_id\n            WHERE NOT ((d.rows = 2 AND d.cols = 2) OR (d.rows = 3 AND d.cols = 3))",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dashboards",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dashboards",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "rows",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dashboards",
+            "name": "rows"
+          }
+        }
+      },
+      {
+        "name": "cols",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dashboards",
+            "name": "cols"
+          }
+        }
+      },
+      {
+        "name": "tiles",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dashboards",
+            "name": "tiles"
+          }
+        }
+      },
+      {
+        "name": "username",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "username"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "161547efb4b5f8a36dca8b7d20dce8545bfe8447426958fa87174e845c3018cd"
+}

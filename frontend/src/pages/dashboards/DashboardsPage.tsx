@@ -102,7 +102,6 @@ function DashboardView({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [custom, setCustom] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const gridBox = useRef<HTMLDivElement>(null);
 
@@ -114,7 +113,7 @@ function DashboardView({
 
   const preset = PRESETS.find((p) => p.rows === layout.rows && p.cols === layout.cols);
   const resize = (rows: number, cols: number) => {
-    const tiles = fitTiles(layout.tiles, rows, cols);
+    const tiles = fitTiles(layout.tiles, layout.cols, rows, cols);
     if (!tiles) {
       showToast("error", `A ${rows}×${cols} grid has room for ${rows * cols} cameras; remove some first.`);
       return;
@@ -127,7 +126,12 @@ function DashboardView({
     <>
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="sr-only">Dashboard: {dashboard.name}</h1>
-        <select aria-label="Dashboard" className={`${selectClass} font-medium`} value={dashboard.id} onChange={(e) => onSwitch(e.target.value)}>
+        <select
+          aria-label="Dashboard"
+          className={`${selectClass} font-medium`}
+          value={dashboard.id}
+          onChange={(e) => onSwitch(e.target.value)}
+        >
           {all.map((d) => (
             <option key={d.id} value={d.id}>
               {d.name}
@@ -138,41 +142,23 @@ function DashboardView({
         <select
           aria-label="Grid size"
           className={selectClass}
-          value={custom || !preset ? "custom" : preset.label}
+          value={preset?.label ?? ""}
           onChange={(e) => {
             const p = PRESETS.find((x) => x.label === e.target.value);
-            if (p) {
-              setCustom(false);
-              resize(p.rows, p.cols);
-            } else setCustom(true);
+            if (p) resize(p.rows, p.cols);
           }}
         >
+          {!preset && (
+            <option value="" disabled>
+              {layout.rows}×{layout.cols}
+            </option>
+          )}
           {PRESETS.map((p) => (
             <option key={p.label} value={p.label}>
               {p.label}
             </option>
           ))}
-          <option value="custom">Custom…</option>
         </select>
-        {(custom || !preset) && (
-          <span className="flex items-center gap-1 text-sm">
-            {(["rows", "cols"] as const).map((k) => (
-              <select
-                key={k}
-                aria-label={k === "rows" ? "Rows" : "Columns"}
-                className={selectClass}
-                value={layout[k]}
-                onChange={(e) => (k === "rows" ? resize(Number(e.target.value), layout.cols) : resize(layout.rows, Number(e.target.value)))}
-              >
-                {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            ))}
-          </span>
-        )}
         <span role="status" className="text-xs text-slate-500">
           {saving ? "Saving…" : "Saved"}
         </span>
@@ -222,7 +208,12 @@ function DashboardView({
           onDashboard={onDashboard}
           onClose={() => setPicking(null)}
           onPick={(cameraId) => {
-            change({ ...layout, tiles: [...layout.tiles, { position: picking, camera_id: cameraId }].sort((a, b) => a.position - b.position) });
+            change({
+              ...layout,
+              tiles: [...layout.tiles, { position: picking, camera_id: cameraId }].sort(
+                (a, b) => a.position - b.position,
+              ),
+            });
             setPicking(null);
           }}
         />

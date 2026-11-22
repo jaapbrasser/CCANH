@@ -1,8 +1,17 @@
 # ADR 0005: Dashboard grid and drag and drop
 
-- Status: accepted
+- Status: accepted; amended 2026-11-22 (0.4.0): 2×2 and 3×3 only
 - Date: 2026-11-19
 - Phase: 7
+
+> **Amendment (0.4.0, issue #30):** only 2×2 and 3×3 grids remain; the API
+> rejects other sizes (`rows` must equal `cols`, 2 or 3). The table's CHECK
+> still allows 1–8. At startup `dashboards::normalize_layouts` converts older
+> dashboards (after the pre-migration backup): 2×2 if they have at most 4
+> tiles, otherwise 3×3. Tiles keep their row and column where that cell
+> exists, others fill free cells, and tiles beyond 9 are dropped. Each
+> conversion is logged at info and each dropped tile at warn. The UI's
+> resize keeps rows and columns the same way (`fitTiles`).
 
 ## Context
 

@@ -54,7 +54,7 @@ async fn defaults_follow_the_user_and_layouts_persist() {
     let second = create(
         &app,
         &admin,
-        json!({ "name": "Yard", "rows": 3, "cols": 4, "tiles": [{ "position": 11, "camera_id": a }] }),
+        json!({ "name": "Yard", "rows": 3, "cols": 3, "tiles": [{ "position": 8, "camera_id": a }] }),
     )
     .await
     .json();
@@ -85,7 +85,7 @@ async fn defaults_follow_the_user_and_layouts_persist() {
     );
 
     // Shrinking without new tiles drops what no longer fits.
-    let shrunk = patch(&app, &admin, second_id, json!({ "rows": 1, "cols": 2 }))
+    let shrunk = patch(&app, &admin, second_id, json!({ "rows": 2, "cols": 2 }))
         .await
         .json();
     assert_eq!(shrunk["tiles"], json!([{ "position": 0, "camera_id": b }]));
@@ -155,6 +155,9 @@ async fn invalid_layouts_are_rejected() {
     for body in [
         json!({ "name": "" }),
         json!({ "name": "Big", "rows": 9, "cols": 1 }),
+        json!({ "name": "Wide", "rows": 2, "cols": 3 }),
+        json!({ "name": "One", "rows": 1, "cols": 1 }),
+        json!({ "name": "Four", "rows": 4, "cols": 4 }),
         json!({ "name": "Out", "rows": 2, "cols": 2, "tiles": [{ "position": 4, "camera_id": a }] }),
         json!({ "name": "Twice", "tiles": [{ "position": 0, "camera_id": a }, { "position": 1, "camera_id": a }] }),
         json!({ "name": "Same", "tiles": [{ "position": 0, "camera_id": a }, { "position": 0, "camera_id": uuid::Uuid::now_v7() }] }),
@@ -190,4 +193,100 @@ async fn demo_mode_seeds_sample_dashboards() {
     assert_eq!(names, ["Site A cranes", "Gates and docks"]);
     assert_eq!(list[0]["tiles"].as_array().unwrap().len(), 8);
     assert_eq!(list[0]["is_default"], true);
+}
+
+#[tokio::test]
+async fn old_layouts_are_converted_at_startup() {
+    // Dashboards from before 0.4.0 could be 1–8 per side (issue #30).
+    let app = TestApp::new().await;
+    let (_, admin) = app.signed_in("admin", Role::Admin).await;
+    let mut cams = Vec::new();
+    for n in 1..=10 {
+        cams.push(camera(&app, &admin, n).await);
+    }
+    let owner = crane::users::find_credentials(&app.state.db, "admin")
+        .await
+        .unwrap()
+        .unwrap()
+        .user
+        .id
+        .hyphenated()
+        .to_string();
+    let tiles = |positions: &[u16]| {
+        json!(positions
+            .iter()
+            .zip(&cams)
+            .map(|(p, c)| json!({ "position": p, "camera_id": c }))
+            .collect::<Vec<_>>())
+        .to_string()
+    };
+    let insert = |name: &'static str, rows: i64, cols: i64, tiles: String| {
+        let (db, owner) = (app.state.db.clone(), owner.clone());
+        async move {
+            sqlx::query(
+                "INSERT INTO dashboards (id, user_id, name, rows, cols, tiles, is_default, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            )
+            .bind(uuid::Uuid::now_v7().hyphenated().to_string())
+            .bind(owner)
+            .bind(name)
+            .bind(rows)
+            .bind(cols)
+            .bind(tiles)
+            .execute(&db)
+            .await
+            .unwrap();
+        }
+    };
+    insert("Wide", 2, 3, tiles(&[0, 1, 3])).await;
+    insert("Big", 4, 4, tiles(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])).await;
+    insert("Fine", 3, 3, tiles(&[4])).await;
+
+    let converted = crane::dashboards::normalize_layouts(&app.state.db)
+        .await
+        .unwrap();
+    assert_eq!(converted, 2, "the 3×3 one is left alone");
+    assert_eq!(
+        crane::dashboards::normalize_layouts(&app.state.db)
+            .await
+            .unwrap(),
+        0,
+        "nothing left to do the second time"
+    );
+    let list = app
+        .send(req(Method::GET, "/api/v1/dashboards").cookie(&admin))
+        .await
+        .json();
+    let by_name = |n: &str| {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["name"] == n)
+            .unwrap()
+            .clone()
+    };
+    let wide = by_name("Wide");
+    assert_eq!(
+        (wide["rows"].as_u64(), wide["cols"].as_u64()),
+        (Some(2), Some(2))
+    );
+    assert_eq!(
+        wide["tiles"],
+        json!([
+            { "position": 0, "camera_id": cams[0] },
+            { "position": 1, "camera_id": cams[1] },
+            { "position": 2, "camera_id": cams[2] },
+        ])
+    );
+    let big = by_name("Big");
+    assert_eq!(
+        (big["rows"].as_u64(), big["cols"].as_u64()),
+        (Some(3), Some(3))
+    );
+    assert_eq!(
+        big["tiles"].as_array().unwrap().len(),
+        9,
+        "one of ten dropped"
+    );
+    assert_eq!(by_name("Fine")["tiles"].as_array().unwrap().len(), 1);
 }

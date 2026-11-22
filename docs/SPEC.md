@@ -393,6 +393,8 @@ Design the stream manager so per-camera or global bandwidth limits and prioritie
 
 ## 8. Dashboards (Phase 7)
 
+> **0.4.0:** only 2×2 and 3×3 grids (issue #30, ADR 0005 amendment); older dashboards are converted at startup.
+
 ### 8.1 Management
 
 Each user has their own dashboards: create, rename, delete, set a default, switch between them. All persisted. A user's dashboards are private to them; sharing is out of MVP scope.

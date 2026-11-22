@@ -175,7 +175,7 @@ const DASHBOARDS: [(&str, u8, u8, &[&str]); 2] = [
     ("Site A cranes", 3, 3, &["A1 Crane", "A2 Crane"]),
     (
         "Gates and docks",
-        2,
+        3,
         3,
         &["A Yard – Gate", "B Perimeter – Entrance", "B Loading"],
     ),
