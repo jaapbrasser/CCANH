@@ -71,16 +71,22 @@ describe("layout helpers", () => {
     ]);
   });
 
-  it("re-packs tiles when the grid shrinks and refuses when they can't fit", () => {
+  it("keeps rows and columns, re-packs the rest and refuses when tiles can't fit", () => {
+    // 3×3: A at (0,0), B at (1,1), C at (2,2).
     const tiles = [
       { position: 0, camera_id: A },
-      { position: 8, camera_id: B },
+      { position: 4, camera_id: B },
+      { position: 8, camera_id: C },
     ];
-    expect(fitTiles(tiles, 1, 2)).toEqual([
+    expect(fitTiles(tiles, 3, 2, 2)).toEqual([
       { position: 0, camera_id: A },
-      { position: 1, camera_id: B },
+      { position: 1, camera_id: C },
+      { position: 3, camera_id: B },
     ]);
-    expect(fitTiles(tiles, 1, 1)).toBeNull();
+    // 2×2 → 3×3: (1,0) stays in row 1, column 0.
+    expect(fitTiles([{ position: 2, camera_id: A }], 2, 3, 3)).toEqual([{ position: 3, camera_id: A }]);
+    const five = [0, 1, 2, 3, 4].map((p) => ({ position: p, camera_id: `${p}` }));
+    expect(fitTiles(five, 3, 2, 2)).toBeNull();
   });
 });
 
@@ -157,9 +163,13 @@ describe("dashboards page", () => {
   it("changes the grid size, keeping cameras", async () => {
     renderApp("/dashboards");
     await screen.findByRole("gridcell", { name: "Tile 1: Hook 1" });
-    await userEvent.selectOptions(screen.getByLabelText("Grid size"), "1 (1×1)");
-    expect(await screen.findByText(/room for 1 cameras/)).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText("Grid size"), "9 (3×3)");
+    const size = screen.getByLabelText("Grid size");
+    expect(
+      within(size)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["4 (2×2)", "9 (3×3)"]);
+    await userEvent.selectOptions(size, "9 (3×3)");
     expect(await screen.findByRole("grid", { name: "Dashboard grid, 3 by 3" })).toBeInTheDocument();
     await waitFor(() => expect(patches.at(-1)).toMatchObject({ rows: 3, cols: 3 }), { timeout: 3000 });
   });

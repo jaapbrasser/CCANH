@@ -179,6 +179,9 @@ async fn run_with(
     let db = storage::connect(&db_path)
         .await
         .with_context(|| format!("opening database {}", db_path.display()))?;
+    crane::dashboards::normalize_layouts(&db)
+        .await
+        .context("converting dashboards to 2×2 or 3×3")?;
     let credentials = crane::credentials::platform_store(&config.data_dir)
         .context("setting up the camera credential store")?;
     tracing::info!(store = credentials.name(), "camera credential store ready");

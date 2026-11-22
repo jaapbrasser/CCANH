@@ -1327,8 +1327,8 @@ export interface components {
             updated_at: string;
         };
         /**
-         * @description Omitted fields are unchanged. Shrinking the grid without sending `tiles`
-         *     drops tiles that no longer fit.
+         * @description Omitted fields are unchanged. The grid must stay 2×2 or 3×3. Shrinking it
+         *     without sending `tiles` drops tiles that no longer fit.
          */
         DashboardPatch: {
             /** Format: int32 */
@@ -1703,13 +1703,13 @@ export interface components {
         NewDashboard: {
             /**
              * Format: int32
-             * @description 1–8, default 2.
+             * @description 2 or 3 (with `rows` the same), default 2.
              */
             cols?: number;
             name: string;
             /**
              * Format: int32
-             * @description 1–8, default 2.
+             * @description 2 or 3 (with `cols` the same), default 2.
              */
             rows?: number;
             tiles?: components["schemas"]["Tile"][];

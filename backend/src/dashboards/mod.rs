@@ -10,8 +10,10 @@ use utoipa::ToSchema;
 use uuid::fmt::Hyphenated;
 use uuid::Uuid;
 
-/// Largest grid side (SPEC §8.2: custom grids up to 8×8).
-pub const MAX_SIDE: u8 = 8;
+/// The only grid sizes offered (issue #30): 2×2 and 3×3. The table still
+/// allows 1–8 per side, from before 0.4.0; [`normalize_layouts`] converts
+/// such dashboards at startup.
+pub const LAYOUTS: [u8; 2] = [2, 3];
 /// Most dashboards one user may have.
 pub const MAX_PER_USER: i64 = 50;
 pub const MAX_NAME_LEN: usize = 64;
@@ -48,18 +50,18 @@ fn default_side() -> u8 {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct NewDashboard {
     pub name: String,
-    /// 1–8, default 2.
+    /// 2 or 3 (with `cols` the same), default 2.
     #[serde(default = "default_side")]
     pub rows: u8,
-    /// 1–8, default 2.
+    /// 2 or 3 (with `rows` the same), default 2.
     #[serde(default = "default_side")]
     pub cols: u8,
     #[serde(default)]
     pub tiles: Vec<Tile>,
 }
 
-/// Omitted fields are unchanged. Shrinking the grid without sending `tiles`
-/// drops tiles that no longer fit.
+/// Omitted fields are unchanged. The grid must stay 2×2 or 3×3. Shrinking it
+/// without sending `tiles` drops tiles that no longer fit.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct DashboardPatch {
     pub name: Option<String>,
@@ -96,11 +98,11 @@ fn validate_name(name: &str) -> Result<String, DashboardError> {
     Ok(name.to_owned())
 }
 
-fn validate_side(what: &str, v: u8) -> Result<u8, DashboardError> {
-    if !(1..=MAX_SIDE).contains(&v) {
-        return Err(invalid(format!("{what} must be between 1 and {MAX_SIDE}")));
+fn validate_layout(rows: u8, cols: u8) -> Result<(u8, u8), DashboardError> {
+    if rows != cols || !LAYOUTS.contains(&rows) {
+        return Err(invalid("the grid must be 2×2 or 3×3"));
     }
-    Ok(v)
+    Ok((rows, cols))
 }
 
 /// Check positions and cameras; returns tiles sorted by position.
@@ -224,8 +226,7 @@ pub async fn create(
     d: &NewDashboard,
 ) -> Result<Dashboard, DashboardError> {
     let name = validate_name(&d.name)?;
-    let rows = validate_side("rows", d.rows)?;
-    let cols = validate_side("cols", d.cols)?;
+    let (rows, cols) = validate_layout(d.rows, d.cols)?;
     let tiles = validate_tiles(db, rows, cols, &d.tiles).await?;
     let huser = user.hyphenated();
     let count: i64 = sqlx::query_scalar!(
@@ -273,8 +274,10 @@ pub async fn update(
         Some(n) => validate_name(n)?,
         None => current.name.clone(),
     };
-    let rows = validate_side("rows", p.rows.unwrap_or(current.rows))?;
-    let cols = validate_side("cols", p.cols.unwrap_or(current.cols))?;
+    let (rows, cols) = validate_layout(
+        p.rows.unwrap_or(current.rows),
+        p.cols.unwrap_or(current.cols),
+    )?;
     let tiles = match &p.tiles {
         Some(t) => validate_tiles(db, rows, cols, t).await?,
         None => {
@@ -346,4 +349,176 @@ pub async fn delete(db: &SqlitePool, user: Uuid, id: Uuid) -> Result<(), Dashboa
     .await?;
     tx.commit().await?;
     Ok(())
+}
+
+/// A dashboard converted to a supported layout by [`convert_layout`].
+#[derive(Debug, PartialEq, Eq)]
+pub struct Converted {
+    pub side: u8,
+    pub tiles: Vec<Tile>,
+    pub dropped: Vec<Tile>,
+}
+
+/// Fit an old `rows × cols` dashboard into 2×2 (if it has at most 4 tiles)
+/// or 3×3 (issue #30). Tiles keep their row and column where that cell
+/// exists; the others fill the free cells in their old order, and whatever
+/// doesn't fit (more than 9 tiles) is dropped.
+pub fn convert_layout(cols: u8, tiles: &[Tile]) -> Converted {
+    let side: u8 = if tiles.len() <= 4 { 2 } else { 3 };
+    let (s, old_cols) = (u16::from(side), u16::from(cols.max(1)));
+    let mut sorted = tiles.to_vec();
+    sorted.sort_by_key(|t| t.position);
+    let mut taken = HashSet::new();
+    let mut kept = Vec::new();
+    let mut moved = Vec::new();
+    for t in sorted {
+        let (r, c) = (t.position / old_cols, t.position % old_cols);
+        if r < s && c < s && taken.insert(r * s + c) {
+            kept.push(Tile {
+                position: r * s + c,
+                camera_id: t.camera_id,
+            });
+        } else {
+            moved.push(t);
+        }
+    }
+    let mut free = (0..s * s).filter(|p| !taken.contains(p));
+    let mut dropped = Vec::new();
+    for t in moved {
+        match free.next() {
+            Some(position) => kept.push(Tile {
+                position,
+                camera_id: t.camera_id,
+            }),
+            None => dropped.push(t),
+        }
+    }
+    kept.sort_by_key(|t| t.position);
+    Converted {
+        side,
+        tiles: kept,
+        dropped,
+    }
+}
+
+/// Convert every dashboard whose grid isn't 2×2 or 3×3 (made before 0.4.0)
+/// and log what changed, including each dropped tile. Runs at startup after
+/// the migrations (and their backup); does nothing once all are converted.
+/// Returns how many dashboards were converted.
+pub async fn normalize_layouts(db: &SqlitePool) -> Result<usize, sqlx::Error> {
+    let old = sqlx::query!(
+        r#"SELECT d.id AS "id: Hyphenated", d.name, d.rows, d.cols, d.tiles, u.username
+             FROM dashboards d JOIN users u ON u.id = d.user_id
+            WHERE NOT ((d.rows = 2 AND d.cols = 2) OR (d.rows = 3 AND d.cols = 3))"#
+    )
+    .fetch_all(db)
+    .await?;
+    if old.is_empty() {
+        return Ok(0);
+    }
+    let cameras = camera_ids(db).await?;
+    let now = OffsetDateTime::now_utc();
+    let mut tx = db.begin().await?;
+    for d in &old {
+        let cells = d.rows.saturating_mul(d.cols);
+        // Tiles of deleted cameras or outside the old grid were never shown.
+        let tiles: Vec<Tile> = serde_json::from_str::<Vec<Tile>>(&d.tiles)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|t| i64::from(t.position) < cells && cameras.contains(&t.camera_id))
+            .collect();
+        let out = convert_layout(u8::try_from(d.cols).unwrap_or(1), &tiles);
+        for t in &out.dropped {
+            tracing::warn!(
+                dashboard = %d.id, name = %d.name, owner = %d.username, camera = %t.camera_id,
+                "dashboard tile dropped: it doesn't fit the new 3×3 grid"
+            );
+        }
+        tracing::info!(
+            dashboard = %d.id, name = %d.name, owner = %d.username,
+            from = %format!("{}×{}", d.rows, d.cols), to = %format!("{0}×{0}", out.side),
+            kept = out.tiles.len(), dropped = out.dropped.len(),
+            "converted dashboard to a supported grid"
+        );
+        // Serializing plain structs can't fail.
+        let json = serde_json::to_string(&out.tiles).unwrap_or_else(|_| "[]".into());
+        let side = i64::from(out.side);
+        let id = d.id;
+        sqlx::query!(
+            "UPDATE dashboards SET rows = ?1, cols = ?1, tiles = ?2, updated_at = ?3 WHERE id = ?4",
+            side,
+            json,
+            now,
+            id
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(old.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tiles(positions: &[u16]) -> Vec<Tile> {
+        positions
+            .iter()
+            .map(|&p| Tile {
+                position: p,
+                camera_id: Uuid::from_u128(u128::from(p) + 1),
+            })
+            .collect()
+    }
+
+    fn cams(t: &[Tile]) -> Vec<(u16, u128)> {
+        t.iter()
+            .map(|t| (t.position, t.camera_id.as_u128()))
+            .collect()
+    }
+
+    #[test]
+    fn small_dashboards_become_2x2_in_place() {
+        // 1×1 with one tile, and 2×3 whose tiles sit in the first two columns.
+        assert_eq!(cams(&convert_layout(1, &tiles(&[0])).tiles), [(0, 1)]);
+        let out = convert_layout(3, &tiles(&[0, 1, 3, 4]));
+        assert_eq!(out.side, 2);
+        assert_eq!(cams(&out.tiles), [(0, 1), (1, 2), (2, 4), (3, 5)]);
+        assert!(out.dropped.is_empty());
+    }
+
+    #[test]
+    fn tiles_outside_the_new_grid_move_to_free_cells() {
+        // 4×4 with tiles in the corners: (0,0) stays, the rest fill gaps.
+        let out = convert_layout(4, &tiles(&[0, 3, 12, 15]));
+        assert_eq!(out.side, 2);
+        assert_eq!(cams(&out.tiles), [(0, 1), (1, 4), (2, 13), (3, 16)]);
+    }
+
+    #[test]
+    fn more_than_four_tiles_become_3x3_and_extras_are_dropped() {
+        let out = convert_layout(3, &tiles(&[0, 1, 2, 3, 4]));
+        assert_eq!(out.side, 3);
+        assert_eq!(out.tiles.len(), 5);
+        // 4×4 full: 9 kept (the top-left 3×3 in place), 7 dropped.
+        let all: Vec<u16> = (0..16).collect();
+        let out = convert_layout(4, &tiles(&all));
+        assert_eq!(out.side, 3);
+        assert_eq!(
+            cams(&out.tiles),
+            [
+                (0, 1),
+                (1, 2),
+                (2, 3),
+                (3, 5),
+                (4, 6),
+                (5, 7),
+                (6, 9),
+                (7, 10),
+                (8, 11)
+            ]
+        );
+        assert_eq!(out.dropped.len(), 7);
+    }
 }

@@ -114,14 +114,10 @@ export function useLayoutAutosave(dashboard: Dashboard, onError: (e: unknown) =>
 }
 
 /** Grid presets (SPEC §8.2). */
+/** The only grid sizes (issue #30); the server rejects others. */
 export const PRESETS: { label: string; rows: number; cols: number }[] = [
-  { label: "1 (1×1)", rows: 1, cols: 1 },
-  { label: "2 (1×2)", rows: 1, cols: 2 },
   { label: "4 (2×2)", rows: 2, cols: 2 },
-  { label: "6 (2×3)", rows: 2, cols: 3 },
   { label: "9 (3×3)", rows: 3, cols: 3 },
-  { label: "12 (3×4)", rows: 3, cols: 4 },
-  { label: "16 (4×4)", rows: 4, cols: 4 },
 ];
 
 /** Move the camera at `from` to `to`, swapping with whatever is there. */
@@ -133,16 +129,25 @@ export function moveTile(tiles: Tile[], from: number, to: number): Tile[] {
 }
 
 /**
- * Fit tiles into a rows × cols grid: tiles that still fit keep their place,
- * the rest move to free cells. Returns `null` if there are more cameras than
- * cells.
+ * Fit tiles from a grid `fromCols` wide into a rows × cols grid: tiles keep
+ * their row and column where that cell exists, the rest move to free cells.
+ * Returns `null` if there are more cameras than cells.
  */
-export function fitTiles(tiles: Tile[], rows: number, cols: number): Tile[] | null {
+export function fitTiles(tiles: Tile[], fromCols: number, rows: number, cols: number): Tile[] | null {
   const cells = rows * cols;
   if (tiles.length > cells) return null;
-  const kept = tiles.filter((t) => t.position < cells);
-  const used = new Set(kept.map((t) => t.position));
+  const at = (t: Tile) => ({ r: Math.floor(t.position / fromCols), c: t.position % fromCols });
+  const sorted = [...tiles].sort((a, b) => a.position - b.position);
+  const used = new Set<number>();
+  const kept: Tile[] = [];
+  const moved: Tile[] = [];
+  for (const t of sorted) {
+    const { r, c } = at(t);
+    if (r < rows && c < cols && !used.has(r * cols + c)) {
+      used.add(r * cols + c);
+      kept.push({ ...t, position: r * cols + c });
+    } else moved.push(t);
+  }
   const free = Array.from({ length: cells }, (_, i) => i).filter((i) => !used.has(i));
-  const moved = tiles.filter((t) => t.position >= cells).map((t, i) => ({ ...t, position: free[i]! }));
-  return [...kept, ...moved].sort((a, b) => a.position - b.position);
+  return [...kept, ...moved.map((t, i) => ({ ...t, position: free[i]! }))].sort((a, b) => a.position - b.position);
 }

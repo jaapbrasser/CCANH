@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dashboards SET rows = ?1, cols = ?1, tiles = ?2, updated_at = ?3 WHERE id = ?4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "d1750ea0a7417fce43b37c3211da5aeb6784ea1f3fd7d5ddb555d597acbb06d0"
+}
