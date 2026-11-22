@@ -45,7 +45,7 @@ export function CameraPicker({
           onChange={(e) => setQ(e.target.value)}
         />
         <div className="flex flex-wrap gap-2">
-          <GroupSelect label="Filter by group" groups={groups.data ?? []} value={group} onChange={setGroup} emptyLabel="Any group" />
+          <GroupSelect label="Filter by group" groups={groups.data ?? []} value={group} onChange={setGroup} emptyLabel="Cranes" />
           <select aria-label="Filter by tag" className={inputClass} value={tag} onChange={(e) => setTag(e.target.value)}>
             <option value="">Any tag</option>
             {tags.data?.map((t) => (

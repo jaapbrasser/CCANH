@@ -119,7 +119,7 @@ export function CamerasPage() {
           groups={groups.data ?? []}
           value={group}
           onChange={filtered(setGroup)}
-          emptyLabel="Any group"
+          emptyLabel="Cranes"
         />
         <select aria-label="Filter by tag" className={filterClass} value={tag} onChange={(e) => filtered(setTag)(e.target.value)}>
           <option value="">Any tag</option>
