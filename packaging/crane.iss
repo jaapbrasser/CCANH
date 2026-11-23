@@ -15,7 +15,8 @@
 AppId={{2C742141-CDE9-4529-9DBE-7B984F1AB2F6}
 AppName=Crane Camera Automated Navigation Hub
 AppVersion={#AppVersion}
-AppPublisher=CCANH
+AppPublisher=Optitrion
+VersionInfoCompany=Optitrion
 DefaultDirName={autopf}\CCANH
 DefaultGroupName=CCANH
 DisableProgramGroupPage=yes

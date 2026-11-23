@@ -21,6 +21,8 @@ fn embed_windows_resources() {
     res.set_icon("../packaging/crane.ico")
         .set("ProductName", "Crane Camera Automated Navigation Hub")
         .set("FileDescription", "Crane Camera Automated Navigation Hub")
+        .set("CompanyName", "Optitrion")
+        .set("LegalCopyright", "© 2026 Optitrion")
         .set("InternalName", "crane")
         .set("OriginalFilename", "crane.exe");
     if let Err(e) = res.compile() {
